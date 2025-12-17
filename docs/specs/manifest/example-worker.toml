@@ -1,0 +1,23 @@
+schema_version = "v1"
+
+[env.vars]
+APP_ENV = "prod"
+
+[processes.web]
+[processes.web.resources]
+memory = "512Mi"
+cpu = 1.0
+[[processes.web.ports]]
+name = "http"
+internal = 3000
+
+[processes.worker]
+command = ["./worker"]
+[processes.worker.resources]
+memory = "512Mi"
+cpu = 0.5
+[processes.worker.secrets]
+required = true
+[processes.worker.scaling]
+min = 1
+max = 2

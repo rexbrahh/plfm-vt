@@ -1,0 +1,16 @@
+schema_version = "v1"
+
+[processes.web]
+[processes.web.resources]
+memory = "1Gi"
+
+[[volumes]]
+name = "data"
+size = "20Gi"
+filesystem = "ext4"
+backup_enabled = true
+
+[[processes.web.mounts]]
+volume = "data"
+path = "/mnt/data"
+read_only = false
