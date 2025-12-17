@@ -200,5 +200,4 @@ This format is intentionally simple and deterministic to reduce parser differenc
 Do not log file contents.
 
 Treat any endpoint that returns secret material as high risk. v1 should avoid it by default.
-
 ::contentReference[oaicite:0]{index=0}
