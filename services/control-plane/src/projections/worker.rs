@@ -17,7 +17,7 @@ use tokio::sync::watch;
 use tokio::time::sleep;
 use tracing::{debug, error, info, instrument, warn};
 
-use crate::db::{EventRow, EventStore, ProjectionStore};
+use crate::db::{EventStore, ProjectionStore};
 
 use super::{ProjectionError, ProjectionRegistry, ProjectionResult};
 

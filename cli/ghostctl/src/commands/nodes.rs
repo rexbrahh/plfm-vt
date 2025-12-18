@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_single, OutputFormat};
+use crate::output::{print_output, print_single};
 
 use super::CommandContext;
 

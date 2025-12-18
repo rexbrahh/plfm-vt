@@ -12,5 +12,6 @@
 mod reconciler;
 mod worker;
 
+#[allow(unused_imports)]
 pub use reconciler::SchedulerReconciler;
 pub use worker::SchedulerWorker;

@@ -11,7 +11,7 @@
 use chrono::Utc;
 use plfm_events::{ActorType, AggregateType};
 use plfm_id::{AppId, EnvId, InstanceId, OrgId, RequestId, ReleaseId};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use tracing::{debug, info, instrument, warn};
@@ -463,7 +463,7 @@ impl SchedulerReconciler {
     async fn get_release_info(&self, release_id: &ReleaseId) -> SchedulerResult<ReleaseInfo> {
         let row = sqlx::query_as::<_, ReleaseInfoRow>(
             r#"
-            SELECT image, manifest_hash
+            SELECT image_ref, manifest_hash
             FROM releases_view
             WHERE release_id = $1
             "#,
@@ -474,7 +474,7 @@ impl SchedulerReconciler {
 
         match row {
             Some(r) => Ok(ReleaseInfo {
-                image: r.image,
+                image_ref: r.image_ref,
                 manifest_hash: r.manifest_hash,
                 // Default resources - would come from manifest in full implementation
                 cpu: 1.0,
@@ -483,7 +483,7 @@ impl SchedulerReconciler {
             None => {
                 // Default if release not found
                 Ok(ReleaseInfo {
-                    image: "unknown".to_string(),
+                    image_ref: "unknown".to_string(),
                     manifest_hash: "unknown".to_string(),
                     cpu: 1.0,
                     memory_bytes: 512 * 1024 * 1024,
@@ -513,7 +513,7 @@ struct GroupStats {
 #[derive(Debug, Clone)]
 struct ReleaseInfo {
     #[allow(dead_code)]
-    image: String,
+    image_ref: String,
     #[allow(dead_code)]
     manifest_hash: String,
     cpu: f64,
@@ -627,7 +627,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for NodeCapacityRow {
 
 #[derive(Debug)]
 struct ReleaseInfoRow {
-    image: String,
+    image_ref: String,
     manifest_hash: String,
 }
 
@@ -635,7 +635,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for ReleaseInfoRow {
     fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
         use sqlx::Row;
         Ok(Self {
-            image: row.try_get("image")?,
+            image_ref: row.try_get("image_ref")?,
             manifest_hash: row.try_get("manifest_hash")?,
         })
     }

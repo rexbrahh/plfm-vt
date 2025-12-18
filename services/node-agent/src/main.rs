@@ -15,7 +15,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::sync::watch;
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod client;
