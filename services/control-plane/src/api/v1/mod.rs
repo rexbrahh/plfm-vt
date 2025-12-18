@@ -1,8 +1,10 @@
 //! API v1 routes.
 
 mod apps;
+mod deploys;
 mod envs;
 mod orgs;
+mod releases;
 
 use axum::Router;
 
@@ -16,4 +18,8 @@ pub fn routes() -> Router<AppState> {
         .nest("/orgs/{org_id}/apps", apps::routes())
         // Envs are nested under apps: /v1/apps/{app_id}/envs
         .nest("/apps/{app_id}/envs", envs::routes())
+        // Releases are nested under apps: /v1/orgs/{org_id}/apps/{app_id}/releases
+        .nest("/orgs/{org_id}/apps/{app_id}/releases", releases::routes())
+        // Deploys are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/deploys
+        .nest("/orgs/{org_id}/apps/{app_id}/envs/{env_id}/deploys", deploys::routes())
 }

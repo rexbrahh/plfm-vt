@@ -10,8 +10,10 @@
 //! See: docs/specs/state/materialized-views.md
 
 mod apps;
+mod deploys;
 mod envs;
 mod orgs;
+mod releases;
 pub mod worker;
 
 pub use worker::ProjectionWorker;
@@ -73,6 +75,8 @@ impl ProjectionRegistry {
                 Box::new(orgs::OrgsProjection),
                 Box::new(apps::AppsProjection),
                 Box::new(envs::EnvsProjection),
+                Box::new(releases::ReleasesProjection),
+                Box::new(deploys::DeploysProjection),
             ],
         }
     }
@@ -136,5 +140,18 @@ mod tests {
     fn test_registry_returns_none_for_unknown() {
         let registry = ProjectionRegistry::new();
         assert!(registry.handler_for("unknown.event").is_none());
+    }
+
+    #[test]
+    fn test_registry_finds_release_handler() {
+        let registry = ProjectionRegistry::new();
+        assert!(registry.handler_for("release.created").is_some());
+    }
+
+    #[test]
+    fn test_registry_finds_deploy_handler() {
+        let registry = ProjectionRegistry::new();
+        assert!(registry.handler_for("deploy.created").is_some());
+        assert!(registry.handler_for("deploy.status_changed").is_some());
     }
 }
