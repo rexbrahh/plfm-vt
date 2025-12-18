@@ -1,0 +1,84 @@
+[workspace]
+resolver = "2"
+
+members = [
+    "libs/id",
+    "libs/events",
+    "libs/reconcile",
+    "libs/secrets-format",
+    "libs/networking",
+    "libs/testing",
+    "services/control-plane",
+    "services/node-agent",
+    "services/ingress",
+    "cli/ghostctl",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/plfm-vt/plfm-vt"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# IDs
+ulid = "1.1"
+uuid = { version = "1.6", features = ["v4", "v7", "serde"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+time = { version = "0.3", features = ["serde"] }
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+# Logging and tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# HTTP
+axum = "0.7"
+tower = { version = "0.4", features = ["util"] }
+tower-http = { version = "0.5", features = ["trace", "cors", "request-id"] }
+reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+
+# Database
+sqlx = { version = "0.7", features = ["runtime-tokio", "postgres", "chrono", "uuid", "json"] }
+
+# Validation
+validator = { version = "0.16", features = ["derive"] }
+
+# Config
+config = "0.14"
+
+# Testing
+proptest = "1.4"
+rstest = "0.18"
+wiremock = "0.5"
+testcontainers = "0.15"
+
+# Internal crates
+plfm-id = { path = "libs/id" }
+plfm-events = { path = "libs/events" }
+plfm-reconcile = { path = "libs/reconcile" }
+plfm-secrets-format = { path = "libs/secrets-format" }
+plfm-networking = { path = "libs/networking" }
+plfm-testing = { path = "libs/testing" }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.dev]
+# Faster builds in dev
+debug = 1
