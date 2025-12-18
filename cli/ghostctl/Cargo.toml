@@ -1,6 +1,40 @@
 [package]
 name = "ghostctl"
+description = "CLI for plfm-vt platform"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "vt"
+path = "src/main.rs"
 
 [dependencies]
+# Async runtime
+tokio = { workspace = true }
+
+# CLI framework
+clap = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Config directory
+directories = { workspace = true }
+
+# Output formatting
+tabled = { workspace = true }
+colored = { workspace = true }
