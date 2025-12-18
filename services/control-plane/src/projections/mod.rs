@@ -1,0 +1,140 @@
+//! Projection worker and handlers.
+//!
+//! This module provides the background worker that reads events from the event log
+//! and updates materialized views. Each projection:
+//!
+//! - Maintains a durable checkpoint of the last processed event_id
+//! - Processes events in order, updating view tables
+//! - Handles restarts by resuming from checkpoint
+//!
+//! See: docs/specs/state/materialized-views.md
+
+mod apps;
+mod envs;
+mod orgs;
+pub mod worker;
+
+pub use worker::ProjectionWorker;
+
+use async_trait::async_trait;
+
+use crate::db::{EventRow, DbError};
+
+/// Result type for projection operations.
+pub type ProjectionResult<T> = Result<T, ProjectionError>;
+
+/// Errors that can occur during projection processing.
+#[derive(Debug, thiserror::Error)]
+pub enum ProjectionError {
+    #[error("database error: {0}")]
+    Database(#[from] DbError),
+
+    #[error("sqlx error: {0}")]
+    Sqlx(#[from] sqlx::Error),
+
+    #[error("invalid event payload: {0}")]
+    InvalidPayload(String),
+
+    #[error("projection handler not found for event type: {0}")]
+    HandlerNotFound(String),
+}
+
+/// Trait for projection handlers.
+///
+/// Each handler processes specific event types and updates the corresponding view table.
+#[async_trait]
+pub trait ProjectionHandler: Send + Sync {
+    /// The name of this projection (used for checkpointing).
+    fn name(&self) -> &'static str;
+
+    /// The event types this handler processes.
+    fn event_types(&self) -> &'static [&'static str];
+
+    /// Apply a single event to the view.
+    ///
+    /// This is called within a transaction that also updates the checkpoint.
+    async fn apply(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        event: &EventRow,
+    ) -> ProjectionResult<()>;
+}
+
+/// Registry of all projection handlers.
+pub struct ProjectionRegistry {
+    handlers: Vec<Box<dyn ProjectionHandler>>,
+}
+
+impl ProjectionRegistry {
+    /// Create a new registry with all standard handlers.
+    pub fn new() -> Self {
+        Self {
+            handlers: vec![
+                Box::new(orgs::OrgsProjection),
+                Box::new(apps::AppsProjection),
+                Box::new(envs::EnvsProjection),
+            ],
+        }
+    }
+
+    /// Get the handler for a given event type.
+    pub fn handler_for(&self, event_type: &str) -> Option<&dyn ProjectionHandler> {
+        for handler in &self.handlers {
+            if handler.event_types().contains(&event_type) {
+                return Some(handler.as_ref());
+            }
+        }
+        None
+    }
+
+    /// Get all handlers.
+    pub fn handlers(&self) -> &[Box<dyn ProjectionHandler>] {
+        &self.handlers
+    }
+
+    /// Get all unique projection names.
+    pub fn projection_names(&self) -> Vec<&'static str> {
+        self.handlers.iter().map(|h| h.name()).collect()
+    }
+}
+
+impl Default for ProjectionRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_registry_contains_handlers() {
+        let registry = ProjectionRegistry::new();
+        assert!(!registry.handlers().is_empty());
+    }
+
+    #[test]
+    fn test_registry_finds_org_handler() {
+        let registry = ProjectionRegistry::new();
+        assert!(registry.handler_for("org.created").is_some());
+    }
+
+    #[test]
+    fn test_registry_finds_app_handler() {
+        let registry = ProjectionRegistry::new();
+        assert!(registry.handler_for("app.created").is_some());
+    }
+
+    #[test]
+    fn test_registry_finds_env_handler() {
+        let registry = ProjectionRegistry::new();
+        assert!(registry.handler_for("env.created").is_some());
+    }
+
+    #[test]
+    fn test_registry_returns_none_for_unknown() {
+        let registry = ProjectionRegistry::new();
+        assert!(registry.handler_for("unknown.event").is_none());
+    }
+}

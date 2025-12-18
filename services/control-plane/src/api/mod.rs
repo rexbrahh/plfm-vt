@@ -1,5 +1,6 @@
 //! HTTP API handlers and routing.
 
+pub mod error;
 mod health;
 mod v1;
 

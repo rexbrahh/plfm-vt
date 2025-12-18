@@ -5,15 +5,18 @@
 //! reconciliation of desired vs current state.
 
 use anyhow::Result;
-use tracing::{error, info};
+use tokio::sync::watch;
+use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod api;
 mod config;
 mod db;
+mod projections;
 mod state;
 
 use db::Database;
+use projections::{ProjectionWorker, worker::WorkerConfig};
 use state::AppState;
 
 #[tokio::main]
@@ -51,6 +54,20 @@ async fn main() -> Result<()> {
         }
     }
 
+    // Create shutdown channel for graceful shutdown
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+    // Start projection worker in background
+    let projection_worker = ProjectionWorker::new(db.pool().clone(), WorkerConfig::default());
+    let projection_handle = tokio::spawn({
+        let shutdown_rx = shutdown_rx.clone();
+        async move {
+            if let Err(e) = projection_worker.run(shutdown_rx).await {
+                error!(error = %e, "Projection worker failed");
+            }
+        }
+    });
+
     // Create application state
     let state = AppState::new(db);
 
@@ -60,7 +77,52 @@ async fn main() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&config.listen_addr).await?;
     info!(addr = %config.listen_addr, "Listening for connections");
 
-    axum::serve(listener, app).await?;
+    // Spawn the server with graceful shutdown
+    let server_handle = tokio::spawn(async move {
+        axum::serve(listener, app)
+            .with_graceful_shutdown(async move {
+                let mut shutdown_rx = shutdown_rx;
+                loop {
+                    if *shutdown_rx.borrow() {
+                        break;
+                    }
+                    if shutdown_rx.changed().await.is_err() {
+                        break;
+                    }
+                }
+                info!("HTTP server shutting down");
+            })
+            .await
+    });
 
+    // Wait for shutdown signal (Ctrl+C)
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {
+            info!("Received shutdown signal");
+        }
+        result = server_handle => {
+            match result {
+                Ok(Ok(())) => info!("Server exited normally"),
+                Ok(Err(e)) => error!(error = %e, "Server error"),
+                Err(e) => error!(error = %e, "Server task panicked"),
+            }
+        }
+    }
+
+    // Signal shutdown to all workers
+    let _ = shutdown_tx.send(true);
+
+    // Wait for projection worker to finish
+    info!("Waiting for projection worker to shut down...");
+    if let Err(e) = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        projection_handle,
+    )
+    .await
+    {
+        warn!(error = %e, "Projection worker did not shut down in time");
+    }
+
+    info!("Control plane shutdown complete");
     Ok(())
 }
