@@ -629,16 +629,19 @@ async fn get_plan(
         .with_request_id(request_id.to_string()));
     }
 
-    // Query instances assigned to this node from instances_view
-    // For now, return empty plan - instances will be populated by scheduler
+    // Query instances assigned to this node from instances_desired_view
+    // Instances are allocated by the scheduler
     let instances = sqlx::query_as::<_, InstancePlanRow>(
         r#"
-        SELECT i.instance_id, i.app_id, i.env_id, i.release_id, i.deploy_id,
-               r.image, i.resource_version
-        FROM instances_view i
+        SELECT i.instance_id, i.app_id, i.env_id, i.release_id,
+               COALESCE(d.deploy_id, '') as deploy_id,
+               r.image_ref as image, i.resource_version
+        FROM instances_desired_view i
         JOIN releases_view r ON i.release_id = r.release_id
+        LEFT JOIN deploys_view d ON i.env_id = d.env_id 
+            AND d.status IN ('rolling', 'active')
         WHERE i.node_id = $1
-          AND i.status NOT IN ('terminated', 'failed')
+          AND i.desired_state = 'running'
         ORDER BY i.created_at
         "#,
     )

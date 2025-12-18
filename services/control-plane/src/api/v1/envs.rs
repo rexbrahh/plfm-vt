@@ -353,6 +353,18 @@ async fn set_scale(
             .with_request_id(request_id.to_string())
     })?;
 
+    // Convert process_counts map to scales array format expected by projection
+    let scales: Vec<serde_json::Value> = req
+        .process_counts
+        .iter()
+        .map(|(process_type, count)| {
+            serde_json::json!({
+                "process_type": process_type,
+                "desired": count
+            })
+        })
+        .collect();
+
     // Create the event
     let event = AppendEvent {
         aggregate_type: AggregateType::Env,
@@ -362,15 +374,18 @@ async fn set_scale(
         event_version: 1,
         actor_type: ActorType::System, // TODO: Extract from auth context
         actor_id: "system".to_string(),
-        org_id: Some(org_id),
+        org_id: Some(org_id.clone()),
         request_id: request_id.to_string(),
         idempotency_key: None,
-        app_id: Some(app_id),
+        app_id: Some(app_id.clone()),
         env_id: Some(env_id.clone()),
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
-            "process_counts": req.process_counts
+            "env_id": env_id.to_string(),
+            "org_id": org_id.to_string(),
+            "app_id": app_id.to_string(),
+            "scales": scales
         }),
     };
 

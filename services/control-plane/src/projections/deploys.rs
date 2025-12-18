@@ -63,6 +63,9 @@ impl ProjectionHandler for DeploysProjection {
 
 impl DeploysProjection {
     /// Handle deploy.created event.
+    ///
+    /// This updates both deploys_view and env_desired_releases_view.
+    /// The latter is critical for the scheduler to know what release to run.
     async fn handle_deploy_created(
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
@@ -93,6 +96,7 @@ impl DeploysProjection {
             "Inserting deploy into deploys_view"
         );
 
+        // 1. Insert into deploys_view
         sqlx::query(
             r#"
             INSERT INTO deploys_view (
@@ -116,6 +120,65 @@ impl DeploysProjection {
         .bind(event.occurred_at)
         .execute(&mut **tx)
         .await?;
+
+        // 2. Update env_desired_releases_view for each process type
+        // This is what the scheduler reads to know what to run
+        for process_type in &payload.process_types {
+            debug!(
+                env_id = %env_id,
+                process_type = %process_type,
+                release_id = %payload.release_id,
+                deploy_id = %event.aggregate_id,
+                "Setting desired release for process type in env_desired_releases_view"
+            );
+
+            sqlx::query(
+                r#"
+                INSERT INTO env_desired_releases_view (
+                    env_id, process_type, org_id, app_id, release_id, deploy_id,
+                    resource_version, updated_at
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, 1, $7)
+                ON CONFLICT (env_id, process_type) DO UPDATE SET
+                    release_id = EXCLUDED.release_id,
+                    deploy_id = EXCLUDED.deploy_id,
+                    resource_version = env_desired_releases_view.resource_version + 1,
+                    updated_at = EXCLUDED.updated_at
+                "#,
+            )
+            .bind(env_id)
+            .bind(process_type)
+            .bind(org_id)
+            .bind(app_id)
+            .bind(&payload.release_id)
+            .bind(&event.aggregate_id)
+            .bind(event.occurred_at)
+            .execute(&mut **tx)
+            .await?;
+        }
+
+        // 3. If this is the first deploy, also set default scale of 1 for each process type
+        // This ensures the scheduler allocates at least one instance
+        for process_type in &payload.process_types {
+            // Only insert if not already set (don't override user-set scale)
+            sqlx::query(
+                r#"
+                INSERT INTO env_scale_view (
+                    env_id, process_type, org_id, app_id, desired_replicas,
+                    resource_version, updated_at
+                )
+                VALUES ($1, $2, $3, $4, 1, 1, $5)
+                ON CONFLICT (env_id, process_type) DO NOTHING
+                "#,
+            )
+            .bind(env_id)
+            .bind(process_type)
+            .bind(org_id)
+            .bind(app_id)
+            .bind(event.occurred_at)
+            .execute(&mut **tx)
+            .await?;
+        }
 
         Ok(())
     }
