@@ -129,20 +129,21 @@ impl InstancesProjection {
             r#"
             INSERT INTO instances_desired_view (
                 instance_id, org_id, app_id, env_id, process_type, node_id,
-                desired_state, release_id, secrets_version_id, overlay_ipv6,
+                desired_state, release_id, deploy_id, secrets_version_id, overlay_ipv6,
                 resources_snapshot, spec_hash, generation, resource_version,
                 created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6,
-                'running', $7, $8, $9::INET,
-                $10, $11, 1, 1,
-                $12, $12
+                'running', $7, $8, $9, $10::INET,
+                $11, $12, 1, 1,
+                $13, $13
             )
             ON CONFLICT (instance_id) DO UPDATE SET
                 desired_state = 'running',
                 node_id = EXCLUDED.node_id,
                 release_id = EXCLUDED.release_id,
+                deploy_id = EXCLUDED.deploy_id,
                 secrets_version_id = EXCLUDED.secrets_version_id,
                 resources_snapshot = EXCLUDED.resources_snapshot,
                 spec_hash = EXCLUDED.spec_hash,
@@ -157,6 +158,7 @@ impl InstancesProjection {
         .bind(&payload.process_type)
         .bind(&payload.node_id)
         .bind(&payload.release_id)
+        .bind(payload.deploy_id.as_deref())
         .bind(payload.secrets_version_id.as_deref())
         .bind(&payload.overlay_ipv6)
         .bind(&resources_snapshot)

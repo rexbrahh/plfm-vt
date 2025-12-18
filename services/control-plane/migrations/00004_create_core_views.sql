@@ -386,6 +386,7 @@ CREATE TABLE IF NOT EXISTS instances_desired_view (
     node_id TEXT NOT NULL,
     desired_state TEXT NOT NULL CHECK (desired_state IN ('running', 'draining', 'stopped')),
     release_id TEXT NOT NULL,
+    deploy_id TEXT,
     secrets_version_id TEXT,
     overlay_ipv6 INET NOT NULL,
     resources_snapshot JSONB NOT NULL DEFAULT '{}',
