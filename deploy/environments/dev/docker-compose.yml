@@ -1,0 +1,86 @@
+# plfm-vt Development Environment
+#
+# Start with: docker compose up -d   (or: just dev-up)
+# Stop with:  docker compose down     (or: just dev-down)
+# Reset with: docker compose down -v && docker compose up -d (or: just dev-reset)
+#
+# Services will be available at:
+#   - Control Plane API: http://localhost:8080
+#   - PostgreSQL: localhost:5432
+#
+# macOS Users: If you get linker errors with libiconv, run:
+#   brew install libiconv
+#   export LIBRARY_PATH="$(brew --prefix)/lib:$LIBRARY_PATH"
+
+services:
+  # PostgreSQL database
+  postgres:
+    image: postgres:16-alpine
+    container_name: plfm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: plfm
+      POSTGRES_PASSWORD: plfm_dev
+      POSTGRES_DB: plfm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U plfm -d plfm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Control Plane API server
+  # Note: For now, we run this outside Docker since the binaries aren't built yet.
+  # This service definition is for future use when we have proper Docker builds.
+  #
+  # For local development, run directly:
+  #   DATABASE_URL=postgres://plfm:plfm_dev@localhost:5432/plfm GHOST_DEV=1 cargo run -p plfm-control-plane
+  #
+  # control-plane:
+  #   build:
+  #     context: ../../../
+  #     dockerfile: services/control-plane/Dockerfile
+  #   container_name: plfm-control-plane
+  #   restart: unless-stopped
+  #   environment:
+  #     DATABASE_URL: postgres://plfm:plfm_dev@postgres:5432/plfm
+  #     GHOST_LISTEN_ADDR: "0.0.0.0:8080"
+  #     GHOST_DEV: "1"
+  #     GHOST_LOG_LEVEL: "debug"
+  #     RUST_LOG: "debug,sqlx=warn"
+  #   ports:
+  #     - "8080:8080"
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+  # Node Agent
+  # For local development, run directly:
+  #   GHOST_CONTROL_PLANE_URL=http://localhost:8080 GHOST_DATA_DIR=/tmp/ghost cargo run -p plfm-node-agent
+  #
+  # node-agent:
+  #   build:
+  #     context: ../../../
+  #     dockerfile: services/node-agent/Dockerfile
+  #   container_name: plfm-node-agent
+  #   restart: unless-stopped
+  #   environment:
+  #     GHOST_CONTROL_PLANE_URL: http://control-plane:8080
+  #     GHOST_DATA_DIR: /var/lib/ghost
+  #     GHOST_LOG_LEVEL: "debug"
+  #     RUST_LOG: "debug"
+  #   volumes:
+  #     - node_agent_data:/var/lib/ghost
+  #   depends_on:
+  #     - control-plane
+
+volumes:
+  postgres_data:
+  # node_agent_data:
+
+networks:
+  default:
+    name: plfm-dev

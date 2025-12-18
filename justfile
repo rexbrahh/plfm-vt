@@ -121,34 +121,49 @@ verify: fmt-check lint test
 # Local Dev Stack
 # =============================================================================
 
-# Bring up the local dev stack
+# Bring up the local dev stack (Postgres only, run services locally)
 dev-up:
     @echo "Starting local dev stack..."
-    @echo "[placeholder] docker-compose -f deploy/environments/dev/docker-compose.yml up -d"
-    @echo "Dev stack started. API at http://127.0.0.1:8080"
+    docker compose -f deploy/environments/dev/docker-compose.yml up -d
+    @echo ""
+    @echo "PostgreSQL available at: postgres://plfm:plfm_dev@localhost:5432/plfm"
+    @echo ""
+    @echo "To run the control plane:"
+    @echo "  DATABASE_URL=postgres://plfm:plfm_dev@localhost:5432/plfm GHOST_DEV=1 cargo run -p plfm-control-plane"
+    @echo ""
+    @echo "To run the node agent:"
+    @echo "  GHOST_CONTROL_PLANE_URL=http://localhost:8080 GHOST_DATA_DIR=/tmp/ghost cargo run -p plfm-node-agent"
 
 # Tear down the local dev stack
 dev-down:
     @echo "Stopping local dev stack..."
-    @echo "[placeholder] docker-compose -f deploy/environments/dev/docker-compose.yml down"
+    docker compose -f deploy/environments/dev/docker-compose.yml down
 
 # Tail logs for all dev stack components
 dev-logs:
     @echo "Tailing dev stack logs..."
-    @echo "[placeholder] docker-compose -f deploy/environments/dev/docker-compose.yml logs -f"
+    docker compose -f deploy/environments/dev/docker-compose.yml logs -f
 
 # Wipe local state and restart dev stack
 dev-reset: dev-down
     @echo "Wiping local state..."
-    @echo "[placeholder] docker-compose -f deploy/environments/dev/docker-compose.yml down -v"
-    @echo "[placeholder] rm -rf .dev-state/"
+    docker compose -f deploy/environments/dev/docker-compose.yml down -v
     just dev-up
 
 # Health check summary for dev stack
 dev-status:
     @echo "Checking dev stack status..."
-    @echo "[placeholder] docker-compose -f deploy/environments/dev/docker-compose.yml ps"
-    @echo "[placeholder] curl -s http://127.0.0.1:8080/healthz | jq"
+    docker compose -f deploy/environments/dev/docker-compose.yml ps
+    @echo ""
+    @curl -s http://127.0.0.1:8080/healthz 2>/dev/null | jq . || echo "Control plane not running"
+
+# Run control plane in dev mode (requires dev-up first)
+dev-control-plane:
+    DATABASE_URL=postgres://plfm:plfm_dev@localhost:5432/plfm GHOST_DEV=1 RUST_LOG=debug,sqlx=warn cargo run -p plfm-control-plane
+
+# Run node agent in dev mode (requires control plane running)
+dev-node-agent:
+    GHOST_CONTROL_PLANE_URL=http://localhost:8080 GHOST_DATA_DIR=/tmp/ghost RUST_LOG=debug cargo run -p plfm-node-agent
 
 # =============================================================================
 # Frontend / Web Terminal
