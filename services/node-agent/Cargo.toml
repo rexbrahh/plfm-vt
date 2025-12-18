@@ -36,5 +36,8 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+# Async traits
+async-trait = { workspace = true }
+
 [dev-dependencies]
 rstest = { workspace = true }
