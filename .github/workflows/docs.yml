@@ -1,0 +1,152 @@
+name: Documentation CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'api/**'
+      - '.github/workflows/docs.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'api/**'
+      - '.github/workflows/docs.yml'
+
+jobs:
+  validate-docs:
+    name: Validate Documentation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Check markdown links
+        uses: gaurav-nelson/github-action-markdown-link-check@v1
+        with:
+          use-quiet-mode: 'yes'
+          use-verbose-mode: 'no'
+          config-file: '.markdown-link-check.json'
+          folder-path: 'docs/'
+        continue-on-error: true  # Don't fail on external links during early dev
+
+      - name: Lint markdown files
+        uses: DavidAnson/markdownlint-cli2-action@v16
+        with:
+          globs: 'docs/**/*.md'
+        continue-on-error: true  # Advisory during early dev
+
+  validate-openapi:
+    name: Validate OpenAPI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate OpenAPI spec
+        run: |
+          npm install -g @redocly/cli
+          if [ -f "api/openapi/openapi.yaml" ]; then
+            redocly lint api/openapi/openapi.yaml --skip-rule=no-empty-servers
+          elif [ -f "docs/specs/api/openapi.yaml" ]; then
+            redocly lint docs/specs/api/openapi.yaml --skip-rule=no-empty-servers
+          else
+            echo "No OpenAPI spec found - skipping validation"
+          fi
+
+  validate-schemas:
+    name: Validate JSON Schemas
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Validate JSON schemas
+        run: |
+          npm install -g ajv-cli ajv-formats
+          if [ -d "api/schemas" ] && ls api/schemas/*.json 1> /dev/null 2>&1; then
+            for schema in api/schemas/*.json; do
+              echo "Validating $schema"
+              ajv compile -s "$schema" --spec=draft2020 -c ajv-formats || exit 1
+            done
+          else
+            echo "No JSON schemas found in api/schemas/ - skipping validation"
+          fi
+
+  check-index-consistency:
+    name: Check Index Consistency
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify all docs referenced in INDEX.md exist
+        run: |
+          echo "Checking that all files in INDEX.md exist..."
+          if [ -f "docs/INDEX.md" ]; then
+            # Extract markdown links and check they exist
+            grep -oE '\[.*\]\([^)]+\.md\)' docs/INDEX.md | \
+              grep -oE '\([^)]+\.md\)' | \
+              tr -d '()' | \
+              while read -r path; do
+                # Handle relative paths from INDEX.md location
+                full_path="docs/$path"
+                if [ ! -f "$full_path" ]; then
+                  echo "ERROR: Referenced file not found: $full_path"
+                  exit 1
+                fi
+              done
+            echo "All INDEX.md references valid."
+          else
+            echo "No INDEX.md found - skipping consistency check"
+          fi
+
+  check-adr-numbering:
+    name: Check ADR Numbering
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify ADR numbering is sequential
+        run: |
+          echo "Checking ADR numbering..."
+          if [ -d "docs/ADRs" ]; then
+            ls docs/ADRs/*.md 2>/dev/null | \
+              grep -E '[0-9]{4}-' | \
+              sed 's/.*\/\([0-9]*\)-.*/\1/' | \
+              sort -n | \
+              awk 'NR>1 && $1 != prev+1 { print "Gap in ADR numbering: " prev " -> " $1; exit 1 } { prev=$1 }'
+            echo "ADR numbering is sequential."
+          else
+            echo "No ADRs directory found - skipping numbering check"
+          fi
+
+  spell-check:
+    name: Spell Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check spelling
+        uses: crate-ci/typos@master
+        with:
+          files: docs/
+        continue-on-error: true  # Advisory during early dev

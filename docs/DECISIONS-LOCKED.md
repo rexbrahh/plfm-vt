@@ -11,50 +11,54 @@ If you want to change one of these, write a new ADR that supersedes the old one 
 ## Core architecture decisions (ADRs)
 
 ### Isolation and runtime
-- **MicroVM is the isolation boundary, scoped per environment.**  
-  ADR: `docs/adr/0001-isolation-microvm-per-env.md`
+- **MicroVM is the isolation boundary, one microVM per workload instance.**  
+  ADR: `docs/ADRs/0001-isolation-microvm-per-instance.md`
 
 - **Runtime is Firecracker.**  
-  ADR: `docs/adr/0003-runtime-firecracker.md`
+  ADR: `docs/ADRs/0003-runtime-firecracker.md`
 
 ### Artifact and deployment contract
 - **Release artifact is OCI image (digest-pinned) plus a platform manifest.**  
-  ADR: `docs/adr/0002-artifact-oci-image-plus-manifest.md`
+  ADR: `docs/ADRs/0002-artifact-oci-image-plus-manifest.md`
 
 ### Control plane state model
 - **Source of truth is an append-only event log plus materialized views.**  
-  ADR: `docs/adr/0005-state-event-log-plus-materialized-views.md`
+  ADR: `docs/ADRs/0005-state-event-log-plus-materialized-views.md`
 
 - **Control plane database is Postgres.**  
-  ADR: `docs/adr/0006-control-plane-db-postgres.md`
+  ADR: `docs/ADRs/0006-control-plane-db-postgres.md`
 
 ### Networking
 - **IPv6-first internally and externally.**  
-  ADR: `docs/adr/0007-network-ipv6-first-ipv4-paid.md`
+  ADR: `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`
 
 - **IPv4 is a paid add-on (dedicated allocation), especially for raw TCP reachability.**  
-  ADR: `docs/adr/0007-network-ipv6-first-ipv4-paid.md`
+  ADR: `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`
 
 - **Overlay network is WireGuard full mesh in v1.**  
-  ADR: `docs/adr/0004-overlay-wireguard-full-mesh.md`
+  ADR: `docs/ADRs/0004-overlay-wireguard-full-mesh.md`
 
 - **Ingress is L4-first with SNI passthrough by default. L7 is optional and kept separate.**  
-  ADR: `docs/adr/0008-ingress-l4-sni-passthrough-first.md`
+  ADR: `docs/ADRs/0008-ingress-l4-sni-passthrough-first.md`
 
 - **Client source identity propagation uses PROXY Protocol v2 (opt-in per route).**  
-  ADR: `docs/adr/0009-proxy-protocol-v2-client-ip.md`
+  ADR: `docs/ADRs/0009-proxy-protocol-v2-client-ip.md`
 
 ### Secrets
 - **Secrets are delivered as a platform-managed file with a fixed format (and CLI renders the same format).**  
-  ADR: `docs/adr/0010-secrets-delivery-file-format.md`
+  ADR: `docs/ADRs/0010-secrets-delivery-file-format.md`
 
 ### Storage
 - **Persistent storage is local volumes with asynchronous backups.**  
-  ADR: `docs/adr/0011-storage-local-volumes-async-backups.md`
+  ADR: `docs/ADRs/0011-storage-local-volumes-async-backups.md`
 
 ### Scheduling and resource model
 - **CPU is a soft resource (oversubscribable). Memory is a hard cap.**  
-  ADR: `docs/adr/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
+  ADR: `docs/ADRs/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
+
+### Host operating system
+- **NixOS is the host operating system for reproducible, declarative configuration.**  
+  ADR: `docs/ADRs/0013-nixos-as-host-os.md`
 
 ## Default stances resolved during ADR discussions
 These are the current defaults that should be reflected in specs unless a future ADR changes them.
