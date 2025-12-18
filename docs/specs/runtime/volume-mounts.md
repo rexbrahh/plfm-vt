@@ -12,7 +12,7 @@ Define how persistent volumes are attached and mounted into Firecracker microVMs
 - read-only semantics
 - failure behavior and reason codes
 
-Locked decision: persistent storage is local volumes with async backups. See `docs/adr/0011-storage-local-volumes-async-backups.md`.
+Locked decision: persistent storage is local volumes with async backups. See `docs/ADRs/0011-storage-local-volumes-async-backups.md`.
 
 This runtime spec is the “how it is mounted” layer.
 The “what volumes exist and how they are created/backed up” is in:

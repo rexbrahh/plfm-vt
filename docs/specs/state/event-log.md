@@ -11,8 +11,8 @@ This document defines the control plane event log contract:
 - retention and immutability rules
 - replay rules for projections, agents, and edge consumers
 
-Locked decision: source of truth is an append-only event log plus materialized views. See `docs/adr/0005-state-event-log-plus-materialized-views.md`.  
-Locked decision: control plane DB is Postgres. See `docs/adr/0006-control-plane-db-postgres.md`.
+Locked decision: source of truth is an append-only event log plus materialized views. See `docs/ADRs/0005-state-event-log-plus-materialized-views.md`.  
+Locked decision: control plane DB is Postgres. See `docs/ADRs/0006-control-plane-db-postgres.md`.
 
 ## Scope
 This spec defines the event log as a storage and streaming interface.

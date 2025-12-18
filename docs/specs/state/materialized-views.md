@@ -11,8 +11,8 @@ This document defines:
 - how views rebuild from the event log
 - projection checkpointing and migration rules
 
-Locked decision: state is event log + materialized views. See `docs/adr/0005-state-event-log-plus-materialized-views.md`.  
-Storage is Postgres. See `docs/adr/0006-control-plane-db-postgres.md`.
+Locked decision: state is event log + materialized views. See `docs/ADRs/0005-state-event-log-plus-materialized-views.md`.  
+Storage is Postgres. See `docs/ADRs/0006-control-plane-db-postgres.md`.
 
 ## Scope
 This spec defines projection outputs and rebuild mechanics.

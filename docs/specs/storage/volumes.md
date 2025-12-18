@@ -12,7 +12,7 @@ Define persistent volumes in the platform:
 - how volumes interact with scheduling, runtime mounts, and backups
 - validation rules and failure semantics
 
-Locked decision: storage is local volumes with asynchronous backups. See `docs/adr/0011-storage-local-volumes-async-backups.md`.
+Locked decision: storage is local volumes with asynchronous backups. See `docs/ADRs/0011-storage-local-volumes-async-backups.md`.
 
 ## Scope
 This spec defines the control plane semantics of volumes and attachments.
@@ -180,7 +180,7 @@ The control plane and scheduler resolve attachments into WorkloadSpec mounts.
 The host agent then attaches devices and guest init mounts them.
 
 See:
-- `docs/specs/workload-spec.md` for mounts fields
+- `docs/specs/manifest/workload-spec.md` for mounts fields
 - `docs/specs/runtime/volume-mounts.md` for device ordering and mount rules
 
 ## Concurrency and exclusivity (v1)

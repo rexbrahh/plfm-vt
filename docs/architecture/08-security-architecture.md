@@ -20,7 +20,7 @@ Authoritative details live in:
 - `docs/specs/runtime/*`
 - `docs/specs/networking/*`
 - `docs/specs/api/*`
-- ADRs in `docs/adr/*`
+- ADRs in `docs/ADRs/*`
 
 ## Security goals (v1)
 1) Prevent cross-tenant access in the control plane.

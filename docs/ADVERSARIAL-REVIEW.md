@@ -239,7 +239,7 @@ The documentation suite demonstrates exceptional thoroughness and architectural 
 
 ### Inconsistency 4: Event Types vs Reason Codes
 
-**Files:** `docs/specs/workload-spec.md:282-297`, `docs/specs/state/event-types.md`
+**Files:** `docs/specs/manifest/workload-spec.md`, `docs/specs/state/event-types.md`
 
 **Conflict:**
 - workload-spec.md defines 12 failure reason codes (e.g., `image_pull_failed`, `oom_killed`)

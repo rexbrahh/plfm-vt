@@ -1,4 +1,4 @@
-# docs/adr/0006-control-plane-db-postgres.md
+# docs/ADRs/0006-control-plane-db-postgres.md
 
 ## Title
 

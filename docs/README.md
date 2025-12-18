@@ -16,7 +16,7 @@ A developer-focused PaaS:
 ## What is authoritative
 When documents disagree, this is the precedence order:
 
-1) `docs/adr/**`  
+1) `docs/ADRs/**`  
    Irreversible decisions. If a decision changes, we add a new ADR. We do not rewrite history.
 
 2) `docs/specs/**`  
@@ -62,15 +62,15 @@ Meaning:
 
 ## How to update docs without creating chaos
 - If you change behavior, update the spec and add tests in the same change set.
-- If you change an irreversible decision, add a new ADR and update `DECISIONS_LOCKED.md`.
+- If you change an irreversible decision, add a new ADR and update `DECISIONS-LOCKED.md`.
 - If a narrative doc conflicts with a spec, fix the narrative doc.
 
 ## Quick navigation
 Start here:
-- `docs/DECISIONS_LOCKED.md`
+- `docs/DECISIONS-LOCKED.md`
 - `docs/NONGOALS.md`
 - `docs/product/03-core-user-flows.md`
 - `docs/architecture/00-system-overview.md`
 - `docs/specs/manifest/manifest-schema.md`
-- `docs/specs/workload-spec.md`
+- `docs/specs/manifest/workload-spec.md`
 - `docs/specs/state/event-log.md`

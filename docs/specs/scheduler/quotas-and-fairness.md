@@ -14,10 +14,10 @@ Define how the platform enforces:
 This spec is authoritative for quota semantics and enforcement points.
 
 Locked decisions this depends on:
-- CPU is soft, memory is hard-capped: `docs/adr/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
+- CPU is soft, memory is hard-capped: `docs/ADRs/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
 - Multi-tenancy and org boundary: `docs/architecture/05-multi-tenancy-and-identity.md`
-- IPv6-first, IPv4 is paid add-on: `docs/adr/0007-network-ipv6-first-ipv4-paid.md`
-- L4-first ingress: `docs/adr/0008-ingress-l4-sni-passthrough-first.md`
+- IPv6-first, IPv4 is paid add-on: `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`
+- L4-first ingress: `docs/ADRs/0008-ingress-l4-sni-passthrough-first.md`
 
 ## Scope
 This spec defines quotas and fairness for:

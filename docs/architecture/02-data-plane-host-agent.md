@@ -8,7 +8,7 @@ Last reviewed: 2025-12-16
 This document describes the host agent (node agent) and how the data plane converges actual runtime state to the control plane’s desired state.
 
 This is narrative. The authoritative contracts are:
-- `docs/specs/workload-spec.md`
+- `docs/specs/manifest/workload-spec.md`
 - `docs/specs/runtime/*`
 - `docs/specs/networking/*`
 - `docs/specs/storage/*`
@@ -149,7 +149,7 @@ It must not assume in-memory state is the truth.
   - logs and exec session metadata
   - volume attachment status
 
-Exact message shapes are specified in `docs/specs/workload-spec.md` and API specs.
+Exact message shapes are specified in `docs/specs/manifest/workload-spec.md` and API specs.
 
 ### Agent <-> Firecracker
 - Firecracker API socket per microVM.

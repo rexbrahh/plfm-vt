@@ -15,10 +15,10 @@ Define the runtime boot contract for workload instances running as Firecracker m
 This spec is normative for the host agent and the guest init implementation.
 
 Locked decisions:
-- MicroVM per environment (per instance): `docs/adr/0001-isolation-microvm-per-env.md`
-- Firecracker runtime: `docs/adr/0003-runtime-firecracker.md`
-- OCI image + manifest: `docs/adr/0002-artifact-oci-image-plus-manifest.md`
-- Secrets delivered as a fixed-format file: `docs/adr/0010-secrets-delivery-file-format.md`
+- MicroVM per instance: `docs/ADRs/0001-isolation-microvm-per-instance.md`
+- Firecracker runtime: `docs/ADRs/0003-runtime-firecracker.md`
+- OCI image + manifest: `docs/ADRs/0002-artifact-oci-image-plus-manifest.md`
+- Secrets delivered as a fixed-format file: `docs/ADRs/0010-secrets-delivery-file-format.md`
 
 ## Scope
 This spec defines the boot contract only.
@@ -34,7 +34,7 @@ This spec does not define:
 - **Root disk**: read-only block device derived from an OCI image digest.
 - **Scratch disk**: writable per-instance block device used for overlay upperdir and workdir.
 - **Guest init**: platform-provided PID 1 inside the microVM, responsible for preparing the runtime environment and launching the workload entrypoint.
-- **WorkloadSpec**: resolved runtime config produced by control plane and delivered to the host agent (`docs/specs/workload-spec.md`).
+- **WorkloadSpec**: resolved runtime config produced by control plane and delivered to the host agent (`docs/specs/manifest/workload-spec.md`).
 
 ## High-level boot architecture (v1)
 Each instance microVM is configured with:

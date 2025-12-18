@@ -12,8 +12,8 @@ Define how the host agent:
 - converts OCI images into Firecracker bootable root disks
 - evicts cached data safely
 
-Locked decision: artifact is OCI image + manifest. Release pins an image digest. See `docs/adr/0002-artifact-oci-image-plus-manifest.md`.  
-Locked decision: runtime is Firecracker microVMs. See `docs/adr/0003-runtime-firecracker.md`.  
+Locked decision: artifact is OCI image + manifest. Release pins an image digest. See `docs/ADRs/0002-artifact-oci-image-plus-manifest.md`.  
+Locked decision: runtime is Firecracker microVMs. See `docs/ADRs/0003-runtime-firecracker.md`.  
 Boot/rootfs strategy is defined in `docs/specs/runtime/firecracker-boot.md`.
 
 ## Scope

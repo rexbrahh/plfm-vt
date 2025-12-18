@@ -14,7 +14,7 @@ Define asynchronous backups for local volumes:
 - restore prerequisites (what must exist for restore to work)
 - failure handling and alerting
 
-Locked decision: storage is local volumes with async backups. See `docs/adr/0011-storage-local-volumes-async-backups.md`.
+Locked decision: storage is local volumes with async backups. See `docs/ADRs/0011-storage-local-volumes-async-backups.md`.
 
 ## Scope
 This spec defines remote backup behavior.

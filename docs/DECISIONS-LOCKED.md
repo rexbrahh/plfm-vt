@@ -1,4 +1,4 @@
-# docs/DECISIONS_LOCKED.md
+# docs/DECISIONS-LOCKED.md
 
 Status: reviewed  
 Owner: TBD  

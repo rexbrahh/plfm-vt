@@ -13,7 +13,7 @@ Define restore and migration semantics for local volumes:
 - safety rules to prevent accidental data loss
 - validation and observability requirements
 
-Locked decision: persistent storage is local volumes with asynchronous backups. See `docs/adr/0011-storage-local-volumes-async-backups.md`.
+Locked decision: persistent storage is local volumes with asynchronous backups. See `docs/ADRs/0011-storage-local-volumes-async-backups.md`.
 
 ## Scope
 This spec defines restore and migration behavior for local volumes.

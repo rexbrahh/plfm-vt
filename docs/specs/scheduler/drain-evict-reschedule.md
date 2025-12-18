@@ -15,8 +15,8 @@ Define drain, eviction, and rescheduling behavior:
 This spec is core to operational reliability.
 
 Locked decisions this depends on:
-- local volumes + async backups: `docs/adr/0011-storage-local-volumes-async-backups.md`
-- CPU soft, memory hard: `docs/adr/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
+- local volumes + async backups: `docs/ADRs/0011-storage-local-volumes-async-backups.md`
+- CPU soft, memory hard: `docs/ADRs/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
 
 Placement rules are defined in:
 - `docs/specs/scheduler/placement.md`
@@ -28,7 +28,7 @@ This spec defines node lifecycle operations and the resulting scheduling behavio
 
 This spec does not define:
 - restore/migration behavior for stateful volumes (see `docs/specs/storage/restore-and-migration.md`)
-- host agent shutdown semantics (agent enforces instance termination, see `docs/specs/workload-spec.md`)
+- host agent shutdown semantics (agent enforces instance termination, see `docs/specs/manifest/workload-spec.md`)
 - edge routing behavior (see `docs/specs/networking/ingress-l4.md`)
 
 ## Definitions

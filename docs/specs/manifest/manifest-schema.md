@@ -10,7 +10,7 @@ This document defines the schema and validation rules for the platform manifest 
 
 The manifest is the user-authored, versioned runtime configuration that pairs with an OCI image to form an immutable Release.
 
-Locked decision: artifact is OCI image plus manifest. See `docs/adr/0002-artifact-oci-image-plus-manifest.md`.
+Locked decision: artifact is OCI image plus manifest. See `docs/ADRs/0002-artifact-oci-image-plus-manifest.md`.
 
 ## Scope
 This spec defines:
@@ -21,7 +21,7 @@ This spec defines:
 
 This spec does not define:
 - routing objects and hostname ownership (see networking specs, Routes are first-class)
-- scheduler-to-agent wire format (see `docs/specs/workload-spec.md`)
+- scheduler-to-agent wire format (see `docs/specs/manifest/workload-spec.md`)
 - secret at-rest encryption (see secrets specs)
 
 ## File format

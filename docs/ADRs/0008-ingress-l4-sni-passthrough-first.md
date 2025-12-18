@@ -1,4 +1,4 @@
-# docs/adr/0008-ingress-l4-sni-passthrough-first.md
+# docs/ADRs/0008-ingress-l4-sni-passthrough-first.md
 
 ## Title
 

@@ -1,4 +1,4 @@
-# docs/adr/0012-scheduling-cpu-oversubscribe-mem-hardcap.md
+# docs/ADRs/0012-scheduling-cpu-oversubscribe-mem-hardcap.md
 
 ## Title
 

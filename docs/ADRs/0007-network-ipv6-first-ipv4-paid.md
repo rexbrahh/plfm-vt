@@ -1,4 +1,4 @@
-# docs/adr/0007-network-ipv6-first-ipv4-paid.md
+# docs/ADRs/0007-network-ipv6-first-ipv4-paid.md
 
 ## Title
 

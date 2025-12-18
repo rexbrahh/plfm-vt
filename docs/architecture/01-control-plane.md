@@ -16,8 +16,8 @@ Authoritative contracts live in:
 - `docs/specs/storage/*`
 
 Locked decisions are in:
-- `docs/DECISIONS_LOCKED.md`
-- `docs/adr/*`
+- `docs/DECISIONS-LOCKED.md`
+- `docs/ADRs/*`
 
 ## What the control plane is
 The control plane is the platform’s source of truth for:
@@ -140,7 +140,7 @@ Scheduler guarantees (v1 intent):
 - Volume attachments constrain placement.
 - One process type per microVM instance.
 
-See: `docs/specs/scheduler/*` and `docs/specs/workload-spec.md`.
+See: `docs/specs/scheduler/*` and `docs/specs/manifest/workload-spec.md`.
 
 ## Change distribution to agents and edge
 Agents and edge need to react to control plane state changes.
@@ -224,7 +224,7 @@ See: `docs/security/*` and `docs/specs/secrets/encryption-at-rest.md`.
 ## Interfaces owned by control plane
 - Public HTTP API and auth: `docs/specs/api/*`
 - Event log contract: `docs/specs/state/*`
-- Scheduler-to-agent contract: `docs/specs/workload-spec.md`
+- Scheduler-to-agent contract: `docs/specs/manifest/workload-spec.md`
 - Route model and ingress config: `docs/specs/networking/*`
 - Secrets model and delivery semantics: `docs/specs/secrets/*`
 - Storage metadata and lifecycle: `docs/specs/storage/*`

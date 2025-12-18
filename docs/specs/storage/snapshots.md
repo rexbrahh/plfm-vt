@@ -13,7 +13,7 @@ Define snapshot semantics for local volumes:
 - cleanup and retention rules for local snapshot artifacts
 - how snapshots relate to backups and restores
 
-Locked decision: storage is local volumes with asynchronous backups. See `docs/adr/0011-storage-local-volumes-async-backups.md`.
+Locked decision: storage is local volumes with asynchronous backups. See `docs/ADRs/0011-storage-local-volumes-async-backups.md`.
 
 ## Scope
 This spec defines snapshots only.

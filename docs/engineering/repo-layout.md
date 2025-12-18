@@ -9,7 +9,7 @@ Goals:
 - Keep customer-facing surfaces (CLI, console, web terminal) first-class.
 
 Changing the layout:
-- Structural changes require an ADR (docs/adr) and an update to this doc.
+- Structural changes require an ADR (`docs/ADRs`) and an update to this doc.
 
 ## Top level directories
 

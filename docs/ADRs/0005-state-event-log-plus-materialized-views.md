@@ -1,4 +1,4 @@
-# docs/adr/0005-state-event-log-plus-materialized-views.md
+# docs/ADRs/0005-state-event-log-plus-materialized-views.md
 
 ## Title
 

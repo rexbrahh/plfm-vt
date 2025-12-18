@@ -13,9 +13,9 @@ Define the L4 ingress behavior:
 - PROXY protocol v2 injection behavior (mechanics only, wire format is separate)
 
 Locked decisions:
-- Ingress is L4-first with SNI passthrough by default: `docs/adr/0008-ingress-l4-sni-passthrough-first.md`
-- IPv6-first, IPv4 is a paid add-on: `docs/adr/0007-network-ipv6-first-ipv4-paid.md`
-- PROXY protocol v2 for client source identity (opt-in): `docs/adr/0009-proxy-protocol-v2-client-ip.md`
+- Ingress is L4-first with SNI passthrough by default: `docs/ADRs/0008-ingress-l4-sni-passthrough-first.md`
+- IPv6-first, IPv4 is a paid add-on: `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`
+- PROXY protocol v2 for client source identity (opt-in): `docs/ADRs/0009-proxy-protocol-v2-client-ip.md`
 
 ## Scope
 This spec defines edge routing semantics for inbound connections.

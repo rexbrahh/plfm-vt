@@ -19,7 +19,7 @@ This document must be consistent with:
 - `docs/specs/state/event-log.md` (storage and ordering contract)
 - `docs/specs/state/materialized-views.md` (what state is derived and how)
 - `docs/specs/api/openapi.yaml` (public resource model and operations)
-- ADRs in `docs/adr/*` and `docs/DECISIONS_LOCKED.md`
+- ADRs in `docs/ADRs/*` and `docs/DECISIONS-LOCKED.md`
 
 ## Conventions
 
@@ -1037,7 +1037,7 @@ Payload:
 - `reason_detail` (string, optional)
 - `reported_at` (timestamp string)
 
-Reason codes (v1 allowed set, must match `docs/specs/workload-spec.md`):
+Reason codes (v1 allowed set, must match `docs/specs/manifest/workload-spec.md`):
 - `image_pull_failed`
 - `rootfs_build_failed`
 - `firecracker_start_failed`

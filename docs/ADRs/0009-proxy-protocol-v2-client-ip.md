@@ -1,4 +1,4 @@
-# docs/adr/0009-proxy-protocol-v2-client-ip.md
+# docs/ADRs/0009-proxy-protocol-v2-client-ip.md
 
 ## Title
 

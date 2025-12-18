@@ -1,6 +1,4 @@
-
-```md
-# docs/specs/workload-spec.md
+# docs/specs/manifest/workload-spec.md
 
 Status: draft  
 Owner: TBD  

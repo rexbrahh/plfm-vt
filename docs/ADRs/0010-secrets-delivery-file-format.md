@@ -1,4 +1,4 @@
-# docs/adr/0010-secrets-delivery-file-format.md
+# docs/ADRs/0010-secrets-delivery-file-format.md
 
 ## Title
 

@@ -1,4 +1,4 @@
-# docs/adr/0004-overlay-wireguard-full-mesh.md
+# docs/ADRs/0004-overlay-wireguard-full-mesh.md
 
 ## Title
 

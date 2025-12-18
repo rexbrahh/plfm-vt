@@ -15,9 +15,9 @@ Define the guest-side networking contract for workload microVMs:
 This spec is normative for the guest init (PID 1) and the host agent that supplies configuration.
 
 Locked decisions this depends on:
-- IPv6-first: `docs/adr/0007-network-ipv6-first-ipv4-paid.md`
-- Overlay is WireGuard: `docs/adr/0004-overlay-wireguard-full-mesh.md`
-- L4 ingress, SNI passthrough: `docs/adr/0008-ingress-l4-sni-passthrough-first.md`
+- IPv6-first: `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`
+- Overlay is WireGuard: `docs/ADRs/0004-overlay-wireguard-full-mesh.md`
+- L4 ingress, SNI passthrough: `docs/ADRs/0008-ingress-l4-sni-passthrough-first.md`
 
 ## Scope
 This spec defines networking inside the microVM.

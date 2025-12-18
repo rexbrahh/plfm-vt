@@ -11,9 +11,9 @@ Define IPv6 address allocation strategy for:
 - environment-scoped IPv4 allocations (paid add-on) at the edge (IPv4 is referenced here, but dedicated behavior is specified in ipv4-addon.md)
 
 Locked decisions:
-- IPv6-first: `docs/adr/0007-network-ipv6-first-ipv4-paid.md`
-- WireGuard overlay full mesh (v1): `docs/adr/0004-overlay-wireguard-full-mesh.md`
-- One microVM per instance: `docs/adr/0001-isolation-microvm-per-env.md`
+- IPv6-first: `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`
+- WireGuard overlay full mesh (v1): `docs/ADRs/0004-overlay-wireguard-full-mesh.md`
+- One microVM per instance: `docs/ADRs/0001-isolation-microvm-per-instance.md`
 
 ## Scope
 This spec defines address allocation, uniqueness guarantees, and lifecycle (allocate, reserve, release).

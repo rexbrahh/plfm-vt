@@ -1,4 +1,4 @@
-# docs/adr/0011-storage-local-volumes-async-backups.md
+# docs/ADRs/0011-storage-local-volumes-async-backups.md
 
 ## Title
 

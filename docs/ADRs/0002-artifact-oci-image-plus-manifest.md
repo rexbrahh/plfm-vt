@@ -1,4 +1,4 @@
-# docs/adr/0002-artifact-oci-image-plus-manifest.md
+# docs/ADRs/0002-artifact-oci-image-plus-manifest.md
 
 ## Title
 

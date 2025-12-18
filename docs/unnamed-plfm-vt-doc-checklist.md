@@ -18,7 +18,7 @@ You can drop this under `docs/` in the main repo, or keep it as a standalone 
 - `docs/NONGOALS.md`  
     Explicit “we are not doing X in v1” to prevent scope creep.
     
-- `docs/DECISIONS_LOCKED.md`  
+- `docs/DECISIONS-LOCKED.md`  
     Current hard decisions (microVM, OCI-only v1, Firecracker, WireGuard mesh, event log + Postgres views, IPv6-first, L4 SNI passthrough, secret files, local volumes + async backups, CPU soft, memory hard).
     
 
@@ -28,29 +28,29 @@ You can drop this under `docs/` in the main repo, or keep it as a standalone 
 
 Put every irreversible choice here so you do not re-litigate it later.
 
-- `docs/adr/0001-isolation-microvm-per-env.md`
+- `docs/ADRs/0001-isolation-microvm-per-instance.md`
     
-- `docs/adr/0002-artifact-oci-image-plus-manifest.md`
+- `docs/ADRs/0002-artifact-oci-image-plus-manifest.md`
     
-- `docs/adr/0003-runtime-firecracker.md`
+- `docs/ADRs/0003-runtime-firecracker.md`
     
-- `docs/adr/0004-overlay-wireguard-full-mesh.md`
+- `docs/ADRs/0004-overlay-wireguard-full-mesh.md`
     
-- `docs/adr/0005-state-event-log-plus-materialized-views.md`
+- `docs/ADRs/0005-state-event-log-plus-materialized-views.md`
     
-- `docs/adr/0006-control-plane-db-postgres.md`
+- `docs/ADRs/0006-control-plane-db-postgres.md`
     
-- `docs/adr/0007-network-ipv6-first-ipv4-paid.md`
+- `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`
     
-- `docs/adr/0008-ingress-l4-sni-passthrough-first.md`
+- `docs/ADRs/0008-ingress-l4-sni-passthrough-first.md`
     
-- `docs/adr/0009-proxy-protocol-v2-client-ip.md`
+- `docs/ADRs/0009-proxy-protocol-v2-client-ip.md`
     
-- `docs/adr/0010-secrets-delivery-file-format.md`
+- `docs/ADRs/0010-secrets-delivery-file-format.md`
     
-- `docs/adr/0011-storage-local-volumes-async-backups.md`
+- `docs/ADRs/0011-storage-local-volumes-async-backups.md`
     
-- `docs/adr/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
+- `docs/ADRs/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
     
 
 ---
@@ -121,7 +121,7 @@ Add diagrams alongside:
 - `docs/specs/manifest/manifest-schema.md`  
     `<platform>.toml` schema, validation rules, defaults.
     
-- `docs/specs/workload-spec.md`  
+- `docs/specs/manifest/workload-spec.md`  
     The scheduler-to-host-agent contract. Fields, invariants, compatibility rules.
     
 

@@ -14,10 +14,10 @@ Define scheduler placement rules:
 - how the scheduler chooses nodes deterministically
 
 Locked decisions this depends on:
-- CPU is soft, memory is hard-capped: `docs/adr/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
-- Storage is local volumes + async backups: `docs/adr/0011-storage-local-volumes-async-backups.md`
-- MicroVM per instance and one process type per microVM instance: `docs/adr/0001-isolation-microvm-per-env.md`
-- IPv6-first, WireGuard overlay: `docs/adr/0004-overlay-wireguard-full-mesh.md`, `docs/adr/0007-network-ipv6-first-ipv4-paid.md`
+- CPU is soft, memory is hard-capped: `docs/ADRs/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
+- Storage is local volumes + async backups: `docs/ADRs/0011-storage-local-volumes-async-backups.md`
+- MicroVM per instance and one process type per microVM instance: `docs/ADRs/0001-isolation-microvm-per-instance.md`
+- IPv6-first, WireGuard overlay: `docs/ADRs/0004-overlay-wireguard-full-mesh.md`, `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`
 
 This spec is authoritative for the scheduler’s placement decisions. Reconciliation mechanics are defined in `docs/specs/scheduler/reconciliation-loop.md`.
 
@@ -30,7 +30,7 @@ This spec defines:
 
 This spec does not define:
 - event log mechanics (`docs/specs/state/*`)
-- workload spec schema (`docs/specs/workload-spec.md`)
+- workload spec schema (`docs/specs/manifest/workload-spec.md`)
 - drain/evict/reschedule workflow (`docs/specs/scheduler/drain-evict-reschedule.md`)
 - quotas (`docs/specs/scheduler/quotas-and-fairness.md`)
 

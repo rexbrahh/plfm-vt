@@ -19,7 +19,7 @@ Drain and reschedule mechanics are defined in:
 - `docs/specs/scheduler/drain-evict-reschedule.md`
 
 The scheduler-to-agent contract is defined in:
-- `docs/specs/workload-spec.md`
+- `docs/specs/manifest/workload-spec.md`
 
 ## Scope
 This spec defines:
@@ -381,7 +381,7 @@ Requirements:
 - NodePlan generation must be deterministic.
 - When instances_desired_view changes for a node, the agent must be able to observe and apply those changes.
 
-The exact transport is defined in `docs/specs/workload-spec.md`.
+The exact transport is defined in `docs/specs/manifest/workload-spec.md`.
 
 ## Observability requirements
 Scheduler must emit metrics:

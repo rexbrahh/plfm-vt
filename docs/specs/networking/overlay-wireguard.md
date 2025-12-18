@@ -13,8 +13,8 @@ Define the platform overlay network built on WireGuard:
 - update propagation and safety (avoid partitions)
 - MTU policy and ICMPv6 requirements
 
-Locked decision: overlay is WireGuard full mesh in v1. See `docs/adr/0004-overlay-wireguard-full-mesh.md`.  
-Locked decision: IPv6-first. See `docs/adr/0007-network-ipv6-first-ipv4-paid.md`.
+Locked decision: overlay is WireGuard full mesh in v1. See `docs/ADRs/0004-overlay-wireguard-full-mesh.md`.  
+Locked decision: IPv6-first. See `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`.
 
 ## Scope
 This spec defines overlay behavior between nodes (hosts and edge nodes).

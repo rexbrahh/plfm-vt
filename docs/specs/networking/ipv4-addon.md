@@ -12,7 +12,7 @@ Define the dedicated IPv4 add-on:
 - how IPv4 interacts with L4 routing and raw TCP
 - billing and quota hooks (even if billing is not implemented yet)
 
-Locked decision: IPv6-first; IPv4 is a paid add-on. See `docs/adr/0007-network-ipv6-first-ipv4-paid.md`.
+Locked decision: IPv6-first; IPv4 is a paid add-on. See `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`.
 
 ## Scope
 This spec defines behavior of the IPv4 add-on as a networking feature.

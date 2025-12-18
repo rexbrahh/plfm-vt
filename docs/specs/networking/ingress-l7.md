@@ -13,7 +13,7 @@ Define the optional Layer 7 ingress mode for HTTP(S):
 - how TLS termination and certificate management works (when enabled)
 - how L7 stays isolated from the v1 L4-first data plane
 
-Locked decision: ingress is L4-first and SNI passthrough by default. L7 is optional and must not contaminate v1. See `docs/adr/0008-ingress-l4-sni-passthrough-first.md`.
+Locked decision: ingress is L4-first and SNI passthrough by default. L7 is optional and must not contaminate v1. See `docs/ADRs/0008-ingress-l4-sni-passthrough-first.md`.
 
 ## Scope
 This spec defines the future L7 mode contract.

@@ -9,7 +9,7 @@ Now I’ll do **ADR 0001 only**.
 
 ---
 
-# docs/adr/0001-isolation-microvm-per-instance.md
+# docs/ADRs/0001-isolation-microvm-per-instance.md
 
 ## Title
 

@@ -1,4 +1,4 @@
-# docs/adr/0003-runtime-firecracker.md
+# docs/ADRs/0003-runtime-firecracker.md
 
 ## Title
 

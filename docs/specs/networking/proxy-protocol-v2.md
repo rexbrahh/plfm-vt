@@ -14,7 +14,7 @@ Define the platform’s usage of HAProxy PROXY Protocol v2:
 
 This spec does not reprint the full PROXY v2 byte-level protocol definition. It defines the platform contract and references the upstream specification for exact wire format.
 
-Locked decision: client identity propagation uses PROXY protocol v2 (opt-in). See `docs/adr/0009-proxy-protocol-v2-client-ip.md`.
+Locked decision: client identity propagation uses PROXY protocol v2 (opt-in). See `docs/ADRs/0009-proxy-protocol-v2-client-ip.md`.
 
 ## Scope
 This spec defines how the platform injects and uses PROXY v2.

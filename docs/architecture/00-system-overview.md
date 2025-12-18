@@ -7,7 +7,7 @@ Last reviewed: 2025-12-16
 ## Purpose
 This document is the top-level narrative of how the platform works. It is intentionally high level. It explains components, responsibilities, and the main end-to-end flows.
 
-Authoritative contracts live in `docs/specs/**`. Irreversible choices live in `docs/adr/**`.
+Authoritative contracts live in `docs/specs/**`. Irreversible choices live in `docs/ADRs/**`.
 
 ## What the platform is
 A developer-focused PaaS where users deploy **OCI images** plus a small **platform manifest**. The primary user surface is a **CLI**. The platform runs workloads as **microVM instances** on shared hosts and provides **L4-first ingress**.
@@ -26,19 +26,19 @@ See `docs/NONGOALS.md`. In short:
 - Not distributed shared storage by default.
 
 ## Locked decisions that shape the architecture
-See `docs/DECISIONS_LOCKED.md` and ADRs:
-- MicroVM isolation per environment: `docs/adr/0001-isolation-microvm-per-env.md`
-- OCI image + manifest: `docs/adr/0002-artifact-oci-image-plus-manifest.md`
-- Firecracker runtime: `docs/adr/0003-runtime-firecracker.md`
-- WireGuard full mesh overlay (v1): `docs/adr/0004-overlay-wireguard-full-mesh.md`
-- Event log + materialized views: `docs/adr/0005-state-event-log-plus-materialized-views.md`
-- Control plane DB is Postgres: `docs/adr/0006-control-plane-db-postgres.md`
-- IPv6-first, IPv4 is paid add-on: `docs/adr/0007-network-ipv6-first-ipv4-paid.md`
-- Ingress is L4-first, SNI passthrough default: `docs/adr/0008-ingress-l4-sni-passthrough-first.md`
-- PROXY protocol v2 is supported (opt-in): `docs/adr/0009-proxy-protocol-v2-client-ip.md`
-- Secrets delivered as a fixed-format file: `docs/adr/0010-secrets-delivery-file-format.md`
-- Storage is local volumes + async backups: `docs/adr/0011-storage-local-volumes-async-backups.md`
-- CPU is soft, memory is hard-capped: `docs/adr/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
+See `docs/DECISIONS-LOCKED.md` and ADRs:
+- MicroVM isolation per instance: `docs/ADRs/0001-isolation-microvm-per-instance.md`
+- OCI image + manifest: `docs/ADRs/0002-artifact-oci-image-plus-manifest.md`
+- Firecracker runtime: `docs/ADRs/0003-runtime-firecracker.md`
+- WireGuard full mesh overlay (v1): `docs/ADRs/0004-overlay-wireguard-full-mesh.md`
+- Event log + materialized views: `docs/ADRs/0005-state-event-log-plus-materialized-views.md`
+- Control plane DB is Postgres: `docs/ADRs/0006-control-plane-db-postgres.md`
+- IPv6-first, IPv4 is paid add-on: `docs/ADRs/0007-network-ipv6-first-ipv4-paid.md`
+- Ingress is L4-first, SNI passthrough default: `docs/ADRs/0008-ingress-l4-sni-passthrough-first.md`
+- PROXY protocol v2 is supported (opt-in): `docs/ADRs/0009-proxy-protocol-v2-client-ip.md`
+- Secrets delivered as a fixed-format file: `docs/ADRs/0010-secrets-delivery-file-format.md`
+- Storage is local volumes + async backups: `docs/ADRs/0011-storage-local-volumes-async-backups.md`
+- CPU is soft, memory is hard-capped: `docs/ADRs/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
 
 ## Core concepts
 These definitions must match `docs/GLOSSARY.md`.

@@ -16,9 +16,9 @@ Define the isolation and resource enforcement requirements for running workloads
 This spec is normative for the host agent implementation.
 
 Locked decisions:
-- microVM isolation boundary: `docs/adr/0001-isolation-microvm-per-env.md`
-- Firecracker runtime: `docs/adr/0003-runtime-firecracker.md`
-- CPU soft, memory hard cap: `docs/adr/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
+- microVM isolation boundary: `docs/ADRs/0001-isolation-microvm-per-instance.md`
+- Firecracker runtime: `docs/ADRs/0003-runtime-firecracker.md`
+- CPU soft, memory hard cap: `docs/ADRs/0012-scheduling-cpu-oversubscribe-mem-hardcap.md`
 
 ## Scope
 This spec defines host-side enforcement. It does not define:
