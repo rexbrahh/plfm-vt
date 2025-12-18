@@ -12,6 +12,7 @@
 mod apps;
 mod deploys;
 mod envs;
+mod instances;
 mod nodes;
 mod orgs;
 mod releases;
@@ -79,6 +80,7 @@ impl ProjectionRegistry {
                 Box::new(releases::ReleasesProjection),
                 Box::new(deploys::DeploysProjection),
                 Box::new(nodes::NodesProjection),
+                Box::new(instances::InstancesProjection),
             ],
         }
     }
@@ -163,5 +165,12 @@ mod tests {
         assert!(registry.handler_for("node.enrolled").is_some());
         assert!(registry.handler_for("node.state_changed").is_some());
         assert!(registry.handler_for("node.capacity_updated").is_some());
+    }
+
+    #[test]
+    fn test_registry_finds_instance_handler() {
+        let registry = ProjectionRegistry::new();
+        assert!(registry.handler_for("instance.allocated").is_some());
+        assert!(registry.handler_for("instance.desired_state_changed").is_some());
     }
 }

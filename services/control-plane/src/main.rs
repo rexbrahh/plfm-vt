@@ -13,10 +13,12 @@ mod api;
 mod config;
 mod db;
 mod projections;
+mod scheduler;
 mod state;
 
 use db::Database;
 use projections::{ProjectionWorker, worker::WorkerConfig};
+use scheduler::SchedulerWorker;
 use state::AppState;
 
 #[tokio::main]
@@ -68,6 +70,18 @@ async fn main() -> Result<()> {
         }
     });
 
+    // Start scheduler worker in background
+    let scheduler_worker = SchedulerWorker::new(
+        db.pool().clone(),
+        std::time::Duration::from_secs(5), // 5 second reconciliation interval
+    );
+    let scheduler_handle = tokio::spawn({
+        let shutdown_rx = shutdown_rx.clone();
+        async move {
+            scheduler_worker.run(shutdown_rx).await;
+        }
+    });
+
     // Create application state
     let state = AppState::new(db);
 
@@ -112,15 +126,16 @@ async fn main() -> Result<()> {
     // Signal shutdown to all workers
     let _ = shutdown_tx.send(true);
 
-    // Wait for projection worker to finish
-    info!("Waiting for projection worker to shut down...");
-    if let Err(e) = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        projection_handle,
-    )
-    .await
-    {
+    // Wait for workers to finish
+    info!("Waiting for workers to shut down...");
+    let shutdown_timeout = std::time::Duration::from_secs(10);
+    
+    if let Err(e) = tokio::time::timeout(shutdown_timeout, projection_handle).await {
         warn!(error = %e, "Projection worker did not shut down in time");
+    }
+    
+    if let Err(e) = tokio::time::timeout(shutdown_timeout, scheduler_handle).await {
+        warn!(error = %e, "Scheduler worker did not shut down in time");
     }
 
     info!("Control plane shutdown complete");

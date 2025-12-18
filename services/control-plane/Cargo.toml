@@ -44,5 +44,8 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
+# Crypto
+sha2 = { workspace = true }
+
 [dev-dependencies]
 rstest = { workspace = true }
