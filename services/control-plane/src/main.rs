@@ -10,6 +10,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 mod api;
 mod config;
+mod db;
 
 #[tokio::main]
 async fn main() -> Result<()> {

@@ -30,6 +30,7 @@ pub struct HealthResponse {
 
 /// Component health details.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(serde::Deserialize))]
 pub struct ComponentHealth {
     /// Database connection status.
     pub database: ComponentStatus,
@@ -40,6 +41,7 @@ pub struct ComponentHealth {
 
 /// Individual component status.
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(serde::Deserialize))]
 pub struct ComponentStatus {
     /// Status: "ok", "degraded", or "unavailable".
     pub status: &'static str,
