@@ -82,3 +82,4 @@ If the change is architectural, add or update an ADR.
 ## Quick links
 
 - Implementing a new resource end-to-end: implementing-a-new-resource.md
+- Staff handoff and 4-week execution plan: staff-handoff.md

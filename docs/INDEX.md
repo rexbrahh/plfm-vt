@@ -16,6 +16,7 @@ Status key:
 | Path | Status | Owner | Last reviewed | Notes |
 |---|---|---:|---:|---|
 | docs/README.md | reviewed | TBD | 2025-12-16 | How to use docs and what is authoritative |
+| docs/engineering/staff-handoff.md | draft | Platform Eng | 2025-12-18 | Staff handoff packet + 4-week execution plan |
 | docs/INDEX.md | reviewed | TBD | 2025-12-17 | This file |
 | docs/GLOSSARY.md | reviewed | TBD | 2025-12-16 | Shared vocabulary |
 | docs/NONGOALS.md | reviewed | TBD | 2025-12-16 | What we are not building (especially in v1) |
