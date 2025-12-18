@@ -207,12 +207,34 @@ v1 recommendation:
   - cooldown queue sizes
 
 ## Failure behavior
-- If IPAM cannot allocate an address:
-  - scheduling must fail placement for that instance
-  - control plane surfaces a clear error
+
+### IPAM allocation failure handling (normative)
+
+Scheduler behavior on IPAM exhaustion:
+- Scheduler MUST NOT partially create instance if IPAM allocation fails.
+- Scheduler MUST emit `instance.allocation_failed` event with reason `ipam_exhausted`.
+- Scheduler MUST mark env as degraded with clear reason in `env_status_view`.
+- Scheduler MUST retry allocation on next reconciliation cycle.
+- No orphaned resources: if IPAM fails, no instance record is created.
+
+Rollback semantics:
+- IPAM allocation is the last step before emitting `instance.allocated`.
+- If allocation fails, the entire placement transaction is aborted.
+- Any resources reserved earlier in the transaction are released.
+
+### Pool exhaustion alerting
+
+- Alert when pool utilization exceeds 80%.
+- Alert when allocation failures occur (rate > 0 for 5 minutes).
+- Dashboard MUST show pool utilization by category (node, instance, ipv4).
+
+### IPAM database unavailable
+
 - If IPAM database is down:
-  - no new allocations can be created
-  - existing workloads keep running
+  - No new allocations can be created.
+  - Existing workloads keep running.
+  - Scheduler marks itself as degraded.
+  - New deploys fail with clear error: `ipam_unavailable`.
 
 ## Open questions (explicitly deferred)
 - Whether to allocate per-node instance prefixes for simpler routing (requires changes in overlay AllowedIPs and routing design).

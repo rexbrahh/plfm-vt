@@ -9,11 +9,11 @@ Now I’ll do **ADR 0001 only**.
 
 ---
 
-# docs/adr/0001-isolation-microvm-per-env.md
+# docs/adr/0001-isolation-microvm-per-instance.md
 
 ## Title
 
-Isolation boundary is a dedicated microVM per application environment
+Isolation boundary is a dedicated microVM per workload instance
 
 ## Status
 
@@ -41,9 +41,9 @@ We have already chosen Firecracker as the microVM technology in a separate ADR. 
 ## Decision
 
 1. **Each workload instance runs inside its own dedicated microVM.**
-   No microVM runs workload instances from two different environments.
+   One instance equals one microVM. No microVM runs multiple instances.
 
-2. **An environment may scale to multiple microVMs**, but each microVM is still exclusive to that environment.
+2. **An environment may scale to multiple instances (and therefore multiple microVMs)**, but each microVM runs exactly one instance and is exclusive to that environment.
 
 3. **The microVM boundary is the tenant safety boundary** for CPU, memory, filesystem, process namespace, and kernel attack surface. We do not rely on “containers only” isolation for multi tenant safety in v1.
 
@@ -57,9 +57,9 @@ We have already chosen Firecracker as the microVM technology in a separate ADR. 
 
 ## What this enables
 
-* Stronger multi tenancy with a simpler mental model: “your env runs in its own VM(s)”
-* Clear mapping for secrets: secrets are injected into the microVM for that env only
-* Clear mapping for networking: per env IP allocation and ingress routing do not need per process filtering
+* Stronger multi tenancy with a simpler mental model: "each instance runs in its own dedicated VM"
+* Clear mapping for secrets: secrets are injected into each microVM scoped to the instance's env
+* Clear mapping for networking: per-instance IP allocation; each microVM gets its own overlay address
 * Predictable failure domains: a compromised workload instance is contained to its microVM
 
 ## What this explicitly does NOT mean

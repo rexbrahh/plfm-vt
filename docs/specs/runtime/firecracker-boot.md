@@ -40,7 +40,9 @@ This spec does not define:
 Each instance microVM is configured with:
 
 1) A platform-selected Linux kernel (no user-supplied kernel in v1).
-2) A platform-provided guest init (PID 1).
+2) A platform-provided initramfs containing guest init (PID 1).
+   - See `docs/specs/runtime/guest-init-delivery.md` for delivery mechanism.
+   - See `docs/specs/runtime/guest-init.md` for guest init contract.
 3) Block devices:
    - `vda`: root disk (read-only ext4)
    - `vdb`: scratch disk (read-write ext4)
@@ -213,18 +215,51 @@ This avoids:
 - shipping a separate config disk in v1
 - relying on an HTTP metadata service
 
-The exact message schema is implementation-defined but must include a version field:
-- `config_version = "v1"`
+The message schema is defined in `docs/specs/runtime/guest-init.md`. Summary:
 
-Minimum required fields in the config response:
+Config handshake JSON schema (v1):
+```json
+{
+  "type": "config",
+  "config_version": "v1",
+  "instance_id": "ulid",
+  "generation": 7,
+  "workload": {
+    "argv": ["./server"],
+    "cwd": "/app",
+    "env": { "PORT": "8080" },
+    "uid": 1000,
+    "gid": 1000
+  },
+  "network": {
+    "overlay_ipv6": "fd00::1234",
+    "gateway_ipv6": "fd00::1",
+    "prefix_len": 128,
+    "mtu": 1420,
+    "dns": ["fd00::53"]
+  },
+  "mounts": [...],
+  "secrets": {
+    "required": true,
+    "path": "/run/secrets/platform.env",
+    "bundle_version_id": "ulid"
+  },
+  "exec": {
+    "vsock_port": 5162,
+    "enabled": true
+  }
+}
+```
+
+Required fields in the config response:
+- `config_version`
 - `instance_id`
 - `generation`
-- `command`
-- `env_vars`
-- `workdir`
-- `network` (overlay_ipv6, gateway_ipv6, mtu, dns)
-- `mounts`
-- `secrets` (required flag, secret_version_id or equivalent reference)
+- `workload` (argv, cwd, env, uid, gid)
+- `network` (overlay_ipv6, gateway_ipv6, prefix_len, mtu, dns)
+- `mounts` (array of volume mounts)
+- `secrets` (required flag, path, bundle_version_id)
+- `exec` (vsock_port, enabled)
 
 Security requirements:
 - The host agent must only deliver config to the correct microVM.

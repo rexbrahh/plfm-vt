@@ -45,6 +45,47 @@ This spec does not define:
 4) **Cache eviction must never break running instances.**  
    In-use artifacts are pinned and cannot be evicted.
 
+## Image size and timeout limits (v1)
+
+### Hard limits (normative)
+
+| Limit | Default | Configurable | Notes |
+|-------|---------|--------------|-------|
+| Max compressed image size | 10 GiB | Yes (cluster) | Checked before pulling layers |
+| Max uncompressed rootfs size | 50 GiB | Yes (cluster) | Checked after unpacking |
+| Per-layer pull timeout | 5 minutes | Yes (cluster) | Per individual layer blob |
+| Total image pull timeout | 30 minutes | Yes (cluster) | Entire image including all layers |
+| Max layers per image | 128 | No | OCI spec recommendation |
+
+### Validation behavior
+
+Agent MUST:
+- Check manifest size metadata before pulling layers.
+- Fail fast with `image_too_large` if compressed size exceeds limit.
+- Fail with `image_too_large` if uncompressed size exceeds limit after unpacking.
+- Fail with `image_pull_timeout` if timeouts are exceeded.
+- Surface clear error to control plane with specific limit that was exceeded.
+
+### Operator overrides
+
+Limits are configurable per cluster via agent config:
+```toml
+[image_limits]
+max_compressed_bytes = 10737418240  # 10 GiB
+max_uncompressed_bytes = 53687091200  # 50 GiB
+per_layer_timeout_seconds = 300
+total_pull_timeout_seconds = 1800
+```
+
+Higher limits require explicit operator action and may impact node stability.
+
+### Error codes
+
+- `image_too_large`: Image exceeds size limits
+- `image_pull_timeout`: Pull operation timed out
+- `image_pull_failed`: Generic pull failure (network, auth, etc.)
+- `image_layer_invalid`: Layer failed integrity check
+
 ## Image pull behavior
 
 ### Required pull input

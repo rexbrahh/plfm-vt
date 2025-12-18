@@ -165,16 +165,21 @@ Validation:
 
 #### `scaling`
 `scaling.min` (optional):
-- default rule:
-  - if there is exactly one process type, default min = 1
-  - otherwise default min = 0
+- **default: 1** for all process types
+- minimum allowed value: 0
+- maximum allowed value: 100
 
 `scaling.max` (optional):
 - default: equal to min
 - max must be >= min
+- maximum allowed value: 100
 
-v1 note:
-- autoscaling is not supported. Any autoscale fields must be rejected.
+v1 notes:
+- Autoscaling is not supported. Any autoscale fields must be rejected.
+- **Volume constraint**: If a process type has any volume mounts, `scaling.max` MUST be 1.
+  - This constraint is enforced at manifest validation time, not only at scheduling time.
+  - Error code: `E_VOLUME_REPLICA_LIMIT`
+  - Error message: `process type '{name}' has volume mounts and cannot have replicas > 1`
 
 #### `restart`
 `restart.policy` (optional, default `"always"`):
