@@ -2,8 +2,11 @@
 
 mod apps;
 mod auth;
+mod deploys;
 mod envs;
+mod nodes;
 mod orgs;
+mod releases;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -51,6 +54,15 @@ enum Commands {
     /// Manage environments.
     Envs(envs::EnvsCommand),
 
+    /// Manage releases (versioned artifacts).
+    Releases(releases::ReleasesCommand),
+
+    /// Manage deploys (release to environment).
+    Deploys(deploys::DeploysCommand),
+
+    /// Manage nodes (infrastructure).
+    Nodes(nodes::NodesCommand),
+
     /// Show CLI version.
     Version,
 }
@@ -81,6 +93,9 @@ impl Cli {
             Commands::Orgs(cmd) => cmd.run(ctx).await,
             Commands::Apps(cmd) => cmd.run(ctx).await,
             Commands::Envs(cmd) => cmd.run(ctx).await,
+            Commands::Releases(cmd) => cmd.run(ctx).await,
+            Commands::Deploys(cmd) => cmd.run(ctx).await,
+            Commands::Nodes(cmd) => cmd.run(ctx).await,
             Commands::Version => {
                 println!("vt {}", env!("CARGO_PKG_VERSION"));
                 Ok(())
