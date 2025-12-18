@@ -1,0 +1,6 @@
+[package]
+name = "ghostctl"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
