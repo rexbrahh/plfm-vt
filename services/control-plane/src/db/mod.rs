@@ -14,8 +14,8 @@ mod idempotency;
 mod projections;
 
 pub use error::DbError;
-pub use event_store::{EventRow, EventStore};
-pub use idempotency::{IdempotencyRecord, IdempotencyStore};
+pub use event_store::{AppendEvent, EventRow, EventStore};
+pub use idempotency::{IdempotencyCheck, IdempotencyRecord, IdempotencyStore};
 pub use projections::{ProjectionCheckpoint, ProjectionStore};
 
 use sqlx::postgres::{PgPool, PgPoolOptions};

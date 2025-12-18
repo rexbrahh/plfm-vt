@@ -4,6 +4,8 @@ use std::net::SocketAddr;
 
 use anyhow::Result;
 
+use crate::db::DbConfig;
+
 /// Control plane configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -15,6 +17,9 @@ pub struct Config {
 
     /// Whether we're in development mode.
     pub dev_mode: bool,
+
+    /// Database configuration.
+    pub database: DbConfig,
 }
 
 impl Config {
@@ -30,10 +35,13 @@ impl Config {
             .map(|v| v == "1" || v.to_lowercase() == "true")
             .unwrap_or(false);
 
+        let database = DbConfig::from_env();
+
         Ok(Self {
             listen_addr,
             log_level,
             dev_mode,
+            database,
         })
     }
 }

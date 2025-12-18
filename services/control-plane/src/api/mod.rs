@@ -1,6 +1,7 @@
 //! HTTP API handlers and routing.
 
 mod health;
+mod v1;
 
 use axum::{
     http::{header, Method},
@@ -11,8 +12,10 @@ use tower_http::{
     trace::TraceLayer,
 };
 
+use crate::state::AppState;
+
 /// Create the main API router with all routes and middleware.
-pub fn create_router() -> Router {
+pub fn create_router(state: AppState) -> Router {
     // CORS configuration
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE])
@@ -22,9 +25,11 @@ pub fn create_router() -> Router {
     Router::new()
         // Health endpoints (no auth required)
         .nest("/", health::routes())
-        // API v1 routes would go here
-        // .nest("/v1", v1::routes())
+        // API v1 routes
+        .nest("/v1", v1::routes())
         // Middleware
         .layer(TraceLayer::new_for_http())
         .layer(cors)
+        // Application state
+        .with_state(state)
 }
