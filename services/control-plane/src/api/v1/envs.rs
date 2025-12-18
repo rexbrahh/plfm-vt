@@ -28,6 +28,13 @@ pub fn routes() -> Router<AppState> {
         .route("/{env_id}", get(get_env))
 }
 
+/// Create env scale routes.
+///
+/// Scale is nested under orgs/apps/envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
+pub fn scale_routes() -> Router<AppState> {
+    Router::new().route("/", post(set_scale))
+}
+
 // =============================================================================
 // Request/Response Types
 // =============================================================================
@@ -72,6 +79,20 @@ pub struct ListEnvsResponse {
 
     /// Total count (for pagination).
     pub total: i64,
+}
+
+/// Request to set scale for an environment.
+#[derive(Debug, Deserialize)]
+pub struct SetScaleRequest {
+    /// Process type to count mapping.
+    pub process_counts: std::collections::HashMap<String, i32>,
+}
+
+/// Response for setting scale.
+#[derive(Debug, Serialize)]
+pub struct SetScaleResponse {
+    /// Whether the scale was set successfully.
+    pub success: bool,
 }
 
 // =============================================================================
@@ -252,6 +273,122 @@ async fn list_envs(
     let total = items.len() as i64;
 
     Ok(Json(ListEnvsResponse { items, total }))
+}
+
+/// Set scale for an environment.
+///
+/// POST /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
+async fn set_scale(
+    State(state): State<AppState>,
+    Path((org_id, app_id, env_id)): Path<(String, String, String)>,
+    Json(req): Json<SetScaleRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let request_id = RequestId::new();
+
+    // Validate IDs
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    let app_id: AppId = app_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_app_id", "Invalid application ID format")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    let env_id: EnvId = env_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    // Verify env exists
+    let env_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM envs_view WHERE env_id = $1 AND NOT is_deleted)",
+    )
+    .bind(env_id.to_string())
+    .fetch_one(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to check env existence");
+        ApiError::internal("internal_error", "Failed to verify environment")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    if !env_exists {
+        return Err(ApiError::not_found(
+            "env_not_found",
+            format!("Environment {} not found", env_id),
+        )
+        .with_request_id(request_id.to_string()));
+    }
+
+    // Validate process counts
+    for (process_type, count) in &req.process_counts {
+        if process_type.is_empty() {
+            return Err(ApiError::bad_request(
+                "invalid_process_type",
+                "Process type cannot be empty",
+            )
+            .with_request_id(request_id.to_string()));
+        }
+        if *count < 0 {
+            return Err(ApiError::bad_request(
+                "invalid_count",
+                format!("Count for '{}' must be non-negative", process_type),
+            )
+            .with_request_id(request_id.to_string()));
+        }
+    }
+
+    // Get current aggregate sequence
+    let current_seq: i32 = sqlx::query_scalar(
+        "SELECT COALESCE(MAX(aggregate_seq), 0) FROM event_log WHERE aggregate_id = $1",
+    )
+    .bind(env_id.to_string())
+    .fetch_one(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to get aggregate sequence");
+        ApiError::internal("internal_error", "Failed to set scale")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    // Create the event
+    let event = AppendEvent {
+        aggregate_type: AggregateType::Env,
+        aggregate_id: env_id.to_string(),
+        aggregate_seq: current_seq + 1,
+        event_type: "env.scale_set".to_string(),
+        event_version: 1,
+        actor_type: ActorType::System, // TODO: Extract from auth context
+        actor_id: "system".to_string(),
+        org_id: Some(org_id),
+        request_id: request_id.to_string(),
+        idempotency_key: None,
+        app_id: Some(app_id),
+        env_id: Some(env_id.clone()),
+        correlation_id: None,
+        causation_id: None,
+        payload: serde_json::json!({
+            "process_counts": req.process_counts
+        }),
+    };
+
+    // Append the event
+    let event_store = state.db().event_store();
+    event_store.append(event).await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to set scale");
+        ApiError::internal("internal_error", "Failed to set scale")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    tracing::info!(
+        env_id = %env_id,
+        process_counts = ?req.process_counts,
+        "Scale set for environment"
+    );
+
+    Ok((StatusCode::OK, Json(SetScaleResponse { success: true })))
 }
 
 /// Get a single environment by ID.

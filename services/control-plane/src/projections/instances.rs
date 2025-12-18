@@ -39,6 +39,21 @@ struct InstanceDesiredStateChangedPayload {
     new_state: String,
 }
 
+/// Payload for instance.status_changed event.
+#[derive(Debug, Deserialize)]
+struct InstanceStatusChangedPayload {
+    instance_id: String,
+    #[allow(dead_code)]
+    old_status: String,
+    new_status: String,
+    #[serde(default)]
+    boot_id: Option<String>,
+    #[serde(default)]
+    error_message: Option<String>,
+    #[serde(default)]
+    exit_code: Option<i32>,
+}
+
 #[async_trait]
 impl ProjectionHandler for InstancesProjection {
     fn name(&self) -> &'static str {
@@ -49,6 +64,7 @@ impl ProjectionHandler for InstancesProjection {
         &[
             "instance.allocated",
             "instance.desired_state_changed",
+            "instance.status_changed",
         ]
     }
 
@@ -63,6 +79,7 @@ impl ProjectionHandler for InstancesProjection {
             "instance.desired_state_changed" => {
                 self.handle_instance_desired_state_changed(tx, event).await
             }
+            "instance.status_changed" => self.handle_instance_status_changed(tx, event).await,
             _ => {
                 debug!(event_type = %event.event_type, "Ignoring unknown event type");
                 Ok(())
@@ -184,6 +201,86 @@ impl InstancesProjection {
 
         Ok(())
     }
+
+    /// Handle instance.status_changed event.
+    ///
+    /// Updates the instances_status_view table with the current status
+    /// as reported by the node-agent.
+    async fn handle_instance_status_changed(
+        &self,
+        tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+        event: &EventRow,
+    ) -> ProjectionResult<()> {
+        let payload: InstanceStatusChangedPayload =
+            serde_json::from_value(event.payload.clone())
+                .map_err(|e| ProjectionError::InvalidPayload(e.to_string()))?;
+
+        let org_id = event.org_id.as_ref().ok_or_else(|| {
+            ProjectionError::InvalidPayload(
+                "instance.status_changed event missing org_id".to_string(),
+            )
+        })?;
+
+        let env_id = event.env_id.as_ref().ok_or_else(|| {
+            ProjectionError::InvalidPayload(
+                "instance.status_changed event missing env_id".to_string(),
+            )
+        })?;
+
+        debug!(
+            instance_id = %payload.instance_id,
+            new_status = %payload.new_status,
+            "Updating instance status in instances_status_view"
+        );
+
+        // Get node_id from instances_desired_view
+        let node_id: Option<String> = sqlx::query_scalar(
+            "SELECT node_id FROM instances_desired_view WHERE instance_id = $1",
+        )
+        .bind(&payload.instance_id)
+        .fetch_optional(&mut **tx)
+        .await?;
+
+        let node_id = node_id.unwrap_or_else(|| "unknown".to_string());
+
+        // Map exit_code to reason_code if failed
+        let reason_code = if payload.new_status == "failed" {
+            payload.error_message.as_deref().or(Some("unknown_error"))
+        } else {
+            None
+        };
+
+        sqlx::query(
+            r#"
+            INSERT INTO instances_status_view (
+                instance_id, org_id, env_id, node_id, status,
+                boot_id, exit_code, reason_code,
+                resource_version, created_at, updated_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $9)
+            ON CONFLICT (instance_id) DO UPDATE SET
+                status = EXCLUDED.status,
+                boot_id = COALESCE(EXCLUDED.boot_id, instances_status_view.boot_id),
+                exit_code = EXCLUDED.exit_code,
+                reason_code = EXCLUDED.reason_code,
+                resource_version = instances_status_view.resource_version + 1,
+                updated_at = EXCLUDED.updated_at
+            "#,
+        )
+        .bind(&payload.instance_id)
+        .bind(org_id)
+        .bind(env_id.to_string())
+        .bind(&node_id)
+        .bind(&payload.new_status)
+        .bind(payload.boot_id.as_deref())
+        .bind(payload.exit_code)
+        .bind(reason_code)
+        .bind(event.occurred_at)
+        .execute(&mut **tx)
+        .await?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -230,5 +327,36 @@ mod tests {
         let types = projection.event_types();
         assert!(types.contains(&"instance.allocated"));
         assert!(types.contains(&"instance.desired_state_changed"));
+        assert!(types.contains(&"instance.status_changed"));
+    }
+
+    #[test]
+    fn test_instance_status_changed_payload_deserialization() {
+        let json = r#"{
+            "instance_id": "inst_123",
+            "old_status": "booting",
+            "new_status": "ready",
+            "boot_id": "boot_456"
+        }"#;
+        let payload: InstanceStatusChangedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.instance_id, "inst_123");
+        assert_eq!(payload.new_status, "ready");
+        assert_eq!(payload.boot_id, Some("boot_456".to_string()));
+    }
+
+    #[test]
+    fn test_instance_status_changed_payload_with_error() {
+        let json = r#"{
+            "instance_id": "inst_123",
+            "old_status": "booting",
+            "new_status": "failed",
+            "error_message": "OOM killed",
+            "exit_code": 137
+        }"#;
+        let payload: InstanceStatusChangedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.instance_id, "inst_123");
+        assert_eq!(payload.new_status, "failed");
+        assert_eq!(payload.error_message, Some("OOM killed".to_string()));
+        assert_eq!(payload.exit_code, Some(137));
     }
 }

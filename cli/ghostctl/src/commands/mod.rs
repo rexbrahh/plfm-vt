@@ -4,9 +4,12 @@ mod apps;
 mod auth;
 mod deploys;
 mod envs;
+mod instances;
+mod logs;
 mod nodes;
 mod orgs;
 mod releases;
+mod scale;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -63,6 +66,15 @@ enum Commands {
     /// Manage nodes (infrastructure).
     Nodes(nodes::NodesCommand),
 
+    /// Manage instances (VM instances).
+    Instances(instances::InstancesCommand),
+
+    /// Set process scaling.
+    Scale(scale::ScaleCommand),
+
+    /// View application logs.
+    Logs(logs::LogsCommand),
+
     /// Show CLI version.
     Version,
 }
@@ -96,6 +108,9 @@ impl Cli {
             Commands::Releases(cmd) => cmd.run(ctx).await,
             Commands::Deploys(cmd) => cmd.run(ctx).await,
             Commands::Nodes(cmd) => cmd.run(ctx).await,
+            Commands::Instances(cmd) => cmd.run(ctx).await,
+            Commands::Scale(cmd) => cmd.run(ctx).await,
+            Commands::Logs(cmd) => cmd.run(ctx).await,
             Commands::Version => {
                 println!("vt {}", env!("CARGO_PKG_VERSION"));
                 Ok(())
