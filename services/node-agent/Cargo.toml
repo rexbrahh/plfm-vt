@@ -1,0 +1,40 @@
+[package]
+name = "plfm-node-agent"
+description = "Node agent for plfm-vt platform - manages workload lifecycle on hosts"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "node-agent"
+path = "src/main.rs"
+
+[dependencies]
+plfm-id = { workspace = true }
+plfm-events = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+
+# HTTP client
+reqwest = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Time
+chrono = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }
