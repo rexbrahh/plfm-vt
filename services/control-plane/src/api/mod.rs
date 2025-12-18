@@ -1,0 +1,30 @@
+//! HTTP API handlers and routing.
+
+mod health;
+
+use axum::{
+    http::{header, Method},
+    Router,
+};
+use tower_http::{
+    cors::{Any, CorsLayer},
+    trace::TraceLayer,
+};
+
+/// Create the main API router with all routes and middleware.
+pub fn create_router() -> Router {
+    // CORS configuration
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::PATCH, Method::DELETE])
+        .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+        .allow_origin(Any);
+
+    Router::new()
+        // Health endpoints (no auth required)
+        .nest("/", health::routes())
+        // API v1 routes would go here
+        // .nest("/v1", v1::routes())
+        // Middleware
+        .layer(TraceLayer::new_for_http())
+        .layer(cors)
+}
