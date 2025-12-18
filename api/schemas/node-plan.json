@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://plfm-vt.dev/schemas/node-plan.json",
+  "title": "plfm-vt NodePlan v1",
+  "description": "Control plane to node agent desired state plan. See docs/specs/manifest/workload-spec.md",
+  "type": "object",
+  "required": [
+    "spec_version",
+    "node_id",
+    "plan_id",
+    "created_at",
+    "cursor_event_id",
+    "instances"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "spec_version": {
+      "type": "string",
+      "enum": ["v1"]
+    },
+    "node_id": {
+      "type": "string",
+      "description": "Target node identifier"
+    },
+    "plan_id": {
+      "type": "string",
+      "description": "Unique plan identifier (UUID or opaque string)"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "cursor_event_id": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "The event_id this plan reflects (for ordering)"
+    },
+    "instances": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DesiredInstanceAssignment"
+      }
+    }
+  },
+  "$defs": {
+    "DesiredInstanceAssignment": {
+      "type": "object",
+      "required": [
+        "assignment_id",
+        "node_id",
+        "instance_id",
+        "generation",
+        "desired_state"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "assignment_id": {
+          "type": "string"
+        },
+        "node_id": {
+          "type": "string"
+        },
+        "instance_id": {
+          "type": "string",
+          "description": "Stable slot ID (UUID or ULID)"
+        },
+        "generation": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "desired_state": {
+          "type": "string",
+          "enum": ["running", "draining", "stopped"]
+        },
+        "drain_grace_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 10
+        },
+        "workload": {
+          "$ref": "workload-spec.json",
+          "description": "Required when desired_state is running or draining"
+        }
+      }
+    }
+  }
+}

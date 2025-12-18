@@ -1,0 +1,355 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://plfm-vt.dev/schemas/manifest.json",
+  "title": "plfm-vt Manifest Schema v1",
+  "description": "User-authored manifest file that pairs with an OCI image to form an immutable Release. See docs/specs/manifest/manifest-schema.md",
+  "type": "object",
+  "required": ["schema_version"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["v1"],
+      "description": "Manifest schema version"
+    },
+    "app": {
+      "$ref": "#/$defs/App"
+    },
+    "image": {
+      "$ref": "#/$defs/Image"
+    },
+    "env": {
+      "$ref": "#/$defs/EnvConfig"
+    },
+    "processes": {
+      "type": "object",
+      "description": "Process type definitions. At least one is required.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/Process"
+      },
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9-]{0,31}$"
+      }
+    },
+    "volumes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Volume"
+      }
+    }
+  },
+  "$defs": {
+    "App": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "description": "Human-readable app name"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 256
+        }
+      }
+    },
+    "Image": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "OCI registry reference (tag or digest)"
+        },
+        "pull_policy": {
+          "type": "string",
+          "enum": ["if_not_present", "always"],
+          "default": "if_not_present"
+        }
+      }
+    },
+    "EnvConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vars": {
+          "$ref": "#/$defs/EnvVars"
+        },
+        "workdir": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "prestart": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "prestart_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        }
+      }
+    },
+    "EnvVars": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "propertyNames": {
+        "pattern": "^[A-Z_][A-Z0-9_]*$"
+      }
+    },
+    "Process": {
+      "type": "object",
+      "required": ["resources"],
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "workdir": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "vars": {
+          "$ref": "#/$defs/EnvVars"
+        },
+        "prestart": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "prestart_timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 30
+        },
+        "restart": {
+          "$ref": "#/$defs/RestartPolicy"
+        },
+        "resources": {
+          "$ref": "#/$defs/Resources"
+        },
+        "scaling": {
+          "$ref": "#/$defs/Scaling"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Port"
+          }
+        },
+        "health": {
+          "$ref": "#/$defs/HealthCheck"
+        },
+        "mounts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Mount"
+          }
+        },
+        "secrets": {
+          "$ref": "#/$defs/SecretsConfig"
+        }
+      }
+    },
+    "Resources": {
+      "type": "object",
+      "required": ["memory"],
+      "additionalProperties": false,
+      "properties": {
+        "memory": {
+          "type": "string",
+          "pattern": "^[0-9]+(Mi|Gi)$",
+          "description": "Memory allocation (e.g., 256Mi, 2Gi). Minimum 64Mi."
+        },
+        "cpu": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 64,
+          "default": 1.0,
+          "description": "vCPU share (soft limit, may be oversubscribed)"
+        },
+        "disk": {
+          "type": "string",
+          "pattern": "^[0-9]+(Gi)$",
+          "default": "4Gi",
+          "description": "Ephemeral disk size. Minimum 1Gi if set."
+        }
+      }
+    },
+    "Scaling": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "default": 1
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Must be >= min. Must be 1 if process has volume mounts."
+        }
+      }
+    },
+    "RestartPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "type": "string",
+          "enum": ["always", "on-failure", "never"],
+          "default": "always"
+        },
+        "max_retries": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 3,
+          "description": "Only valid when policy is on-failure"
+        },
+        "backoff_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 2
+        }
+      }
+    },
+    "Port": {
+      "type": "object",
+      "required": ["internal"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$",
+          "description": "Port name. Derived as p<internal> if omitted."
+        },
+        "internal": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "description": "Port inside the microVM"
+        },
+        "protocol": {
+          "type": "string",
+          "enum": ["tcp"],
+          "default": "tcp"
+        }
+      }
+    },
+    "HealthCheck": {
+      "type": "object",
+      "required": ["port"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["tcp", "http"],
+          "default": "tcp"
+        },
+        "port": {
+          "oneOf": [
+            { "type": "string" },
+            { "type": "integer", "minimum": 1, "maximum": 65535 }
+          ],
+          "description": "Port name or number"
+        },
+        "path": {
+          "type": "string",
+          "description": "Required for http health checks"
+        },
+        "interval_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 10
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 2
+        },
+        "grace_period_seconds": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 10
+        },
+        "success_threshold": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "failure_threshold": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 3
+        }
+      }
+    },
+    "Mount": {
+      "type": "object",
+      "required": ["volume", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "volume": {
+          "type": "string",
+          "description": "References a volume name defined in [[volumes]]"
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/",
+          "description": "Absolute path inside microVM. Cannot be /proc, /sys, /dev, or /run/secrets/platform.env"
+        },
+        "read_only": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "SecretsConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "default": false,
+          "description": "If true, instance won't start without a secret bundle configured"
+        }
+      }
+    },
+    "Volume": {
+      "type": "object",
+      "required": ["name", "size"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,31}$"
+        },
+        "size": {
+          "type": "string",
+          "pattern": "^[0-9]+(Gi)$",
+          "description": "Volume size. Minimum 1Gi."
+        },
+        "filesystem": {
+          "type": "string",
+          "enum": ["ext4"],
+          "default": "ext4"
+        },
+        "backup_enabled": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  }
+}

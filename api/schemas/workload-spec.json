@@ -1,0 +1,332 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://plfm-vt.dev/schemas/workload-spec.json",
+  "title": "plfm-vt WorkloadSpec v1",
+  "description": "Scheduler-to-host-agent contract. Resolved runtime configuration for a desired instance. See docs/specs/manifest/workload-spec.md",
+  "type": "object",
+  "required": [
+    "spec_version",
+    "org_id",
+    "app_id",
+    "env_id",
+    "process_type",
+    "instance_id",
+    "generation",
+    "release_id",
+    "image",
+    "manifest_hash",
+    "command",
+    "resources",
+    "network"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "spec_version": {
+      "type": "string",
+      "enum": ["v1"]
+    },
+    "org_id": {
+      "type": "string"
+    },
+    "app_id": {
+      "type": "string"
+    },
+    "env_id": {
+      "type": "string"
+    },
+    "process_type": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,31}$"
+    },
+    "instance_id": {
+      "type": "string",
+      "description": "UUID or ULID, stable across restarts"
+    },
+    "generation": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "release_id": {
+      "type": "string"
+    },
+    "image": {
+      "$ref": "#/$defs/ImageSpec"
+    },
+    "manifest_hash": {
+      "type": "string",
+      "description": "Hash of the manifest used to create this spec"
+    },
+    "command": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Fully resolved entrypoint"
+    },
+    "workdir": {
+      "type": "string"
+    },
+    "env_vars": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "resources": {
+      "$ref": "#/$defs/ResourceSpec"
+    },
+    "network": {
+      "$ref": "#/$defs/NetworkSpec"
+    },
+    "health": {
+      "$ref": "#/$defs/HealthSpec"
+    },
+    "secrets": {
+      "$ref": "#/$defs/SecretsSpec"
+    },
+    "mounts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/MountSpec"
+      }
+    },
+    "lifecycle": {
+      "$ref": "#/$defs/LifecycleSpec"
+    },
+    "spec_hash": {
+      "type": "string",
+      "description": "Deterministic hash of spec for change detection"
+    }
+  },
+  "$defs": {
+    "ImageSpec": {
+      "type": "object",
+      "required": ["digest", "resolved_digest", "os", "arch"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Original image reference (informational)"
+        },
+        "digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "index_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "Multi-arch index digest if applicable"
+        },
+        "resolved_digest": {
+          "type": "string",
+          "pattern": "^sha256:[a-f0-9]{64}$",
+          "description": "Exact manifest digest for this node's architecture"
+        },
+        "os": {
+          "type": "string",
+          "enum": ["linux"]
+        },
+        "arch": {
+          "type": "string",
+          "enum": ["amd64", "arm64"]
+        }
+      }
+    },
+    "ResourceSpec": {
+      "type": "object",
+      "required": ["cpu_request", "memory_limit_bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "cpu_request": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Requested vCPU share"
+        },
+        "memory_limit_bytes": {
+          "type": "integer",
+          "minimum": 67108864,
+          "description": "Hard memory cap in bytes (cgroup v2 enforced)"
+        },
+        "ephemeral_disk_bytes": {
+          "type": "integer",
+          "default": 4294967296,
+          "description": "Ephemeral disk size (default 4Gi)"
+        },
+        "vcpu_count": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Firecracker vCPU count. Derived from cpu_request if not set."
+        },
+        "cpu_weight": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000,
+          "description": "cgroup cpu.weight for proportional allocation"
+        }
+      }
+    },
+    "NetworkSpec": {
+      "type": "object",
+      "required": ["overlay_ipv6", "gateway_ipv6"],
+      "additionalProperties": false,
+      "properties": {
+        "overlay_ipv6": {
+          "type": "string",
+          "description": "Instance IPv6 address (/128) for overlay networking"
+        },
+        "gateway_ipv6": {
+          "type": "string"
+        },
+        "mtu": {
+          "type": "integer",
+          "default": 1420
+        },
+        "dns": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "DNS resolver IPv6 addresses"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PortSpec"
+          }
+        }
+      }
+    },
+    "PortSpec": {
+      "type": "object",
+      "required": ["name", "port", "protocol"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "protocol": {
+          "type": "string",
+          "enum": ["tcp"]
+        }
+      }
+    },
+    "HealthSpec": {
+      "type": "object",
+      "required": ["type", "port"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["tcp", "http"]
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "path": {
+          "type": "string",
+          "description": "Required for http type"
+        },
+        "interval_seconds": {
+          "type": "integer",
+          "default": 10
+        },
+        "timeout_seconds": {
+          "type": "integer",
+          "default": 2
+        },
+        "grace_period_seconds": {
+          "type": "integer",
+          "default": 10
+        },
+        "success_threshold": {
+          "type": "integer",
+          "default": 1
+        },
+        "failure_threshold": {
+          "type": "integer",
+          "default": 3
+        }
+      }
+    },
+    "SecretsSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "required": {
+          "type": "boolean",
+          "default": false
+        },
+        "secret_version_id": {
+          "type": "string"
+        },
+        "mount_path": {
+          "type": "string",
+          "const": "/run/secrets/platform.env",
+          "description": "Fixed in v1"
+        },
+        "mode": {
+          "type": "integer",
+          "default": 256,
+          "description": "File mode (default 0400 octal = 256 decimal)"
+        },
+        "uid": {
+          "type": "integer",
+          "default": 0
+        },
+        "gid": {
+          "type": "integer",
+          "default": 0
+        }
+      }
+    },
+    "MountSpec": {
+      "type": "object",
+      "required": ["volume_id", "mount_path"],
+      "additionalProperties": false,
+      "properties": {
+        "volume_id": {
+          "type": "string"
+        },
+        "mount_path": {
+          "type": "string",
+          "pattern": "^/"
+        },
+        "read_only": {
+          "type": "boolean",
+          "default": false
+        },
+        "filesystem": {
+          "type": "string",
+          "enum": ["ext4"],
+          "default": "ext4"
+        },
+        "device_hint": {
+          "type": "string",
+          "description": "Agent internal use for device mapping"
+        }
+      }
+    },
+    "LifecycleSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "termination_grace_seconds": {
+          "type": "integer",
+          "default": 10
+        },
+        "restart_policy": {
+          "type": "string",
+          "enum": ["always", "on-failure", "never"],
+          "default": "always"
+        },
+        "max_retries": {
+          "type": "integer",
+          "default": 3,
+          "description": "Only used when restart_policy is on-failure"
+        }
+      }
+    }
+  }
+}

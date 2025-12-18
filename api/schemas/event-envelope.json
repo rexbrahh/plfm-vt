@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://plfm-vt.dev/schemas/event-envelope.json",
+  "title": "plfm-vt Event Envelope v1",
+  "description": "Canonical event schema for the append-only event log. See docs/specs/state/event-log.md",
+  "type": "object",
+  "required": [
+    "event_id",
+    "occurred_at",
+    "aggregate_type",
+    "aggregate_id",
+    "aggregate_seq",
+    "event_type",
+    "event_version",
+    "actor_type",
+    "actor_id",
+    "request_id",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "event_id": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Globally monotonic event identifier (total order)"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp with timezone (ISO 8601 / RFC 3339)"
+    },
+    "aggregate_type": {
+      "type": "string",
+      "description": "Type of aggregate (e.g., org, app, env, release, instance, volume, secret_bundle)"
+    },
+    "aggregate_id": {
+      "type": "string",
+      "description": "Opaque identifier for the aggregate instance"
+    },
+    "aggregate_seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic sequence within the aggregate (starts at 1)"
+    },
+    "event_type": {
+      "type": "string",
+      "description": "Stable event type identifier (e.g., release.created, instance.started)"
+    },
+    "event_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version for this event_type (starts at 1)"
+    },
+    "actor_type": {
+      "type": "string",
+      "enum": ["user", "service_principal", "system"],
+      "description": "Type of actor that triggered the event"
+    },
+    "actor_id": {
+      "type": "string",
+      "description": "Identifier of the actor"
+    },
+    "org_id": {
+      "type": "string",
+      "description": "Organization ID (required for tenant-scoped aggregates)"
+    },
+    "request_id": {
+      "type": "string",
+      "description": "Request correlation ID for tracing"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Client-provided idempotency key (strongly recommended for user commands)"
+    },
+    "app_id": {
+      "type": "string",
+      "description": "Application ID if applicable"
+    },
+    "env_id": {
+      "type": "string",
+      "description": "Environment ID if applicable"
+    },
+    "correlation_id": {
+      "type": "string",
+      "description": "Grouping ID (e.g., deploy_id for related events)"
+    },
+    "causation_id": {
+      "type": "string",
+      "description": "event_id of the event that caused this event"
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific data. Must NOT contain secret values."
+    }
+  }
+}
