@@ -11,6 +11,7 @@
 
 mod apps;
 mod deploys;
+mod env_config;
 mod envs;
 mod instances;
 mod nodes;
@@ -81,6 +82,7 @@ impl ProjectionRegistry {
                 Box::new(deploys::DeploysProjection),
                 Box::new(nodes::NodesProjection),
                 Box::new(instances::InstancesProjection),
+                Box::new(env_config::EnvConfigProjection),
             ],
         }
     }
@@ -172,5 +174,12 @@ mod tests {
         let registry = ProjectionRegistry::new();
         assert!(registry.handler_for("instance.allocated").is_some());
         assert!(registry.handler_for("instance.desired_state_changed").is_some());
+    }
+
+    #[test]
+    fn test_registry_finds_env_config_handler() {
+        let registry = ProjectionRegistry::new();
+        assert!(registry.handler_for("env.desired_release_set").is_some());
+        assert!(registry.handler_for("env.scale_set").is_some());
     }
 }
