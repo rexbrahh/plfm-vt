@@ -1,6 +1,7 @@
 //! API v1 routes.
 
 mod apps;
+mod auth;
 mod debug;
 mod deploys;
 mod envs;
@@ -20,6 +21,7 @@ use crate::state::AppState;
 /// Create API v1 routes.
 pub fn routes() -> Router<AppState> {
     Router::new()
+        .nest("/auth", auth::routes())
         .nest("/orgs", orgs::routes())
         .nest("/orgs/:org_id/projects", projects::routes())
         .route(

@@ -5,10 +5,12 @@ use axum::http::request::Parts;
 use axum::http::HeaderMap;
 use plfm_events::ActorType;
 use plfm_id::RequestId;
+use sha2::{Digest, Sha256};
 
 use crate::api::error::ApiError;
 
 pub const IDEMPOTENCY_KEY_HEADER: &str = "Idempotency-Key";
+pub const AUTHORIZATION_HEADER: &str = "Authorization";
 
 #[derive(Debug, Clone)]
 pub struct RequestContext {
@@ -23,6 +25,40 @@ fn header_string(headers: &HeaderMap, name: &str) -> Option<String> {
         .get(name)
         .and_then(|v| v.to_str().ok())
         .map(|s| s.to_string())
+}
+
+fn actor_from_authorization_header(
+    headers: &HeaderMap,
+    request_id: &str,
+) -> Result<Option<(ActorType, String)>, ApiError> {
+    let Some(auth_value) = header_string(headers, AUTHORIZATION_HEADER) else {
+        return Ok(None);
+    };
+
+    let auth_value = auth_value.trim();
+    let Some(token) = auth_value.strip_prefix("Bearer ") else {
+        return Err(ApiError::unauthorized(
+            "invalid_authorization",
+            "Authorization must be a Bearer token",
+        )
+        .with_request_id(request_id.to_string()));
+    };
+
+    let token = token.trim();
+    if token.is_empty() {
+        return Err(ApiError::unauthorized(
+            "invalid_authorization",
+            "Authorization Bearer token cannot be empty",
+        )
+        .with_request_id(request_id.to_string()));
+    }
+
+    // Important: never persist or log bearer tokens. Derive a stable, non-secret actor id.
+    let digest = Sha256::digest(token.as_bytes());
+    let hex = format!("{:x}", digest);
+    let short = hex.get(..32).unwrap_or(&hex);
+
+    Ok(Some((ActorType::User, format!("usr_{short}"))))
 }
 
 #[axum::async_trait]
@@ -47,11 +83,14 @@ where
             }
         }
 
+        let (actor_type, actor_id) = actor_from_authorization_header(&parts.headers, &request_id)?
+            .unwrap_or((ActorType::System, "system".to_string()));
+
         Ok(Self {
             request_id,
             idempotency_key,
-            actor_type: ActorType::System,
-            actor_id: "system".to_string(),
+            actor_type,
+            actor_id,
         })
     }
 }
