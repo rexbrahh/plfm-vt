@@ -4,6 +4,7 @@ mod apps;
 mod auth;
 mod deploys;
 mod envs;
+mod events;
 mod instances;
 mod logs;
 mod nodes;
@@ -75,6 +76,9 @@ enum Commands {
     /// View application logs.
     Logs(logs::LogsCommand),
 
+    /// Query or tail org-scoped events.
+    Events(events::EventsCommand),
+
     /// Show CLI version.
     Version,
 }
@@ -111,6 +115,7 @@ impl Cli {
             Commands::Instances(cmd) => cmd.run(ctx).await,
             Commands::Scale(cmd) => cmd.run(ctx).await,
             Commands::Logs(cmd) => cmd.run(ctx).await,
+            Commands::Events(cmd) => cmd.run(ctx).await,
             Commands::Version => {
                 println!("vt {}", env!("CARGO_PKG_VERSION"));
                 Ok(())
