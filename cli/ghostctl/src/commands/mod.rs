@@ -8,6 +8,7 @@ mod events;
 mod exec;
 mod instances;
 mod logs;
+mod manifest;
 mod nodes;
 mod orgs;
 mod projects;
@@ -93,6 +94,9 @@ enum Commands {
     /// Create an exec session grant for an instance.
     Exec(exec::ExecCommand),
 
+    /// Validate and inspect local manifests.
+    Manifest(manifest::ManifestCommand),
+
     /// Query or tail org-scoped events.
     Events(events::EventsCommand),
 
@@ -144,6 +148,7 @@ impl Cli {
             Commands::Scale(cmd) => cmd.run(ctx).await,
             Commands::Logs(cmd) => cmd.run(ctx).await,
             Commands::Exec(cmd) => cmd.run(ctx).await,
+            Commands::Manifest(cmd) => cmd.run(ctx).await,
             Commands::Events(cmd) => cmd.run(ctx).await,
             Commands::Routes(cmd) => cmd.run(ctx).await,
             Commands::Secrets(cmd) => cmd.run(ctx).await,
