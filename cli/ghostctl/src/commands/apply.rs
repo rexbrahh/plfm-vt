@@ -5,15 +5,27 @@
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use anyhow::Result;
 use clap::Args;
 use serde::{Deserialize, Serialize};
+use tokio::time::{sleep, Instant};
 
+use crate::client::ApiClient;
 use crate::manifest::ManifestValidationError;
 use crate::output::{print_info, print_single, print_success, OutputFormat};
 
 use super::CommandContext;
+
+/// Default timeout for waiting on deploy convergence.
+const DEFAULT_WAIT_TIMEOUT: Duration = Duration::from_secs(5 * 60); // 5 minutes
+
+/// Polling interval for deploy status checks.
+const POLL_INTERVAL: Duration = Duration::from_secs(2);
+
+/// Terminal deploy statuses that indicate the deploy is done.
+const TERMINAL_STATUSES: &[&str] = &["completed", "failed", "cancelled"];
 
 /// Apply a manifest (create release + deploy).
 #[derive(Debug, Args)]
@@ -33,6 +45,18 @@ pub struct ApplyCommand {
     /// Print the plan without making any API calls.
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Wait for deploy to complete before returning.
+    #[arg(long)]
+    pub wait: bool,
+
+    /// Timeout for waiting (e.g., "5m", "300s"). Default is 5 minutes.
+    #[arg(long, value_name = "DURATION")]
+    pub wait_timeout: Option<String>,
+
+    /// Do not wait for deploy (default behavior, explicit flag for clarity).
+    #[arg(long, conflicts_with = "wait")]
+    pub no_wait: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -56,9 +80,13 @@ struct CreateDeployRequest {
     strategy: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 struct DeployResponse {
     id: String,
+    #[serde(default)]
+    status: String,
+    #[serde(default)]
+    message: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -72,6 +100,89 @@ struct ApplyPlan {
     image_ref: String,
     image_digest: String,
     process_types: Vec<String>,
+}
+
+/// Parse a duration string like "5m", "300s", "2h" into a Duration.
+fn parse_duration(s: &str) -> Result<Duration> {
+    let s = s.trim();
+    if s.is_empty() {
+        anyhow::bail!("duration cannot be empty");
+    }
+
+    // Try to parse as just seconds first
+    if let Ok(secs) = s.parse::<u64>() {
+        return Ok(Duration::from_secs(secs));
+    }
+
+    // Parse with suffix
+    let (num_str, unit) = s.split_at(s.len().saturating_sub(1));
+    let num: u64 = num_str
+        .parse()
+        .map_err(|_| anyhow::anyhow!("invalid duration format: {}", s))?;
+
+    match unit {
+        "s" => Ok(Duration::from_secs(num)),
+        "m" => Ok(Duration::from_secs(num * 60)),
+        "h" => Ok(Duration::from_secs(num * 60 * 60)),
+        _ => anyhow::bail!("invalid duration unit '{}', expected s/m/h", unit),
+    }
+}
+
+/// Wait for a deploy to reach a terminal status.
+async fn wait_for_deploy(
+    client: &ApiClient,
+    org_id: plfm_id::OrgId,
+    app_id: plfm_id::AppId,
+    env_id: plfm_id::EnvId,
+    deploy_id: &str,
+    timeout: Duration,
+    format: OutputFormat,
+) -> Result<DeployResponse> {
+    let path = format!(
+        "/v1/orgs/{}/apps/{}/envs/{}/deploys/{}",
+        org_id, app_id, env_id, deploy_id
+    );
+
+    let start = Instant::now();
+    let mut last_status = String::new();
+
+    loop {
+        let response: DeployResponse = client.get(&path).await?;
+
+        // Print status updates (only in table mode, and only when status changes)
+        if matches!(format, OutputFormat::Table) && response.status != last_status {
+            print_info(&format!(
+                "Deploy {} status: {}",
+                deploy_id, response.status
+            ));
+            last_status = response.status.clone();
+        }
+
+        // Check if terminal status
+        if TERMINAL_STATUSES.contains(&response.status.as_str()) {
+            if response.status == "completed" {
+                return Ok(response);
+            } else {
+                anyhow::bail!(
+                    "Deploy {} {}: {}",
+                    deploy_id,
+                    response.status,
+                    response.message.as_deref().unwrap_or("no details")
+                );
+            }
+        }
+
+        // Check timeout
+        if start.elapsed() > timeout {
+            anyhow::bail!(
+                "Timeout waiting for deploy {} to complete (last status: {})",
+                deploy_id,
+                response.status
+            );
+        }
+
+        sleep(POLL_INTERVAL).await;
+    }
 }
 
 impl ApplyCommand {
@@ -187,26 +298,72 @@ impl ApplyCommand {
             .post_with_idempotency_key(&deploy_path, &deploy_req, Some(deploy_idem.as_str()))
             .await?;
 
+        let deploy_id = deploy.id.clone();
+
+        // Parse wait timeout if provided
+        let wait_timeout = match self.wait_timeout.as_deref() {
+            Some(t) => parse_duration(t)?,
+            None => DEFAULT_WAIT_TIMEOUT,
+        };
+
+        // Print initial success (before waiting)
         match ctx.format {
-            OutputFormat::Json => {
+            OutputFormat::Json if !self.wait => {
                 let out = serde_json::json!({
                     "manifest_hash": manifest_hash,
                     "image_ref": image_ref,
                     "image_digest": image_digest,
                     "process_types": process_types,
                     "release_id": release.id,
-                    "deploy_id": deploy.id,
+                    "deploy_id": deploy_id,
                 });
                 print_single(&out, ctx.format);
             }
             OutputFormat::Table => {
                 print_success(&format!(
                     "Applied manifest (release {}, deploy {})",
-                    release.id, deploy.id
+                    release.id, deploy_id
                 ));
+            }
+            _ => {}
+        }
+
+        // Wait for convergence if requested
+        if self.wait {
+            let final_deploy = wait_for_deploy(
+                &client,
+                org_id,
+                app_id,
+                env_id,
+                &deploy_id,
+                wait_timeout,
+                ctx.format,
+            )
+            .await?;
+
+            match ctx.format {
+                OutputFormat::Json => {
+                    let out = serde_json::json!({
+                        "manifest_hash": manifest_hash,
+                        "image_ref": image_ref,
+                        "image_digest": image_digest,
+                        "process_types": process_types,
+                        "release_id": release.id,
+                        "deploy_id": deploy_id,
+                        "status": final_deploy.status,
+                    });
+                    print_single(&out, ctx.format);
+                }
+                OutputFormat::Table => {
+                    print_success(&format!("Deploy {} completed successfully", deploy_id));
+                }
+            }
+        } else {
+            // Only print next steps if not waiting
+            if matches!(ctx.format, OutputFormat::Table) {
                 print_info(&format!(
                     "Next: vt deploys get {}  # (or vt deploys list)",
-                    deploy.id
+                    deploy_id
                 ));
                 print_info("Next: vt instances list");
                 print_info("Next: vt logs stream");

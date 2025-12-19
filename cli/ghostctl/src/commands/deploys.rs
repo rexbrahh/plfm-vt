@@ -1,14 +1,24 @@
 //! Deploy commands.
 
+use std::time::Duration;
+
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
+use tokio::time::{sleep, Instant};
 
+use crate::client::ApiClient;
 use crate::error::CliError;
-use crate::output::{print_output, print_single, print_success, OutputFormat};
+use crate::output::{print_info, print_output, print_single, print_success, OutputFormat};
 
 use super::CommandContext;
+
+/// Default timeout for waiting on deploy convergence.
+const DEFAULT_WAIT_TIMEOUT: Duration = Duration::from_secs(5 * 60); // 5 minutes
+
+/// Polling interval for deploy status checks.
+const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 /// Deploy commands.
 #[derive(Debug, Args)]
@@ -55,12 +65,36 @@ struct CreateDeployArgs {
     /// Deploy strategy (v1 only supports rolling).
     #[arg(long, default_value = "rolling")]
     strategy: String,
+
+    /// Wait for deploy to complete before returning.
+    #[arg(long)]
+    wait: bool,
+
+    /// Timeout for waiting (e.g., "5m", "300s"). Default is 5 minutes.
+    #[arg(long, value_name = "DURATION")]
+    wait_timeout: Option<String>,
+
+    /// Do not wait for deploy (default behavior, explicit flag for clarity).
+    #[arg(long, conflicts_with = "wait")]
+    no_wait: bool,
 }
 
 #[derive(Debug, Args)]
 struct RollbackArgs {
     /// Release ID to roll back to.
     release: String,
+
+    /// Wait for rollback to complete before returning.
+    #[arg(long)]
+    wait: bool,
+
+    /// Timeout for waiting (e.g., "5m", "300s"). Default is 5 minutes.
+    #[arg(long, value_name = "DURATION")]
+    wait_timeout: Option<String>,
+
+    /// Do not wait for rollback (default behavior, explicit flag for clarity).
+    #[arg(long, conflicts_with = "wait")]
+    no_wait: bool,
 }
 
 #[derive(Debug, Args)]
@@ -155,6 +189,94 @@ struct RollbackRequest {
     release_id: String,
 }
 
+/// Terminal deploy statuses that indicate the deploy is done.
+const TERMINAL_STATUSES: &[&str] = &["completed", "failed", "cancelled"];
+
+/// Parse a duration string like "5m", "300s", "2h" into a Duration.
+fn parse_duration(s: &str) -> Result<Duration> {
+    let s = s.trim();
+    if s.is_empty() {
+        anyhow::bail!("duration cannot be empty");
+    }
+
+    // Try to parse as just seconds first
+    if let Ok(secs) = s.parse::<u64>() {
+        return Ok(Duration::from_secs(secs));
+    }
+
+    // Parse with suffix
+    let (num_str, unit) = s.split_at(s.len().saturating_sub(1));
+    let num: u64 = num_str
+        .parse()
+        .map_err(|_| anyhow::anyhow!("invalid duration format: {}", s))?;
+
+    match unit {
+        "s" => Ok(Duration::from_secs(num)),
+        "m" => Ok(Duration::from_secs(num * 60)),
+        "h" => Ok(Duration::from_secs(num * 60 * 60)),
+        _ => anyhow::bail!("invalid duration unit '{}', expected s/m/h", unit),
+    }
+}
+
+/// Wait for a deploy to reach a terminal status.
+///
+/// Returns Ok(status) on success, or Err if timeout/failure.
+async fn wait_for_deploy(
+    client: &ApiClient,
+    org_id: plfm_id::OrgId,
+    app_id: plfm_id::AppId,
+    env_id: plfm_id::EnvId,
+    deploy_id: &str,
+    timeout: Duration,
+    format: OutputFormat,
+) -> Result<DeployResponse> {
+    let path = format!(
+        "/v1/orgs/{}/apps/{}/envs/{}/deploys/{}",
+        org_id, app_id, env_id, deploy_id
+    );
+
+    let start = Instant::now();
+    let mut last_status = String::new();
+
+    loop {
+        let response: DeployResponse = client.get(&path).await?;
+
+        // Print status updates (only in table mode, and only when status changes)
+        if matches!(format, OutputFormat::Table) && response.status != last_status {
+            print_info(&format!(
+                "Deploy {} status: {}",
+                deploy_id, response.status
+            ));
+            last_status = response.status.clone();
+        }
+
+        // Check if terminal status
+        if TERMINAL_STATUSES.contains(&response.status.as_str()) {
+            if response.status == "completed" {
+                return Ok(response);
+            } else {
+                anyhow::bail!(
+                    "Deploy {} {}: {}",
+                    deploy_id,
+                    response.status,
+                    response.message.as_deref().unwrap_or("no details")
+                );
+            }
+        }
+
+        // Check timeout
+        if start.elapsed() > timeout {
+            anyhow::bail!(
+                "Timeout waiting for deploy {} to complete (last status: {})",
+                deploy_id,
+                response.status
+            );
+        }
+
+        sleep(POLL_INTERVAL).await;
+    }
+}
+
 /// Require an env to be specified.
 fn require_env(ctx: &CommandContext) -> Result<&str> {
     ctx.resolve_env().ok_or_else(|| {
@@ -201,6 +323,12 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
 
     super::secrets::ensure_secrets_configured(&client, org_id, app_id, env_id).await?;
 
+    // Parse wait timeout if provided
+    let wait_timeout = match args.wait_timeout.as_deref() {
+        Some(t) => parse_duration(t)?,
+        None => DEFAULT_WAIT_TIMEOUT,
+    };
+
     let request = CreateDeployRequest {
         release_id: args.release.clone(),
         process_types: if args.process_type.is_empty() {
@@ -223,13 +351,34 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
+    let deploy_id = response.id.clone();
+
     match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
+        OutputFormat::Json if !args.wait => print_single(&response, ctx.format),
         OutputFormat::Table => {
-            print_success(&format!(
-                "Created deploy {} for env {}",
-                response.id, env_id
-            ));
+            print_success(&format!("Created deploy {} for env {}", deploy_id, env_id));
+        }
+        _ => {}
+    }
+
+    // Wait for convergence if requested
+    if args.wait {
+        let final_response = wait_for_deploy(
+            &client,
+            org_id,
+            app_id,
+            env_id,
+            &deploy_id,
+            wait_timeout,
+            ctx.format,
+        )
+        .await?;
+
+        match ctx.format {
+            OutputFormat::Json => print_single(&final_response, ctx.format),
+            OutputFormat::Table => {
+                print_success(&format!("Deploy {} completed successfully", deploy_id));
+            }
         }
     }
 
@@ -248,6 +397,12 @@ async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
 
     super::secrets::ensure_secrets_configured(&client, org_id, app_id, env_id).await?;
 
+    // Parse wait timeout if provided
+    let wait_timeout = match args.wait_timeout.as_deref() {
+        Some(t) => parse_duration(t)?,
+        None => DEFAULT_WAIT_TIMEOUT,
+    };
+
     let request = RollbackRequest {
         release_id: args.release.clone(),
     };
@@ -264,13 +419,34 @@ async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
+    let deploy_id = response.id.clone();
+
     match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
+        OutputFormat::Json if !args.wait => print_single(&response, ctx.format),
         OutputFormat::Table => {
-            print_success(&format!(
-                "Created rollback {} for env {}",
-                response.id, env_id
-            ));
+            print_success(&format!("Created rollback {} for env {}", deploy_id, env_id));
+        }
+        _ => {}
+    }
+
+    // Wait for convergence if requested
+    if args.wait {
+        let final_response = wait_for_deploy(
+            &client,
+            org_id,
+            app_id,
+            env_id,
+            &deploy_id,
+            wait_timeout,
+            ctx.format,
+        )
+        .await?;
+
+        match ctx.format {
+            OutputFormat::Json => print_single(&final_response, ctx.format),
+            OutputFormat::Table => {
+                print_success(&format!("Rollback {} completed successfully", deploy_id));
+            }
         }
     }
 
