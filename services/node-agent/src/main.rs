@@ -10,6 +10,12 @@
 //! - **Reconciler**: Fetches plans and applies them via the instance manager
 //! - **Instance Manager**: Tracks desired vs actual state of instances
 //! - **Runtime**: Abstracts VM lifecycle operations (mock in dev, Firecracker in prod)
+//!
+//! ## Modules
+//!
+//! - `firecracker`: Firecracker microVM runtime implementation
+//! - `image`: OCI image fetching and root disk building
+//! - `state`: Local SQLite state persistence
 
 use std::sync::Arc;
 
@@ -20,10 +26,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 mod client;
 mod config;
+pub mod firecracker;
 mod heartbeat;
+pub mod image;
 mod instance;
 mod reconciler;
 mod runtime;
+pub mod state;
 
 use instance::InstanceManager;
 use reconciler::{Reconciler, ReconcilerConfig};

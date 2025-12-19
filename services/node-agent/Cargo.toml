@@ -20,6 +20,8 @@ tokio = { workspace = true }
 
 # HTTP client
 reqwest = { workspace = true }
+hyper = { version = "0.14", features = ["client", "http1"] }
+hyperlocal = "0.8"
 
 # Serialization
 serde = { workspace = true }
@@ -38,6 +40,20 @@ tracing-subscriber = { workspace = true }
 
 # Async traits
 async-trait = { workspace = true }
+
+# Firecracker runtime
+libc = "0.2"
+
+# OCI image handling
+flate2 = "1.0"
+tar = "0.4"
+sha2 = { workspace = true }
+hex = "0.4"
+futures-core = { workspace = true }
+tokio-stream = "0.1"
+
+# Local state persistence
+rusqlite = { version = "0.31", features = ["bundled"] }
 
 [dev-dependencies]
 rstest = { workspace = true }
