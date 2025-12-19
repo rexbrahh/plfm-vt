@@ -91,6 +91,7 @@ testcontainers = "0.15"
 
 # Crypto
 sha2 = "0.10"
+toml = "0.8"
 
 # Internal crates
 plfm-id = { path = "libs/id" }

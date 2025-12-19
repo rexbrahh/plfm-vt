@@ -32,6 +32,10 @@ chrono = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
 
+# Manifest + hashing
+sha2 = { workspace = true }
+toml = { workspace = true }
+
 # Config directory
 directories = { workspace = true }
 

@@ -1,5 +1,7 @@
 //! Release commands.
 
+use std::path::PathBuf;
+
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -53,9 +55,13 @@ struct CreateReleaseArgs {
     #[arg(long, default_value_t = 1)]
     manifest_schema_version: i32,
 
+    /// Manifest file path (TOML). If omitted, defaults to ./vt.toml when present.
+    #[arg(long, value_name = "PATH")]
+    manifest: Option<PathBuf>,
+
     /// Manifest hash (sha256:...).
     #[arg(long)]
-    manifest_hash: String,
+    manifest_hash: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -150,11 +156,22 @@ async fn create_release(ctx: CommandContext, args: CreateReleaseArgs) -> Result<
     let app = ctx.require_app()?;
     let client = ctx.client()?;
 
+    if args.manifest.is_some() && args.manifest_hash.is_some() {
+        anyhow::bail!("use either --manifest or --manifest-hash (not both)");
+    }
+
+    let manifest_hash = if let Some(hash) = args.manifest_hash.as_deref() {
+        hash.to_string()
+    } else {
+        let path = args.manifest.unwrap_or_else(|| PathBuf::from("vt.toml"));
+        crate::manifest::manifest_hash_from_path(&path)?
+    };
+
     let request = CreateReleaseRequest {
         image_ref: args.image_ref.clone(),
         image_digest: args.image_digest.clone(),
         manifest_schema_version: args.manifest_schema_version,
-        manifest_hash: args.manifest_hash.clone(),
+        manifest_hash,
     };
 
     let response: ReleaseResponse = client
