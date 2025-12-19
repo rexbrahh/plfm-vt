@@ -25,6 +25,9 @@ enum DeploysSubcommand {
     /// Create a new deploy (deploy a release to an environment).
     Create(CreateDeployArgs),
 
+    /// Create a rollback (select a previous release).
+    Rollback(RollbackArgs),
+
     /// Get deploy details.
     Get(GetDeployArgs),
 }
@@ -34,9 +37,19 @@ struct CreateDeployArgs {
     /// Release ID to deploy.
     release: String,
 
-    /// Optional description.
+    /// Process type(s) to deploy (repeatable).
     #[arg(long)]
-    description: Option<String>,
+    process_type: Vec<String>,
+
+    /// Deploy strategy (v1 only supports rolling).
+    #[arg(long, default_value = "rolling")]
+    strategy: String,
+}
+
+#[derive(Debug, Args)]
+struct RollbackArgs {
+    /// Release ID to roll back to.
+    release: String,
 }
 
 #[derive(Debug, Args)]
@@ -50,6 +63,7 @@ impl DeploysCommand {
         match self.command {
             DeploysSubcommand::List => list_deploys(ctx).await,
             DeploysSubcommand::Create(args) => create_deploy(ctx, args).await,
+            DeploysSubcommand::Rollback(args) => rollback(ctx, args).await,
             DeploysSubcommand::Get(args) => get_deploy(ctx, args).await,
         }
     }
@@ -61,17 +75,51 @@ struct DeployResponse {
     #[tabled(rename = "ID")]
     id: String,
 
+    #[tabled(rename = "Org")]
+    org_id: String,
+
+    #[tabled(rename = "App")]
+    app_id: String,
+
     #[tabled(rename = "Env ID")]
     env_id: String,
+
+    #[tabled(rename = "Kind")]
+    kind: String,
 
     #[tabled(rename = "Release ID")]
     release_id: String,
 
+    #[tabled(rename = "Processes", display_with = "display_process_types")]
+    process_types: Vec<String>,
+
     #[tabled(rename = "Status")]
     status: String,
 
+    #[tabled(rename = "Message", display_with = "display_option")]
+    #[serde(default)]
+    message: Option<String>,
+
+    #[tabled(rename = "Ver")]
+    resource_version: i32,
+
     #[tabled(rename = "Created")]
     created_at: String,
+
+    #[tabled(rename = "Updated")]
+    updated_at: String,
+}
+
+fn display_option(opt: &Option<String>) -> String {
+    opt.as_deref().unwrap_or("-").to_string()
+}
+
+fn display_process_types(process_types: &[String]) -> String {
+    if process_types.is_empty() {
+        "-".to_string()
+    } else {
+        process_types.join(",")
+    }
 }
 
 /// List response from API.
@@ -87,7 +135,14 @@ struct ListDeploysResponse {
 struct CreateDeployRequest {
     release_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
+    process_types: Option<Vec<String>>,
+    strategy: String,
+}
+
+/// Rollback request.
+#[derive(Debug, Serialize)]
+struct RollbackRequest {
+    release_id: String,
 }
 
 /// Require an env to be specified.
@@ -124,7 +179,12 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
 
     let request = CreateDeployRequest {
         release_id: args.release.clone(),
-        description: args.description,
+        process_types: if args.process_type.is_empty() {
+            None
+        } else {
+            Some(args.process_type)
+        },
+        strategy: args.strategy,
     };
 
     let response: DeployResponse = client
@@ -137,10 +197,35 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
     match ctx.format {
         OutputFormat::Json => print_single(&response, ctx.format),
         OutputFormat::Table => {
-            print_success(&format!(
-                "Created deploy {} for env {} with release {}",
-                response.id, env, args.release
-            ));
+            print_success(&format!("Created deploy {} for env {}", response.id, env));
+        }
+    }
+
+    Ok(())
+}
+
+/// Create a rollback (represented as a deploy).
+async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
+    let org = ctx.require_org()?;
+    let app = ctx.require_app()?;
+    let env = require_env(&ctx)?;
+    let client = ctx.client()?;
+
+    let request = RollbackRequest {
+        release_id: args.release.clone(),
+    };
+
+    let response: DeployResponse = client
+        .post(
+            &format!("/v1/orgs/{}/apps/{}/envs/{}/rollbacks", org, app, env),
+            &request,
+        )
+        .await?;
+
+    match ctx.format {
+        OutputFormat::Json => print_single(&response, ctx.format),
+        OutputFormat::Table => {
+            print_success(&format!("Created rollback {} for env {}", response.id, env));
         }
     }
 

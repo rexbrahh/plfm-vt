@@ -31,12 +31,20 @@ enum ReleasesSubcommand {
 
 #[derive(Debug, Args)]
 struct CreateReleaseArgs {
-    /// OCI image reference (e.g., ghcr.io/org/app:v1.0.0).
-    image: String,
+    /// OCI image reference (e.g., ghcr.io/org/app@sha256:...).
+    image_ref: String,
 
-    /// Optional description.
+    /// Image digest (sha256:...).
     #[arg(long)]
-    description: Option<String>,
+    image_digest: String,
+
+    /// Manifest schema version.
+    #[arg(long, default_value_t = 1)]
+    manifest_schema_version: i32,
+
+    /// Manifest hash (sha256:...).
+    #[arg(long)]
+    manifest_hash: String,
 }
 
 #[derive(Debug, Args)]
@@ -61,17 +69,26 @@ struct ReleaseResponse {
     #[tabled(rename = "ID")]
     id: String,
 
+    #[tabled(rename = "Org")]
+    org_id: String,
+
     #[tabled(rename = "App ID")]
     app_id: String,
 
-    #[tabled(rename = "Image")]
-    image: String,
+    #[tabled(rename = "Image Ref")]
+    image_ref: String,
+
+    #[tabled(rename = "Image Digest")]
+    image_digest: String,
+
+    #[tabled(rename = "Manifest Ver")]
+    manifest_schema_version: i32,
 
     #[tabled(rename = "Manifest Hash")]
     manifest_hash: String,
 
-    #[tabled(rename = "Status")]
-    status: String,
+    #[tabled(rename = "Ver")]
+    resource_version: i32,
 
     #[tabled(rename = "Created")]
     created_at: String,
@@ -88,9 +105,10 @@ struct ListReleasesResponse {
 /// Create release request.
 #[derive(Debug, Serialize)]
 struct CreateReleaseRequest {
-    image: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
+    image_ref: String,
+    image_digest: String,
+    manifest_schema_version: i32,
+    manifest_hash: String,
 }
 
 /// List all releases for the current app.
@@ -114,8 +132,10 @@ async fn create_release(ctx: CommandContext, args: CreateReleaseArgs) -> Result<
     let client = ctx.client()?;
 
     let request = CreateReleaseRequest {
-        image: args.image.clone(),
-        description: args.description,
+        image_ref: args.image_ref.clone(),
+        image_digest: args.image_digest.clone(),
+        manifest_schema_version: args.manifest_schema_version,
+        manifest_hash: args.manifest_hash.clone(),
     };
 
     let response: ReleaseResponse = client
@@ -125,10 +145,7 @@ async fn create_release(ctx: CommandContext, args: CreateReleaseArgs) -> Result<
     match ctx.format {
         OutputFormat::Json => print_single(&response, ctx.format),
         OutputFormat::Table => {
-            print_success(&format!(
-                "Created release {} for app {} with image {}",
-                response.id, app, args.image
-            ));
+            print_success(&format!("Created release {} for app {}", response.id, app));
         }
     }
 

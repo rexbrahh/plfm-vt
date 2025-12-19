@@ -45,9 +45,29 @@ pub struct CreateDeployRequest {
     #[serde(default)]
     pub process_types: Option<Vec<String>>,
 
-    /// Whether this is a rollback.
+    /// Deploy strategy (v1 only supports rolling).
     #[serde(default)]
-    pub is_rollback: bool,
+    pub strategy: DeployStrategy,
+}
+
+/// Deploy strategy (v1).
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeployStrategy {
+    Rolling,
+}
+
+impl Default for DeployStrategy {
+    fn default() -> Self {
+        Self::Rolling
+    }
+}
+
+/// Request to create a rollback (select a previous release).
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RollbackRequest {
+    /// Release ID to roll back to.
+    pub release_id: String,
 }
 
 /// Response for a single deploy.
@@ -221,11 +241,7 @@ async fn create_deploy(
     }
 
     let deploy_id = DeployId::new();
-    let kind = if req.is_rollback {
-        "rollback"
-    } else {
-        "deploy"
-    };
+    let kind = "deploy";
     let process_types = req.process_types.unwrap_or_else(|| vec!["web".to_string()]);
 
     // Create the event
@@ -305,6 +321,221 @@ async fn create_deploy(
         let body = serde_json::to_value(&response).map_err(|e| {
             tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
             ApiError::internal("internal_error", "Failed to create deploy")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+/// Create a rollback (represented as a deploy with kind=rollback).
+///
+/// POST /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/rollbacks
+pub async fn create_rollback(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    Path((org_id, app_id, env_id)): Path<(String, String, String)>,
+    Json(req): Json<RollbackRequest>,
+) -> Result<Response, ApiError> {
+    let RequestContext {
+        request_id,
+        idempotency_key,
+        actor_type,
+        actor_id,
+    } = ctx;
+    let endpoint_name = "rollbacks.create";
+
+    // Validate IDs
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let app_id: AppId = app_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_app_id", "Invalid application ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let env_id: EnvId = env_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let release_id: ReleaseId = req.release_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_release_id", "Invalid release ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "app_id": app_id.to_string(),
+                "env_id": env_id.to_string(),
+                "body": &req
+            });
+            idempotency::request_hash(endpoint_name, &hash_input)
+                .map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
+
+    // Validate env exists and belongs to app
+    let env_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM envs_view WHERE env_id = $1 AND app_id = $2 AND NOT is_deleted)",
+    )
+    .bind(env_id.to_string())
+    .bind(app_id.to_string())
+    .fetch_one(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to check env existence");
+        ApiError::internal("internal_error", "Failed to verify environment")
+            .with_request_id(request_id.clone())
+    })?;
+
+    if !env_exists {
+        return Err(ApiError::not_found(
+            "env_not_found",
+            format!("Environment {} not found in application {}", env_id, app_id),
+        )
+        .with_request_id(request_id.clone()));
+    }
+
+    // Validate release exists and belongs to app
+    let release_exists = sqlx::query_scalar::<_, bool>(
+        "SELECT EXISTS(SELECT 1 FROM releases_view WHERE release_id = $1 AND app_id = $2)",
+    )
+    .bind(release_id.to_string())
+    .bind(app_id.to_string())
+    .fetch_one(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to check release existence");
+        ApiError::internal("internal_error", "Failed to verify release")
+            .with_request_id(request_id.clone())
+    })?;
+
+    if !release_exists {
+        return Err(ApiError::not_found(
+            "release_not_found",
+            format!("Release {} not found in application {}", release_id, app_id),
+        )
+        .with_request_id(request_id.clone()));
+    }
+
+    let deploy_id = DeployId::new();
+    let process_types = vec!["web".to_string()];
+
+    let event = AppendEvent {
+        aggregate_type: AggregateType::Deploy,
+        aggregate_id: deploy_id.to_string(),
+        aggregate_seq: 1,
+        event_type: "deploy.created".to_string(),
+        event_version: 1,
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: Some(env_id),
+        correlation_id: None,
+        causation_id: None,
+        payload: serde_json::json!({
+            "release_id": release_id.to_string(),
+            "kind": "rollback",
+            "process_types": process_types,
+            "status": DeployStatus::Queued
+        }),
+    };
+
+    let event_store = state.db().event_store();
+    let event_id = event_store.append(event).await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to create rollback");
+        ApiError::internal("internal_error", "Failed to create rollback")
+            .with_request_id(request_id.clone())
+    })?;
+
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "deploys",
+            event_id.value(),
+            std::time::Duration::from_secs(2),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
+
+    let row = sqlx::query_as::<_, DeployRow>(
+        r#"
+        SELECT deploy_id, org_id, app_id, env_id, kind, release_id, process_types,
+               status, message, resource_version, created_at, updated_at
+        FROM deploys_view
+        WHERE deploy_id = $1 AND org_id = $2 AND app_id = $3 AND env_id = $4
+        "#,
+    )
+    .bind(deploy_id.to_string())
+    .bind(&org_scope)
+    .bind(app_id.to_string())
+    .bind(env_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load rollback deploy");
+        ApiError::internal("internal_error", "Failed to load rollback")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::internal("internal_error", "Rollback deploy was not materialized")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let response = DeployResponse::from(row);
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to create rollback")
                 .with_request_id(request_id.clone())
         })?;
 
@@ -521,7 +752,7 @@ mod tests {
             req.process_types,
             Some(vec!["web".to_string(), "worker".to_string()])
         );
-        assert!(!req.is_rollback);
+        assert!(matches!(req.strategy, DeployStrategy::Rolling));
     }
 
     #[test]
@@ -530,7 +761,7 @@ mod tests {
         let req: CreateDeployRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.release_id, "rel_123");
         assert_eq!(req.process_types, None);
-        assert!(!req.is_rollback);
+        assert!(matches!(req.strategy, DeployStrategy::Rolling));
     }
 
     #[test]

@@ -2168,18 +2168,35 @@ components:
 
     Release:
       type: object
-      required: [id, app_id, image, manifest_hash, created_at]
+      required:
+        [
+          id,
+          org_id,
+          app_id,
+          image_ref,
+          image_digest,
+          manifest_schema_version,
+          manifest_hash,
+          resource_version,
+          created_at,
+        ]
       properties:
         id:
           type: string
+        org_id:
+          type: string
         app_id:
           type: string
-        image:
-          $ref: "#/components/schemas/ReleaseImage"
+        image_ref:
+          type: string
+        image_digest:
+          type: string
         manifest_hash:
           type: string
         manifest_schema_version:
-          type: string
+          type: integer
+        resource_version:
+          type: integer
         created_at:
           type: string
 
@@ -2209,14 +2226,20 @@ components:
 
     CreateReleaseRequest:
       type: object
-      required: [image_ref, manifest_toml]
+      required: [image_ref, image_digest, manifest_hash]
       properties:
         image_ref:
           type: string
-          description: OCI reference (tag allowed, resolved to digest)
-        manifest_toml:
+          description: OCI reference (must be pinned by digest in v1)
+        image_digest:
           type: string
-          description: Raw manifest TOML content (schema_version v1)
+          description: Image digest (sha256:...)
+        manifest_schema_version:
+          type: integer
+          default: 1
+        manifest_hash:
+          type: string
+          description: Hash of manifest content (sha256:...)
 
     ListReleasesResponse:
       type: object
@@ -2231,12 +2254,32 @@ components:
 
     Deploy:
       type: object
-      required: [id, env_id, release_id, status, created_at]
+      required:
+        [
+          id,
+          org_id,
+          app_id,
+          env_id,
+          kind,
+          release_id,
+          process_types,
+          status,
+          resource_version,
+          created_at,
+          updated_at,
+        ]
       properties:
         id:
           type: string
+        org_id:
+          type: string
+        app_id:
+          type: string
         env_id:
           type: string
+        kind:
+          type: string
+          enum: [deploy, rollback]
         release_id:
           type: string
         process_types:
@@ -2246,6 +2289,10 @@ components:
         status:
           type: string
           enum: [queued, rolling, succeeded, failed]
+        message:
+          type: [string, "null"]
+        resource_version:
+          type: integer
         created_at:
           type: string
         updated_at:
