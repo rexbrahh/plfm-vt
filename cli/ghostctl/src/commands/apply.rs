@@ -141,6 +141,8 @@ impl ApplyCommand {
         let app_id = crate::resolve::resolve_app_id(&client, org_id, app_ident).await?;
         let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env_ident).await?;
 
+        super::secrets::ensure_secrets_configured(&client, org_id, app_id, env_id).await?;
+
         // 1) Create release from (image digest + manifest hash).
         let release_path = format!("/v1/orgs/{}/apps/{}/releases", org_id, app_id);
         let release_req = CreateReleaseRequest {

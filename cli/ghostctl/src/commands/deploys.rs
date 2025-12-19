@@ -199,6 +199,8 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
     let app_id = crate::resolve::resolve_app_id(&client, org_id, app).await?;
     let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env).await?;
 
+    super::secrets::ensure_secrets_configured(&client, org_id, app_id, env_id).await?;
+
     let request = CreateDeployRequest {
         release_id: args.release.clone(),
         process_types: if args.process_type.is_empty() {
@@ -243,6 +245,8 @@ async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
     let org_id = crate::resolve::resolve_org_id(&client, org).await?;
     let app_id = crate::resolve::resolve_app_id(&client, org_id, app).await?;
     let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env).await?;
+
+    super::secrets::ensure_secrets_configured(&client, org_id, app_id, env_id).await?;
 
     let request = RollbackRequest {
         release_id: args.release.clone(),

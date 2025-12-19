@@ -28,6 +28,9 @@ enum SecretsSubcommand {
 
     /// Set secrets for the current environment (creates a new version).
     Set(SetSecretsArgs),
+
+    /// Confirm that this environment has no secrets (creates an empty version).
+    Confirm(ConfirmSecretsArgs),
 }
 
 #[derive(Debug, Args)]
@@ -39,6 +42,13 @@ struct SetSecretsArgs {
     /// Set secrets from key/value pairs (repeatable): --value KEY=VALUE
     #[arg(long = "value", value_name = "KEY=VALUE")]
     values: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+struct ConfirmSecretsArgs {
+    /// Acknowledge that this environment has no secrets.
+    #[arg(long)]
+    none: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Tabled)]
@@ -76,6 +86,7 @@ impl SecretsCommand {
         match self.command {
             SecretsSubcommand::Get => get_secrets(ctx).await,
             SecretsSubcommand::Set(args) => set_secrets(ctx, args).await,
+            SecretsSubcommand::Confirm(args) => confirm_secrets_none(ctx, args).await,
         }
     }
 }
@@ -104,6 +115,25 @@ async fn get_secrets(ctx: CommandContext) -> Result<()> {
         OutputFormat::Table => print_single(&metadata, ctx.format),
     }
 
+    Ok(())
+}
+
+pub(super) async fn ensure_secrets_configured(
+    client: &crate::client::ApiClient,
+    org_id: plfm_id::OrgId,
+    app_id: plfm_id::AppId,
+    env_id: plfm_id::EnvId,
+) -> Result<(), crate::error::CliError> {
+    let path = format!("/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/secrets");
+    let _: SecretsMetadata = client.get(&path).await.map_err(|e| match e {
+        crate::error::CliError::Api { status: 404, .. } => crate::error::CliError::NotFound(
+            format!(
+                "No secrets configured for env {}. Run `vt secrets set ...` or `vt secrets confirm --none`.",
+                env_id
+            ),
+        ),
+        other => other,
+    })?;
     Ok(())
 }
 
@@ -153,6 +183,46 @@ async fn set_secrets(ctx: CommandContext, args: SetSecretsArgs) -> Result<()> {
         OutputFormat::Table => {
             print_success(&format!(
                 "Updated secrets for {}/{}/{} (version {})",
+                org_id, app_id, env_id, response.current_version_id
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+async fn confirm_secrets_none(ctx: CommandContext, args: ConfirmSecretsArgs) -> Result<()> {
+    if !args.none {
+        anyhow::bail!("Only `--none` is supported (use: vt secrets confirm --none)");
+    }
+
+    let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+    let env_id =
+        crate::resolve::resolve_env_id(&client, org_id, app_id, require_env(&ctx)?).await?;
+
+    let path = format!("/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/secrets");
+    let request = PutSecretsRequest::Map(PutSecretsMapRequest {
+        values: BTreeMap::new(),
+    });
+
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => {
+            crate::idempotency::default_idempotency_key("secrets.confirm_none", &path, &request)?
+        }
+    };
+
+    let response: SecretsMetadata = client
+        .put_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
+        .await?;
+
+    match ctx.format {
+        OutputFormat::Json => print_single(&response, ctx.format),
+        OutputFormat::Table => {
+            print_success(&format!(
+                "Confirmed no secrets for {}/{}/{} (version {})",
                 org_id, app_id, env_id, response.current_version_id
             ));
         }
