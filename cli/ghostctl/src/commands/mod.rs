@@ -84,8 +84,9 @@ enum Commands {
     /// Manage deploys (release to environment).
     Deploys(deploys::DeploysCommand),
 
-    /// Apply a manifest (create release + deploy).
-    Apply(apply::ApplyCommand),
+    /// Deploy a manifest (create release + deploy).
+    #[command(visible_alias = "apply")]
+    Deploy(apply::ApplyCommand),
 
     /// Manage nodes (infrastructure).
     Nodes(nodes::NodesCommand),
@@ -152,7 +153,7 @@ impl Cli {
             Commands::Envs(cmd) => cmd.run(ctx).await,
             Commands::Releases(cmd) => cmd.run(ctx).await,
             Commands::Deploys(cmd) => cmd.run(ctx).await,
-            Commands::Apply(cmd) => cmd.run(ctx).await,
+            Commands::Deploy(cmd) => cmd.run(ctx).await,
             Commands::Nodes(cmd) => cmd.run(ctx).await,
             Commands::Instances(cmd) => cmd.run(ctx).await,
             Commands::Scale(cmd) => cmd.run(ctx).await,

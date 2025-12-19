@@ -1,6 +1,6 @@
 //! Apply command (manifest-first workflow).
 //!
-//! v1: `vt apply` creates a release from the local manifest + image digest,
+//! v1: `vt deploy` creates a release from the local manifest + image digest,
 //! then creates a deploy for the selected environment.
 
 use std::collections::BTreeSet;

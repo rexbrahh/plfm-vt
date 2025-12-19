@@ -55,7 +55,7 @@ Scope:
 - apply semantics (create/update)
 - clear diff and preview output
 DoD:
-- `ghostctl apply` produces deterministic plans and receipts
+- `vt deploy` (alias: `vt apply`) produces deterministic plans and receipts
 - schema validation works offline in CLI
 
 Milestone 3: Node agent minimal runtime (Team Runtime)
