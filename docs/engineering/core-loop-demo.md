@@ -12,6 +12,14 @@ This demo validates the control-plane “core loop hardening” behaviors end-to
 - `curl`
 - `jq`
 
+## Auth
+
+The demo uses the dev auth stub (`Authorization: Bearer user:<email>`). Override as needed:
+
+```bash
+export VT_AUTHORIZATION="Bearer user:demo@example.com"
+```
+
 ## Run
 
 ```bash
@@ -26,14 +34,17 @@ scripts/dev/demo-core-loop.sh
 
 1. Starts the dev Postgres container (`just dev-up`).
 2. Starts `plfm-control-plane` in dev mode (`GHOST_DEV=1`) and waits for `GET /healthz`.
-3. Creates:
+3. Enrolls a demo node so the scheduler can allocate instances.
+4. Creates:
    - org (with idempotency replay)
    - app
    - env
    - release (with idempotency replay)
    - deploy
+   - scale update (GET then PUT `/scale`)
+   - instances list (waits for scheduler allocations)
    - route (with idempotency replay)
-4. Prints projection checkpoints via `GET /v1/_debug/projections`.
+5. Prints projection checkpoints via `GET /v1/_debug/projections`.
 
 ## Notes
 

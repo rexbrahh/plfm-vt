@@ -134,14 +134,14 @@ impl EnvConfigProjection {
             "Setting scale for environment"
         );
 
-        let current_version: Option<i64> = sqlx::query_scalar(
+        let current_version: Option<i32> = sqlx::query_scalar(
             "SELECT MAX(resource_version) FROM env_scale_view WHERE env_id = $1",
         )
         .bind(&payload.env_id)
         .fetch_one(&mut **tx)
         .await?;
 
-        let next_version: i32 = current_version.unwrap_or(0).saturating_add(1) as i32;
+        let next_version = current_version.unwrap_or(0).saturating_add(1);
 
         let process_types: Vec<String> = payload
             .scales
@@ -160,7 +160,7 @@ impl EnvConfigProjection {
         sqlx::query(
             r#"
             DELETE FROM env_scale_view
-            WHERE env_id = $1 AND process_type != ALL($2)
+            WHERE env_id = $1 AND process_type <> ALL($2::TEXT[])
             "#,
         )
         .bind(&payload.env_id)
