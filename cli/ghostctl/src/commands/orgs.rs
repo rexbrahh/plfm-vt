@@ -1,7 +1,7 @@
 //! Organization commands.
 
 use anyhow::Result;
-use clap::{Args, Subcommand};
+use clap::{Args, Subcommand, ValueEnum};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
@@ -27,6 +27,9 @@ enum OrgsSubcommand {
 
     /// Get organization details.
     Get(GetOrgArgs),
+
+    /// Manage organization members.
+    Members(MembersCommand),
 }
 
 #[derive(Debug, Args)]
@@ -47,6 +50,7 @@ impl OrgsCommand {
             OrgsSubcommand::List => list_orgs(ctx).await,
             OrgsSubcommand::Create(args) => create_org(ctx, args).await,
             OrgsSubcommand::Get(args) => get_org(ctx, args).await,
+            OrgsSubcommand::Members(cmd) => cmd.run(ctx).await,
         }
     }
 }
@@ -76,6 +80,256 @@ struct ListOrgsResponse {
 #[derive(Debug, Serialize)]
 struct CreateOrgRequest {
     name: String,
+}
+
+// =============================================================================
+// Org Members
+// =============================================================================
+
+#[derive(Debug, Args)]
+struct MembersCommand {
+    #[command(subcommand)]
+    command: MembersSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+enum MembersSubcommand {
+    /// List org members.
+    List(ListMembersArgs),
+
+    /// Add an org member (admin only).
+    Add(AddMemberArgs),
+
+    /// Update an org member role (admin only).
+    Update(UpdateMemberArgs),
+
+    /// Remove an org member (admin only).
+    Remove(RemoveMemberArgs),
+}
+
+#[derive(Debug, Args)]
+struct ListMembersArgs {
+    /// Maximum number of items to return (1-200).
+    #[arg(long, default_value = "50")]
+    limit: i64,
+
+    /// Pagination cursor (opaque).
+    #[arg(long)]
+    cursor: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct AddMemberArgs {
+    /// Member email.
+    email: String,
+
+    /// Member role.
+    #[arg(long, value_enum, default_value = "developer")]
+    role: MemberRoleArg,
+}
+
+#[derive(Debug, Args)]
+struct UpdateMemberArgs {
+    /// Member ID.
+    member_id: String,
+
+    /// New member role.
+    #[arg(long, value_enum)]
+    role: MemberRoleArg,
+
+    /// Expected resource version (for optimistic concurrency).
+    #[arg(long)]
+    expected_version: i32,
+}
+
+#[derive(Debug, Args)]
+struct RemoveMemberArgs {
+    /// Member ID.
+    member_id: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, ValueEnum)]
+#[serde(rename_all = "snake_case")]
+enum MemberRoleArg {
+    Owner,
+    Admin,
+    Developer,
+    Readonly,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Tabled)]
+struct MemberResponse {
+    #[tabled(rename = "ID")]
+    id: String,
+
+    #[tabled(rename = "Email")]
+    email: String,
+
+    #[tabled(rename = "Role")]
+    role: String,
+
+    #[tabled(rename = "Ver")]
+    resource_version: i32,
+
+    #[tabled(rename = "Updated")]
+    updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ListMembersResponse {
+    items: Vec<MemberResponse>,
+    next_cursor: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateMemberRequest {
+    email: String,
+    role: MemberRoleArg,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateMemberRequest {
+    role: MemberRoleArg,
+    expected_version: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct DeleteResponse {
+    ok: bool,
+}
+
+impl MembersCommand {
+    pub async fn run(self, ctx: CommandContext) -> Result<()> {
+        match self.command {
+            MembersSubcommand::List(args) => list_members(ctx, args).await,
+            MembersSubcommand::Add(args) => add_member(ctx, args).await,
+            MembersSubcommand::Update(args) => update_member(ctx, args).await,
+            MembersSubcommand::Remove(args) => remove_member(ctx, args).await,
+        }
+    }
+}
+
+async fn list_members(ctx: CommandContext, args: ListMembersArgs) -> Result<()> {
+    let org_id = ctx.require_org()?;
+    let client = ctx.client()?;
+
+    let mut path = format!("/v1/orgs/{org_id}/members?limit={}", args.limit);
+    if let Some(cursor) = args.cursor.as_deref() {
+        path.push_str(&format!("&cursor={cursor}"));
+    }
+
+    let response: ListMembersResponse = client.get(&path).await?;
+
+    match ctx.format {
+        OutputFormat::Table => print_output(&response.items, ctx.format),
+        OutputFormat::Json => print_single(&response, ctx.format),
+    }
+
+    Ok(())
+}
+
+async fn add_member(ctx: CommandContext, args: AddMemberArgs) -> Result<()> {
+    let org_id = ctx.require_org()?;
+    let client = ctx.client()?;
+
+    let request = CreateMemberRequest {
+        email: args.email,
+        role: args.role,
+    };
+    let path = format!("/v1/orgs/{org_id}/members");
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("members.create", &path, &request)?,
+    };
+
+    let response: MemberResponse = client
+        .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
+        .await?;
+
+    match ctx.format {
+        OutputFormat::Json => print_single(&response, ctx.format),
+        OutputFormat::Table => {
+            print_success(&format!(
+                "Added member '{}' ({}) to org {} as {}",
+                response.email, response.id, org_id, response.role
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+async fn update_member(ctx: CommandContext, args: UpdateMemberArgs) -> Result<()> {
+    let org_id = ctx.require_org()?;
+    let client = ctx.client()?;
+
+    if args.expected_version < 0 {
+        return Err(anyhow::anyhow!("expected_version must be >= 0"));
+    }
+
+    let request = UpdateMemberRequest {
+        role: args.role,
+        expected_version: args.expected_version,
+    };
+    let path = format!("/v1/orgs/{org_id}/members/{}", args.member_id);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("members.update", &path, &request)?,
+    };
+
+    let response: MemberResponse = client
+        .patch_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
+        .await?;
+
+    match ctx.format {
+        OutputFormat::Json => print_single(&response, ctx.format),
+        OutputFormat::Table => {
+            print_success(&format!(
+                "Updated member '{}' ({}) in org {} to {}",
+                response.email, response.id, org_id, response.role
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+async fn remove_member(ctx: CommandContext, args: RemoveMemberArgs) -> Result<()> {
+    let org_id = ctx.require_org()?;
+    let client = ctx.client()?;
+
+    let request_hash_input = serde_json::json!({
+        "member_id": &args.member_id
+    });
+
+    let path = format!("/v1/orgs/{org_id}/members/{}", args.member_id);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key(
+            "members.delete",
+            &path,
+            &request_hash_input,
+        )?,
+    };
+
+    client
+        .delete_with_idempotency_key(&path, Some(idempotency_key.as_str()))
+        .await?;
+
+    match ctx.format {
+        OutputFormat::Json => {
+            let response = DeleteResponse { ok: true };
+            print_single(&response, ctx.format);
+        }
+        OutputFormat::Table => {
+            print_success(&format!(
+                "Removed member {} from org {}",
+                args.member_id, org_id
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 /// List all organizations.
