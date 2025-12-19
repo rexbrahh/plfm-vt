@@ -123,9 +123,14 @@ async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
     let request = CreateEnvRequest {
         name: args.name.clone(),
     };
+    let path = format!("/v1/orgs/{}/apps/{}/envs", org, app);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("envs.create", &path, &request)?,
+    };
 
     let response: EnvResponse = client
-        .post(&format!("/v1/orgs/{}/apps/{}/envs", org, app), &request)
+        .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
     match ctx.format {

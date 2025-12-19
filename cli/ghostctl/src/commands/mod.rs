@@ -42,6 +42,12 @@ pub struct Cli {
     #[arg(long, global = true, env = "VT_ENV")]
     env: Option<String>,
 
+    /// Idempotency key to use for write operations.
+    ///
+    /// If omitted, the CLI generates a deterministic key per request body.
+    #[arg(long, global = true)]
+    idempotency_key: Option<String>,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -110,6 +116,7 @@ impl Cli {
             org: self.org,
             app: self.app,
             env: self.env,
+            idempotency_key: self.idempotency_key,
         };
 
         match self.command {
@@ -142,6 +149,7 @@ pub struct CommandContext {
     pub org: Option<String>,
     pub app: Option<String>,
     pub env: Option<String>,
+    pub idempotency_key: Option<String>,
 }
 
 impl CommandContext {

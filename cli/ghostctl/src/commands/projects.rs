@@ -115,9 +115,14 @@ async fn create_project(ctx: CommandContext, args: CreateProjectArgs) -> Result<
     let client = ctx.client()?;
 
     let request = CreateProjectRequest { name: args.name };
+    let path = format!("/v1/orgs/{org_id}/projects");
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("projects.create", &path, &request)?,
+    };
 
     let response: ProjectResponse = client
-        .post(&format!("/v1/orgs/{org_id}/projects"), &request)
+        .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
     match ctx.format {

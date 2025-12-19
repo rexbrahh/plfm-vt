@@ -272,12 +272,14 @@ async fn create_route(ctx: CommandContext, args: CreateRouteArgs) -> Result<()> 
         backend_expects_proxy_protocol: args.backend_expects_proxy_protocol,
         ipv4_required: args.ipv4_required,
     };
+    let path = format!("/v1/orgs/{}/apps/{}/envs/{}/routes", org_id, app_id, env_id);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("routes.create", &path, &request)?,
+    };
 
     let response: RouteResponse = client
-        .post(
-            &format!("/v1/orgs/{}/apps/{}/envs/{}/routes", org_id, app_id, env_id),
-            &request,
-        )
+        .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
     match ctx.format {
@@ -310,15 +312,17 @@ async fn update_route(ctx: CommandContext, args: UpdateRouteArgs) -> Result<()> 
         backend_expects_proxy_protocol: args.backend_expects_proxy_protocol,
         ipv4_required: args.ipv4_required,
     };
+    let path = format!(
+        "/v1/orgs/{}/apps/{}/envs/{}/routes/{}",
+        org_id, app_id, env_id, args.route
+    );
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("routes.update", &path, &request)?,
+    };
 
     let response: RouteResponse = client
-        .patch(
-            &format!(
-                "/v1/orgs/{}/apps/{}/envs/{}/routes/{}",
-                org_id, app_id, env_id, args.route
-            ),
-            &request,
-        )
+        .patch_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await
         .map_err(|e| match e {
             CliError::Api { status: 404, .. } => {
@@ -346,11 +350,17 @@ async fn delete_route(ctx: CommandContext, args: DeleteRouteArgs) -> Result<()> 
     let env_id = require_env(&ctx)?;
     let client = ctx.client()?;
 
+    let path = format!(
+        "/v1/orgs/{}/apps/{}/envs/{}/routes/{}",
+        org_id, app_id, env_id, args.route
+    );
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key_no_body("routes.delete", &path),
+    };
+
     client
-        .delete(&format!(
-            "/v1/orgs/{}/apps/{}/envs/{}/routes/{}",
-            org_id, app_id, env_id, args.route
-        ))
+        .delete_with_idempotency_key(&path, Some(idempotency_key.as_str()))
         .await
         .map_err(|e| match e {
             CliError::Api { status: 404, .. } => {

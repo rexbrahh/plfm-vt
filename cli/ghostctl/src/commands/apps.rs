@@ -134,8 +134,13 @@ async fn create_app(ctx: CommandContext, args: CreateAppArgs) -> Result<()> {
         description: args.description,
     };
 
+    let path = format!("/v1/orgs/{}/apps", org);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("apps.create", &path, &request)?,
+    };
     let response: AppResponse = client
-        .post(&format!("/v1/orgs/{}/apps", org), &request)
+        .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
     match ctx.format {

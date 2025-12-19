@@ -202,12 +202,14 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
         },
         strategy: args.strategy,
     };
+    let path = format!("/v1/orgs/{}/apps/{}/envs/{}/deploys", org, app, env);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("deploys.create", &path, &request)?,
+    };
 
     let response: DeployResponse = client
-        .post(
-            &format!("/v1/orgs/{}/apps/{}/envs/{}/deploys", org, app, env),
-            &request,
-        )
+        .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
     match ctx.format {
@@ -230,12 +232,14 @@ async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
     let request = RollbackRequest {
         release_id: args.release.clone(),
     };
+    let path = format!("/v1/orgs/{}/apps/{}/envs/{}/rollbacks", org, app, env);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("rollbacks.create", &path, &request)?,
+    };
 
     let response: DeployResponse = client
-        .post(
-            &format!("/v1/orgs/{}/apps/{}/envs/{}/rollbacks", org, app, env),
-            &request,
-        )
+        .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
     match ctx.format {

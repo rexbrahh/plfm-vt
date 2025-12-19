@@ -173,9 +173,14 @@ async fn create_release(ctx: CommandContext, args: CreateReleaseArgs) -> Result<
         manifest_schema_version: args.manifest_schema_version,
         manifest_hash,
     };
+    let path = format!("/v1/orgs/{}/apps/{}/releases", org, app);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("releases.create", &path, &request)?,
+    };
 
     let response: ReleaseResponse = client
-        .post(&format!("/v1/orgs/{}/apps/{}/releases", org, app), &request)
+        .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
     match ctx.format {

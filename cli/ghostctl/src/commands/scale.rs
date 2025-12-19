@@ -68,12 +68,14 @@ impl ScaleCommand {
         let request = SetScaleRequest {
             process_counts: process_counts.clone(),
         };
+        let path = format!("/v1/orgs/{}/apps/{}/envs/{}/scale", org_id, app_id, env_id);
+        let idempotency_key = match ctx.idempotency_key.as_deref() {
+            Some(key) => key.to_string(),
+            None => crate::idempotency::default_idempotency_key("envs.set_scale", &path, &request)?,
+        };
 
         let _response: SetScaleResponse = client
-            .post(
-                &format!("/v1/orgs/{}/apps/{}/envs/{}/scale", org_id, app_id, env_id),
-                &request,
-            )
+            .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
             .await?;
 
         // Print what was set

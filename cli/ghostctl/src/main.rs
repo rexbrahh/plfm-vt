@@ -10,6 +10,7 @@ mod client;
 mod commands;
 mod config;
 mod error;
+mod idempotency;
 mod manifest;
 mod output;
 

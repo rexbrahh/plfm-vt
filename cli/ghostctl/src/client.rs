@@ -67,31 +67,50 @@ impl ApiClient {
         }
     }
 
-    /// Make a POST request.
-    pub async fn post<T: DeserializeOwned, B: Serialize>(
+    /// Make a POST request with an optional Idempotency-Key.
+    pub async fn post_with_idempotency_key<T: DeserializeOwned, B: Serialize>(
         &self,
         path: &str,
         body: &B,
+        idempotency_key: Option<&str>,
     ) -> Result<T, CliError> {
-        let response = self.client.post(self.url(path)).json(body).send().await?;
+        let mut request = self.client.post(self.url(path)).json(body);
+        if let Some(key) = idempotency_key {
+            request = request.header(crate::idempotency::IDEMPOTENCY_KEY_HEADER, key);
+        }
+        let response = request.send().await?;
 
         self.handle_response(response).await
     }
 
-    /// Make a PATCH request.
-    pub async fn patch<T: DeserializeOwned, B: Serialize>(
+    /// Make a PATCH request with an optional Idempotency-Key.
+    pub async fn patch_with_idempotency_key<T: DeserializeOwned, B: Serialize>(
         &self,
         path: &str,
         body: &B,
+        idempotency_key: Option<&str>,
     ) -> Result<T, CliError> {
-        let response = self.client.patch(self.url(path)).json(body).send().await?;
+        let mut request = self.client.patch(self.url(path)).json(body);
+        if let Some(key) = idempotency_key {
+            request = request.header(crate::idempotency::IDEMPOTENCY_KEY_HEADER, key);
+        }
+        let response = request.send().await?;
 
         self.handle_response(response).await
     }
 
-    /// Make a DELETE request.
-    pub async fn delete(&self, path: &str) -> Result<(), CliError> {
-        let response = self.client.delete(self.url(path)).send().await?;
+    /// Make a DELETE request with an optional Idempotency-Key.
+    pub async fn delete_with_idempotency_key(
+        &self,
+        path: &str,
+        idempotency_key: Option<&str>,
+    ) -> Result<(), CliError> {
+        let mut request = self.client.delete(self.url(path));
+        if let Some(key) = idempotency_key {
+            request = request.header(crate::idempotency::IDEMPOTENCY_KEY_HEADER, key);
+        }
+
+        let response = request.send().await?;
 
         if response.status().is_success() {
             Ok(())

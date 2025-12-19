@@ -95,7 +95,14 @@ async fn create_org(ctx: CommandContext, args: CreateOrgArgs) -> Result<()> {
     let request = CreateOrgRequest {
         name: args.name.clone(),
     };
-    let response: OrgResponse = client.post("/v1/orgs", &request).await?;
+    let path = "/v1/orgs";
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("orgs.create", path, &request)?,
+    };
+    let response: OrgResponse = client
+        .post_with_idempotency_key(path, &request, Some(idempotency_key.as_str()))
+        .await?;
 
     match ctx.format {
         OutputFormat::Json => print_single(&response, ctx.format),
