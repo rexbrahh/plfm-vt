@@ -44,6 +44,7 @@ Status key:
 | docs/architecture/04-state-model-and-reconciliation.md | draft | TBD | 2025-12-16 | Event log, projections, reconcilers |
 | docs/architecture/05-multi-tenancy-and-identity.md | draft | TBD | 2025-12-16 | Org, project, app, env, scopes |
 | docs/architecture/06-failure-model-and-degraded-modes.md | draft | TBD | 2025-12-16 | What fails and how we degrade |
+| docs/architecture/07-actors-and-supervision.md | draft | TBD | 2025-12-19 | Actor model and supervision trees for reconciliation |
 | docs/architecture/07-scaling-plan-multi-host.md | draft | TBD | 2025-12-16 | Multi-node growth plan |
 | docs/architecture/08-security-architecture.md | draft | TBD | 2025-12-16 | Threat model mapping to components |
 | docs/architecture/09-observability-architecture.md | draft | TBD | 2025-12-16 | Logs, metrics, traces, alerting |
@@ -92,6 +93,7 @@ Status key:
 | docs/specs/runtime/networking-inside-vm.md | draft | TBD | 2025-12-16 | Guest networking contract |
 | docs/specs/runtime/volume-mounts.md | draft | TBD | 2025-12-16 | Attach/mount mechanics |
 | docs/specs/runtime/limits-and-isolation.md | draft | TBD | 2025-12-16 | cgroups, seccomp, jailer, fs constraints |
+| docs/specs/runtime/agent-actors.md | draft | TBD | 2025-12-19 | Actor message schemas and lifecycle events |
 
 ### Networking
 | Path | Status | Owner | Last reviewed | Notes |
