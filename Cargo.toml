@@ -11,6 +11,7 @@ members = [
     "services/control-plane",
     "services/node-agent",
     "services/ingress",
+    "services/guest-init",
     "cli/ghostctl",
     "tools/api-validate",
 ]
