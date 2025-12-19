@@ -20,13 +20,24 @@ pub struct ReleasesCommand {
 #[derive(Debug, Subcommand)]
 enum ReleasesSubcommand {
     /// List releases for an application.
-    List,
+    List(ListReleasesArgs),
 
     /// Create a new release.
     Create(CreateReleaseArgs),
 
     /// Get release details.
     Get(GetReleaseArgs),
+}
+
+#[derive(Debug, Args)]
+struct ListReleasesArgs {
+    /// Maximum number of items to return (1-200).
+    #[arg(long, default_value = "50")]
+    limit: i64,
+
+    /// Pagination cursor (opaque).
+    #[arg(long)]
+    cursor: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -56,7 +67,7 @@ struct GetReleaseArgs {
 impl ReleasesCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         match self.command {
-            ReleasesSubcommand::List => list_releases(ctx).await,
+            ReleasesSubcommand::List(args) => list_releases(ctx, args).await,
             ReleasesSubcommand::Create(args) => create_release(ctx, args).await,
             ReleasesSubcommand::Get(args) => get_release(ctx, args).await,
         }
@@ -95,11 +106,10 @@ struct ReleaseResponse {
 }
 
 /// List response from API.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ListReleasesResponse {
     items: Vec<ReleaseResponse>,
-    #[allow(dead_code)]
-    total: i64,
+    next_cursor: Option<String>,
 }
 
 /// Create release request.
@@ -112,16 +122,25 @@ struct CreateReleaseRequest {
 }
 
 /// List all releases for the current app.
-async fn list_releases(ctx: CommandContext) -> Result<()> {
+async fn list_releases(ctx: CommandContext, args: ListReleasesArgs) -> Result<()> {
     let org = ctx.require_org()?;
     let app = ctx.require_app()?;
     let client = ctx.client()?;
 
-    let response: ListReleasesResponse = client
-        .get(&format!("/v1/orgs/{}/apps/{}/releases", org, app))
-        .await?;
+    let mut path = format!(
+        "/v1/orgs/{}/apps/{}/releases?limit={}",
+        org, app, args.limit
+    );
+    if let Some(cursor) = args.cursor.as_deref() {
+        path.push_str(&format!("&cursor={cursor}"));
+    }
 
-    print_output(&response.items, ctx.format);
+    let response: ListReleasesResponse = client.get(&path).await?;
+
+    match ctx.format {
+        OutputFormat::Table => print_output(&response.items, ctx.format),
+        OutputFormat::Json => print_single(&response, ctx.format),
+    }
     Ok(())
 }
 

@@ -20,13 +20,24 @@ pub struct AppsCommand {
 #[derive(Debug, Subcommand)]
 enum AppsSubcommand {
     /// List applications in an organization.
-    List,
+    List(ListAppsArgs),
 
     /// Create a new application.
     Create(CreateAppArgs),
 
     /// Get application details.
     Get(GetAppArgs),
+}
+
+#[derive(Debug, Args)]
+struct ListAppsArgs {
+    /// Maximum number of items to return (1-200).
+    #[arg(long, default_value = "50")]
+    limit: i64,
+
+    /// Pagination cursor (opaque).
+    #[arg(long)]
+    cursor: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -48,7 +59,7 @@ struct GetAppArgs {
 impl AppsCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         match self.command {
-            AppsSubcommand::List => list_apps(ctx).await,
+            AppsSubcommand::List(args) => list_apps(ctx, args).await,
             AppsSubcommand::Create(args) => create_app(ctx, args).await,
             AppsSubcommand::Get(args) => get_app(ctx, args).await,
         }
@@ -80,11 +91,10 @@ fn display_option(opt: &Option<String>) -> String {
 }
 
 /// List response from API.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ListAppsResponse {
     items: Vec<AppResponse>,
-    #[allow(dead_code)]
-    total: i64,
+    next_cursor: Option<String>,
 }
 
 /// Create app request.
@@ -96,13 +106,21 @@ struct CreateAppRequest {
 }
 
 /// List all applications in the current org.
-async fn list_apps(ctx: CommandContext) -> Result<()> {
+async fn list_apps(ctx: CommandContext, args: ListAppsArgs) -> Result<()> {
     let org = ctx.require_org()?;
     let client = ctx.client()?;
 
-    let response: ListAppsResponse = client.get(&format!("/v1/orgs/{}/apps", org)).await?;
+    let mut path = format!("/v1/orgs/{}/apps?limit={}", org, args.limit);
+    if let Some(cursor) = args.cursor.as_deref() {
+        path.push_str(&format!("&cursor={cursor}"));
+    }
 
-    print_output(&response.items, ctx.format);
+    let response: ListAppsResponse = client.get(&path).await?;
+
+    match ctx.format {
+        OutputFormat::Table => print_output(&response.items, ctx.format),
+        OutputFormat::Json => print_single(&response, ctx.format),
+    }
     Ok(())
 }
 

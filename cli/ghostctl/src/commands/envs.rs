@@ -20,13 +20,24 @@ pub struct EnvsCommand {
 #[derive(Debug, Subcommand)]
 enum EnvsSubcommand {
     /// List environments in an application.
-    List,
+    List(ListEnvsArgs),
 
     /// Create a new environment.
     Create(CreateEnvArgs),
 
     /// Get environment details.
     Get(GetEnvArgs),
+}
+
+#[derive(Debug, Args)]
+struct ListEnvsArgs {
+    /// Maximum number of items to return (1-200).
+    #[arg(long, default_value = "50")]
+    limit: i64,
+
+    /// Pagination cursor (opaque).
+    #[arg(long)]
+    cursor: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -44,7 +55,7 @@ struct GetEnvArgs {
 impl EnvsCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         match self.command {
-            EnvsSubcommand::List => list_envs(ctx).await,
+            EnvsSubcommand::List(args) => list_envs(ctx, args).await,
             EnvsSubcommand::Create(args) => create_env(ctx, args).await,
             EnvsSubcommand::Get(args) => get_env(ctx, args).await,
         }
@@ -71,11 +82,10 @@ struct EnvResponse {
 }
 
 /// List response from API.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ListEnvsResponse {
     items: Vec<EnvResponse>,
-    #[allow(dead_code)]
-    total: i64,
+    next_cursor: Option<String>,
 }
 
 /// Create env request.
@@ -85,16 +95,22 @@ struct CreateEnvRequest {
 }
 
 /// List all environments in the current app.
-async fn list_envs(ctx: CommandContext) -> Result<()> {
+async fn list_envs(ctx: CommandContext, args: ListEnvsArgs) -> Result<()> {
     let org = ctx.require_org()?;
     let app = ctx.require_app()?;
     let client = ctx.client()?;
 
-    let response: ListEnvsResponse = client
-        .get(&format!("/v1/orgs/{}/apps/{}/envs", org, app))
-        .await?;
+    let mut path = format!("/v1/orgs/{}/apps/{}/envs?limit={}", org, app, args.limit);
+    if let Some(cursor) = args.cursor.as_deref() {
+        path.push_str(&format!("&cursor={cursor}"));
+    }
 
-    print_output(&response.items, ctx.format);
+    let response: ListEnvsResponse = client.get(&path).await?;
+
+    match ctx.format {
+        OutputFormat::Table => print_output(&response.items, ctx.format),
+        OutputFormat::Json => print_single(&response, ctx.format),
+    }
     Ok(())
 }
 

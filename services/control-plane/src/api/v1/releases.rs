@@ -4,7 +4,7 @@
 //! Releases are immutable artifacts that capture an app's image and manifest.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -93,8 +93,17 @@ pub struct ListReleasesResponse {
     /// List of releases.
     pub items: Vec<ReleaseResponse>,
 
-    /// Total count (for pagination).
-    pub total: i64,
+    /// Next cursor (null if no more results).
+    pub next_cursor: Option<String>,
+}
+
+/// Query parameters for listing releases.
+#[derive(Debug, Deserialize)]
+pub struct ListReleasesQuery {
+    /// Max number of items to return.
+    pub limit: Option<i64>,
+    /// Cursor (exclusive). Interpreted as a release_id.
+    pub cursor: Option<String>,
 }
 
 // =============================================================================
@@ -325,6 +334,7 @@ async fn list_releases(
     State(state): State<AppState>,
     ctx: RequestContext,
     Path((org_id, app_id)): Path<(String, String)>,
+    Query(query): Query<ListReleasesQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = ctx.request_id;
 
@@ -340,19 +350,34 @@ async fn list_releases(
             .with_request_id(request_id.clone())
     })?;
 
-    // Query the releases_view table
+    let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
+    let cursor = match query.cursor.as_deref() {
+        Some(raw) => {
+            let _: ReleaseId = raw.parse().map_err(|_| {
+                ApiError::bad_request("invalid_cursor", "Invalid cursor format")
+                    .with_request_id(request_id.clone())
+            })?;
+            Some(raw.to_string())
+        }
+        None => None,
+    };
+
+    // Query the releases_view table (stable ordering by release_id)
     let rows = sqlx::query_as::<_, ReleaseRow>(
         r#"
         SELECT release_id, org_id, app_id, image_ref, index_or_manifest_digest,
                manifest_schema_version, manifest_hash, resource_version, created_at
         FROM releases_view
         WHERE org_id = $1 AND app_id = $2
-        ORDER BY created_at DESC
-        LIMIT 100
+          AND ($3::TEXT IS NULL OR release_id > $3)
+        ORDER BY release_id ASC
+        LIMIT $4
         "#,
     )
     .bind(&org_id)
     .bind(&app_id)
+    .bind(cursor.as_deref())
+    .bind(limit)
     .fetch_all(state.db().pool())
     .await
     .map_err(|e| {
@@ -362,9 +387,13 @@ async fn list_releases(
     })?;
 
     let items: Vec<ReleaseResponse> = rows.into_iter().map(ReleaseResponse::from).collect();
-    let total = items.len() as i64;
+    let next_cursor = if items.len() == limit as usize {
+        items.last().map(|r| r.id.clone())
+    } else {
+        None
+    };
 
-    Ok(Json(ListReleasesResponse { items, total }))
+    Ok(Json(ListReleasesResponse { items, next_cursor }))
 }
 
 /// Get a single release by ID.

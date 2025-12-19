@@ -3,7 +3,7 @@
 //! Provides CRUD operations for applications within organizations.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -77,8 +77,17 @@ pub struct ListAppsResponse {
     /// List of applications.
     pub items: Vec<AppResponse>,
 
-    /// Total count (for pagination).
-    pub total: i64,
+    /// Next cursor (null if no more results).
+    pub next_cursor: Option<String>,
+}
+
+/// Query parameters for listing applications.
+#[derive(Debug, Deserialize)]
+pub struct ListAppsQuery {
+    /// Max number of items to return.
+    pub limit: Option<i64>,
+    /// Cursor (exclusive). Interpreted as an app_id.
+    pub cursor: Option<String>,
 }
 
 // =============================================================================
@@ -294,6 +303,7 @@ async fn list_apps(
     State(state): State<AppState>,
     ctx: RequestContext,
     Path(org_id): Path<String>,
+    Query(query): Query<ListAppsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = ctx.request_id;
 
@@ -303,17 +313,32 @@ async fn list_apps(
             .with_request_id(request_id.clone())
     })?;
 
-    // Query the apps_view table
+    let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
+    let cursor = match query.cursor.as_deref() {
+        Some(raw) => {
+            let _: AppId = raw.parse().map_err(|_| {
+                ApiError::bad_request("invalid_cursor", "Invalid cursor format")
+                    .with_request_id(request_id.clone())
+            })?;
+            Some(raw.to_string())
+        }
+        None => None,
+    };
+
+    // Query the apps_view table (stable ordering by app_id)
     let rows = sqlx::query_as::<_, AppRow>(
         r#"
         SELECT app_id, org_id, name, description, resource_version, created_at, updated_at
         FROM apps_view
         WHERE org_id = $1 AND NOT is_deleted
-        ORDER BY created_at DESC
-        LIMIT 100
+          AND ($2::TEXT IS NULL OR app_id > $2)
+        ORDER BY app_id ASC
+        LIMIT $3
         "#,
     )
     .bind(org_id.to_string())
+    .bind(cursor.as_deref())
+    .bind(limit)
     .fetch_all(state.db().pool())
     .await
     .map_err(|e| {
@@ -323,9 +348,13 @@ async fn list_apps(
     })?;
 
     let items: Vec<AppResponse> = rows.into_iter().map(AppResponse::from).collect();
-    let total = items.len() as i64;
+    let next_cursor = if items.len() == limit as usize {
+        items.last().map(|a| a.id.clone())
+    } else {
+        None
+    };
 
-    Ok(Json(ListAppsResponse { items, total }))
+    Ok(Json(ListAppsResponse { items, next_cursor }))
 }
 
 /// Get a single application by ID.

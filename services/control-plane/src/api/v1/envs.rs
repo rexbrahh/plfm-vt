@@ -3,7 +3,7 @@
 //! Provides CRUD operations for environments within applications.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -79,8 +79,17 @@ pub struct ListEnvsResponse {
     /// List of environments.
     pub items: Vec<EnvResponse>,
 
-    /// Total count (for pagination).
-    pub total: i64,
+    /// Next cursor (null if no more results).
+    pub next_cursor: Option<String>,
+}
+
+/// Query parameters for listing environments.
+#[derive(Debug, Deserialize)]
+pub struct ListEnvsQuery {
+    /// Max number of items to return.
+    pub limit: Option<i64>,
+    /// Cursor (exclusive). Interpreted as an env_id.
+    pub cursor: Option<String>,
 }
 
 /// Request to set scale for an environment.
@@ -347,6 +356,7 @@ async fn list_envs(
     State(state): State<AppState>,
     ctx: RequestContext,
     Path((org_id, app_id)): Path<(String, String)>,
+    Query(query): Query<ListEnvsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = ctx.request_id;
 
@@ -361,18 +371,33 @@ async fn list_envs(
             .with_request_id(request_id.clone())
     })?;
 
-    // Query the envs_view table
+    let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
+    let cursor = match query.cursor.as_deref() {
+        Some(raw) => {
+            let _: EnvId = raw.parse().map_err(|_| {
+                ApiError::bad_request("invalid_cursor", "Invalid cursor format")
+                    .with_request_id(request_id.clone())
+            })?;
+            Some(raw.to_string())
+        }
+        None => None,
+    };
+
+    // Query the envs_view table (stable ordering by env_id)
     let rows = sqlx::query_as::<_, EnvRow>(
         r#"
         SELECT env_id, app_id, org_id, name, resource_version, created_at, updated_at
         FROM envs_view
         WHERE org_id = $1 AND app_id = $2 AND NOT is_deleted
-        ORDER BY created_at DESC
-        LIMIT 100
+          AND ($3::TEXT IS NULL OR env_id > $3)
+        ORDER BY env_id ASC
+        LIMIT $4
         "#,
     )
     .bind(org_id.to_string())
     .bind(app_id.to_string())
+    .bind(cursor.as_deref())
+    .bind(limit)
     .fetch_all(state.db().pool())
     .await
     .map_err(|e| {
@@ -382,9 +407,13 @@ async fn list_envs(
     })?;
 
     let items: Vec<EnvResponse> = rows.into_iter().map(EnvResponse::from).collect();
-    let total = items.len() as i64;
+    let next_cursor = if items.len() == limit as usize {
+        items.last().map(|e| e.id.clone())
+    } else {
+        None
+    };
 
-    Ok(Json(ListEnvsResponse { items, total }))
+    Ok(Json(ListEnvsResponse { items, next_cursor }))
 }
 
 /// Set scale for an environment.

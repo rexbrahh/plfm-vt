@@ -20,7 +20,7 @@ pub struct DeploysCommand {
 #[derive(Debug, Subcommand)]
 enum DeploysSubcommand {
     /// List deploys for an environment.
-    List,
+    List(ListDeploysArgs),
 
     /// Create a new deploy (deploy a release to an environment).
     Create(CreateDeployArgs),
@@ -30,6 +30,17 @@ enum DeploysSubcommand {
 
     /// Get deploy details.
     Get(GetDeployArgs),
+}
+
+#[derive(Debug, Args)]
+struct ListDeploysArgs {
+    /// Maximum number of items to return (1-200).
+    #[arg(long, default_value = "50")]
+    limit: i64,
+
+    /// Pagination cursor (opaque).
+    #[arg(long)]
+    cursor: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -61,7 +72,7 @@ struct GetDeployArgs {
 impl DeploysCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         match self.command {
-            DeploysSubcommand::List => list_deploys(ctx).await,
+            DeploysSubcommand::List(args) => list_deploys(ctx, args).await,
             DeploysSubcommand::Create(args) => create_deploy(ctx, args).await,
             DeploysSubcommand::Rollback(args) => rollback(ctx, args).await,
             DeploysSubcommand::Get(args) => get_deploy(ctx, args).await,
@@ -123,11 +134,10 @@ fn display_process_types(process_types: &[String]) -> String {
 }
 
 /// List response from API.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ListDeploysResponse {
     items: Vec<DeployResponse>,
-    #[allow(dead_code)]
-    total: i64,
+    next_cursor: Option<String>,
 }
 
 /// Create deploy request.
@@ -153,20 +163,26 @@ fn require_env(ctx: &CommandContext) -> Result<&str> {
 }
 
 /// List all deploys for the current env.
-async fn list_deploys(ctx: CommandContext) -> Result<()> {
+async fn list_deploys(ctx: CommandContext, args: ListDeploysArgs) -> Result<()> {
     let org = ctx.require_org()?;
     let app = ctx.require_app()?;
     let env = require_env(&ctx)?;
     let client = ctx.client()?;
 
-    let response: ListDeploysResponse = client
-        .get(&format!(
-            "/v1/orgs/{}/apps/{}/envs/{}/deploys",
-            org, app, env
-        ))
-        .await?;
+    let mut path = format!(
+        "/v1/orgs/{}/apps/{}/envs/{}/deploys?limit={}",
+        org, app, env, args.limit
+    );
+    if let Some(cursor) = args.cursor.as_deref() {
+        path.push_str(&format!("&cursor={cursor}"));
+    }
 
-    print_output(&response.items, ctx.format);
+    let response: ListDeploysResponse = client.get(&path).await?;
+
+    match ctx.format {
+        OutputFormat::Table => print_output(&response.items, ctx.format),
+        OutputFormat::Json => print_single(&response, ctx.format),
+    }
     Ok(())
 }
 

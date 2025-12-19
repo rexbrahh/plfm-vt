@@ -4,7 +4,7 @@
 //! A deploy promotes a release to an environment.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -117,8 +117,17 @@ pub struct ListDeploysResponse {
     /// List of deploys.
     pub items: Vec<DeployResponse>,
 
-    /// Total count (for pagination).
-    pub total: i64,
+    /// Next cursor (null if no more results).
+    pub next_cursor: Option<String>,
+}
+
+/// Query parameters for listing deploys.
+#[derive(Debug, Deserialize)]
+pub struct ListDeploysQuery {
+    /// Max number of items to return.
+    pub limit: Option<i64>,
+    /// Cursor (exclusive). Interpreted as a deploy_id.
+    pub cursor: Option<String>,
 }
 
 // =============================================================================
@@ -565,6 +574,7 @@ async fn list_deploys(
     State(state): State<AppState>,
     ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
+    Query(query): Query<ListDeploysQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = ctx.request_id;
 
@@ -584,20 +594,35 @@ async fn list_deploys(
             .with_request_id(request_id.clone())
     })?;
 
-    // Query the deploys_view table
+    let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
+    let cursor = match query.cursor.as_deref() {
+        Some(raw) => {
+            let _: DeployId = raw.parse().map_err(|_| {
+                ApiError::bad_request("invalid_cursor", "Invalid cursor format")
+                    .with_request_id(request_id.clone())
+            })?;
+            Some(raw.to_string())
+        }
+        None => None,
+    };
+
+    // Query the deploys_view table (stable ordering by deploy_id)
     let rows = sqlx::query_as::<_, DeployRow>(
         r#"
         SELECT deploy_id, org_id, app_id, env_id, kind, release_id, process_types,
                status, message, resource_version, created_at, updated_at
         FROM deploys_view
         WHERE org_id = $1 AND app_id = $2 AND env_id = $3
-        ORDER BY created_at DESC
-        LIMIT 100
+          AND ($4::TEXT IS NULL OR deploy_id > $4)
+        ORDER BY deploy_id ASC
+        LIMIT $5
         "#,
     )
     .bind(&org_id)
     .bind(&app_id)
     .bind(&env_id)
+    .bind(cursor.as_deref())
+    .bind(limit)
     .fetch_all(state.db().pool())
     .await
     .map_err(|e| {
@@ -607,9 +632,13 @@ async fn list_deploys(
     })?;
 
     let items: Vec<DeployResponse> = rows.into_iter().map(DeployResponse::from).collect();
-    let total = items.len() as i64;
+    let next_cursor = if items.len() == limit as usize {
+        items.last().map(|d| d.id.clone())
+    } else {
+        None
+    };
 
-    Ok(Json(ListDeploysResponse { items, total }))
+    Ok(Json(ListDeploysResponse { items, next_cursor }))
 }
 
 /// Get a single deploy by ID.
