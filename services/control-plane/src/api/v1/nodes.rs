@@ -12,7 +12,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use plfm_events::{ActorType, AggregateType, NodeState};
-use plfm_id::NodeId;
+use plfm_id::{AppId, EnvId, InstanceId, NodeId, OrgId};
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
@@ -31,6 +31,10 @@ pub fn routes() -> Router<AppState> {
         .route("/:node_id", get(get_node))
         .route("/:node_id/heartbeat", post(heartbeat))
         .route("/:node_id/plan", get(get_plan))
+        .route(
+            "/:node_id/instances/:instance_id/status",
+            post(report_instance_status),
+        )
 }
 
 // =============================================================================
@@ -230,6 +234,31 @@ pub struct VolumeMount {
 
     /// Whether the mount is read-only.
     pub read_only: bool,
+}
+
+/// Request to report instance status for a node-assigned instance.
+#[derive(Debug, Deserialize)]
+pub struct ReportInstanceStatusRequest {
+    /// Current status.
+    pub status: String,
+
+    /// Optional boot ID.
+    #[serde(default)]
+    pub boot_id: Option<String>,
+
+    /// Optional error message.
+    #[serde(default)]
+    pub error_message: Option<String>,
+
+    /// Optional exit code.
+    #[serde(default)]
+    pub exit_code: Option<i32>,
+}
+
+/// Response for instance status reports.
+#[derive(Debug, Serialize)]
+pub struct ReportInstanceStatusResponse {
+    pub accepted: bool,
 }
 
 // =============================================================================
@@ -699,6 +728,146 @@ async fn get_plan(
     }))
 }
 
+/// Report instance status for an instance assigned to this node.
+///
+/// POST /v1/nodes/{node_id}/instances/{instance_id}/status
+async fn report_instance_status(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    Path((node_id, instance_id)): Path<(String, String)>,
+    Json(req): Json<ReportInstanceStatusRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let request_id = ctx.request_id.clone();
+
+    if ctx.actor_type != ActorType::System {
+        return Err(ApiError::forbidden(
+            "forbidden",
+            "This endpoint is only available to system actors",
+        )
+        .with_request_id(request_id));
+    }
+
+    let node_id_typed: NodeId = node_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_node_id", "Invalid node ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let instance_id_typed: InstanceId = instance_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_instance_id", "Invalid instance ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let valid_statuses = ["booting", "ready", "draining", "stopped", "failed"];
+    if !valid_statuses.contains(&req.status.as_str()) {
+        return Err(ApiError::bad_request(
+            "invalid_status",
+            format!("Status must be one of: {:?}", valid_statuses),
+        )
+        .with_request_id(request_id.clone()));
+    }
+
+    let current_status = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT status FROM instances_status_view WHERE instance_id = $1",
+    )
+    .bind(instance_id_typed.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to get current status");
+        ApiError::internal("internal_error", "Failed to process status")
+            .with_request_id(request_id.clone())
+    })?
+    .flatten();
+
+    let instance_info = sqlx::query_as::<_, InstanceInfoRow>(
+        r#"
+        SELECT org_id, app_id, env_id
+        FROM instances_desired_view
+        WHERE instance_id = $1 AND node_id = $2
+        "#,
+    )
+    .bind(instance_id_typed.to_string())
+    .bind(node_id_typed.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "Failed to get instance info");
+        ApiError::internal("internal_error", "Failed to process status")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let instance_info = match instance_info {
+        Some(info) => info,
+        None => {
+            return Err(ApiError::not_found(
+                "instance_not_found",
+                "Instance not found on this node",
+            )
+            .with_request_id(request_id.clone()));
+        }
+    };
+
+    let event_store = state.db().event_store();
+    let current_seq = event_store
+        .get_latest_aggregate_seq(&AggregateType::Instance, &instance_id_typed.to_string())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to get aggregate sequence");
+            ApiError::internal("internal_error", "Failed to process status")
+                .with_request_id(request_id.clone())
+        })?
+        .unwrap_or(0);
+
+    let org_id = instance_info.org_id.parse::<OrgId>().map_err(|_| {
+        ApiError::internal("internal_error", "Invalid org_id in instances_desired_view")
+            .with_request_id(request_id.clone())
+    })?;
+    let app_id = instance_info.app_id.parse::<AppId>().map_err(|_| {
+        ApiError::internal("internal_error", "Invalid app_id in instances_desired_view")
+            .with_request_id(request_id.clone())
+    })?;
+    let env_id = instance_info.env_id.parse::<EnvId>().map_err(|_| {
+        ApiError::internal("internal_error", "Invalid env_id in instances_desired_view")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let event = AppendEvent {
+        aggregate_type: AggregateType::Instance,
+        aggregate_id: instance_id_typed.to_string(),
+        aggregate_seq: current_seq + 1,
+        event_type: "instance.status_changed".to_string(),
+        event_version: 1,
+        actor_type: ActorType::ServicePrincipal, // Node agent
+        actor_id: node_id_typed.to_string(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: None,
+        app_id: Some(app_id),
+        env_id: Some(env_id),
+        correlation_id: None,
+        causation_id: None,
+        payload: serde_json::json!({
+            "instance_id": instance_id_typed.to_string(),
+            "old_status": current_status.unwrap_or_else(|| "unknown".to_string()),
+            "new_status": req.status,
+            "boot_id": req.boot_id,
+            "error_message": req.error_message,
+            "exit_code": req.exit_code,
+        }),
+    };
+
+    event_store.append(event).await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to record status");
+        ApiError::internal("internal_error", "Failed to record status")
+            .with_request_id(request_id.clone())
+    })?;
+
+    Ok((
+        StatusCode::OK,
+        Json(ReportInstanceStatusResponse { accepted: true }),
+    ))
+}
+
 // =============================================================================
 // Database Row Types
 // =============================================================================
@@ -803,6 +972,23 @@ impl From<InstancePlanRow> for InstancePlan {
             env_vars: serde_json::json!({}),
             volumes: vec![],
         }
+    }
+}
+
+struct InstanceInfoRow {
+    org_id: String,
+    app_id: String,
+    env_id: String,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for InstanceInfoRow {
+    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            org_id: row.try_get("org_id")?,
+            app_id: row.try_get("app_id")?,
+            env_id: row.try_get("env_id")?,
+        })
     }
 }
 

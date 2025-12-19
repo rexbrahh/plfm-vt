@@ -486,7 +486,8 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         .to_string();
 
     // Report instance status as ready (system actor) so exec grants are allowed.
-    let report_status_url = format!("{base_url}/v1/instances/{first_instance_id}/status");
+    let report_status_url =
+        format!("{base_url}/v1/nodes/{node_id}/instances/{first_instance_id}/status");
     let resp_status = client
         .post(&report_status_url)
         .json(&serde_json::json!({ "status": "ready" }))
