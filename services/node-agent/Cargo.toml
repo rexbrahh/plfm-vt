@@ -55,5 +55,8 @@ tokio-stream = "0.1"
 # Local state persistence
 rusqlite = { version = "0.31", features = ["bundled"] }
 
+# Vsock for guest communication
+vsock = "0.5"
+
 [dev-dependencies]
 rstest = { workspace = true }

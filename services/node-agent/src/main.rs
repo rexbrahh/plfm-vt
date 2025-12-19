@@ -33,6 +33,7 @@ mod instance;
 mod reconciler;
 mod runtime;
 pub mod state;
+pub mod vsock;
 
 use instance::InstanceManager;
 use reconciler::{Reconciler, ReconcilerConfig};
