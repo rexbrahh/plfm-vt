@@ -53,6 +53,9 @@ pub struct InstanceResponse {
     pub last_transition_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
+    /// Overlay IPv6 address for ingress routing.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overlay_ipv6: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -124,6 +127,7 @@ async fn list_instances(
             d.node_id,
             d.generation,
             d.desired_state,
+            d.overlay_ipv6,
             d.created_at,
             d.updated_at,
             s.status as reported_status,
@@ -220,6 +224,7 @@ async fn get_instance(
             d.node_id,
             d.generation,
             d.desired_state,
+            d.overlay_ipv6,
             d.created_at,
             d.updated_at,
             s.status as reported_status,
@@ -272,6 +277,7 @@ struct InstanceRow {
     node_id: String,
     generation: i32,
     desired_state: String,
+    overlay_ipv6: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     reported_status: Option<String>,
@@ -289,6 +295,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for InstanceRow {
             node_id: row.try_get("node_id")?,
             generation: row.try_get("generation")?,
             desired_state: row.try_get("desired_state")?,
+            overlay_ipv6: row.try_get("overlay_ipv6")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
             reported_status: row.try_get("reported_status")?,
@@ -324,6 +331,12 @@ impl From<InstanceRow> for InstanceResponse {
             _ => Some(row.generation),
         };
 
+        // Only expose overlay_ipv6 for running instances
+        let overlay_ipv6 = match row.desired_state.as_str() {
+            "stopped" => None,
+            _ => row.overlay_ipv6,
+        };
+
         Self {
             id: row.instance_id,
             env_id: row.env_id,
@@ -333,6 +346,7 @@ impl From<InstanceRow> for InstanceResponse {
             status,
             last_transition_at,
             failure_reason,
+            overlay_ipv6,
             created_at: row.created_at,
         }
     }
@@ -353,6 +367,7 @@ mod tests {
             status: "booting".to_string(),
             last_transition_at: None,
             failure_reason: None,
+            overlay_ipv6: None,
             created_at: Utc::now(),
         };
 
@@ -371,6 +386,7 @@ mod tests {
             node_id: "node_1".to_string(),
             generation: 1,
             desired_state: "running".to_string(),
+            overlay_ipv6: Some("fd00::1".to_string()),
             created_at: now,
             updated_at: now,
             reported_status: Some("ready".to_string()),

@@ -9,8 +9,10 @@
 //! - Proxies connections to backend instances
 //! - Optionally injects PROXY protocol v2 headers
 
+use std::sync::Arc;
+
 use anyhow::Result;
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod config;
@@ -34,16 +36,78 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer().json())
         .init();
 
-    info!("Starting plfm-vt ingress (route sync)");
+    info!("Starting plfm-vt ingress");
     info!(
         control_plane_url = %config.control_plane_url,
         org_id = %config.org_id,
-        fetch_limit = config.fetch_limit,
-        poll_interval_ms = config.poll_interval.as_millis() as u64,
-        cursor_file = ?config.cursor_file,
-        once = config.once,
+        proxy_enabled = config.proxy_enabled,
+        listener_count = config.listeners.len(),
         "Configuration loaded"
     );
 
-    sync::run_route_sync_loop(&config).await
+    // Create shared state
+    let route_table = Arc::new(RouteTable::new());
+    let backend_selector = Arc::new(BackendSelector::new());
+
+    if config.proxy_enabled {
+        // Start listeners
+        let mut listener_handles = Vec::new();
+
+        for binding in &config.listeners {
+            let listener_config = ListenerConfig::new(binding.bind_addr);
+            
+            match Listener::bind(
+                listener_config,
+                Arc::clone(&route_table),
+                Arc::clone(&backend_selector),
+            )
+            .await
+            {
+                Ok(listener) => {
+                    info!(
+                        bind_addr = %binding.bind_addr,
+                        "Listener bound"
+                    );
+                    let listener = Arc::new(listener);
+                    let handle = tokio::spawn(async move {
+                        if let Err(e) = listener.run().await {
+                            error!(error = %e, "Listener error");
+                        }
+                    });
+                    listener_handles.push(handle);
+                }
+                Err(e) => {
+                    error!(
+                        bind_addr = %binding.bind_addr,
+                        error = %e,
+                        "Failed to bind listener"
+                    );
+                    return Err(e.into());
+                }
+            }
+        }
+
+        // Start backend sync loop
+        let backend_config = config.clone();
+        let backend_route_table = Arc::clone(&route_table);
+        let backend_selector_clone = Arc::clone(&backend_selector);
+        tokio::spawn(async move {
+            if let Err(e) = sync::run_backend_sync_loop(
+                backend_config,
+                backend_route_table,
+                backend_selector_clone,
+            )
+            .await
+            {
+                error!(error = %e, "Backend sync loop failed");
+            }
+        });
+
+        // Run route sync loop (blocks until error or shutdown)
+        sync::run_route_sync_loop(&config, route_table, backend_selector).await
+    } else {
+        // Sync-only mode (for debugging/testing)
+        info!("Running in sync-only mode (proxy disabled)");
+        sync::run_route_sync_loop(&config, route_table, backend_selector).await
+    }
 }

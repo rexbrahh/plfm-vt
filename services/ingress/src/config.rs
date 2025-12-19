@@ -2,7 +2,7 @@
 //!
 //! For now, ingress focuses on consuming routing-related events from the control plane.
 
-use std::{path::PathBuf, time::Duration};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 use anyhow::{Context, Result};
 
@@ -23,6 +23,15 @@ impl std::fmt::Debug for RedactedString {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str("<redacted>")
     }
+}
+
+/// Listener configuration for a single port.
+#[derive(Debug, Clone)]
+pub struct ListenerBinding {
+    /// Address to bind to.
+    pub bind_addr: SocketAddr,
+    /// Maximum concurrent connections.
+    pub max_connections: usize,
 }
 
 /// Ingress configuration (env-driven).
@@ -46,11 +55,20 @@ pub struct Config {
     /// Optional cursor file to persist last applied event_id.
     pub cursor_file: Option<PathBuf>,
 
-    /// Exit once fully caught up.
+    /// Exit once fully caught up (sync mode only).
     pub once: bool,
 
     /// Log level (trace, debug, info, warn, error).
     pub log_level: String,
+
+    /// Listener bindings (address:port pairs).
+    pub listeners: Vec<ListenerBinding>,
+
+    /// Enable proxy mode (start listeners). If false, only sync routes.
+    pub proxy_enabled: bool,
+
+    /// Backend sync interval (how often to refresh backend instance lists).
+    pub backend_sync_interval: Duration,
 }
 
 impl Config {
@@ -96,6 +114,29 @@ impl Config {
 
         let log_level = std::env::var("GHOST_LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
 
+        // Parse listener bindings from GHOST_LISTENERS (comma-separated addr:port)
+        // Example: "[::]:443,[::]:80"
+        let listeners = parse_listeners(
+            std::env::var("GHOST_LISTENERS")
+                .ok()
+                .as_deref()
+                .unwrap_or("[::]:443"),
+        )?;
+
+        // Enable proxy mode by default (set GHOST_PROXY_ENABLED=false for sync-only)
+        let proxy_enabled = std::env::var("GHOST_PROXY_ENABLED")
+            .map(|v| v != "0" && v.to_lowercase() != "false")
+            .unwrap_or(true);
+
+        // Backend sync interval (default 5s)
+        let backend_sync_interval_ms: u64 = std::env::var("GHOST_BACKEND_SYNC_INTERVAL_MS")
+            .ok()
+            .map(|v| v.parse())
+            .transpose()
+            .context("GHOST_BACKEND_SYNC_INTERVAL_MS must be an integer (milliseconds).")?
+            .unwrap_or(5000);
+        let backend_sync_interval = Duration::from_millis(backend_sync_interval_ms.max(1000));
+
         Ok(Self {
             control_plane_url,
             control_plane_token,
@@ -105,6 +146,36 @@ impl Config {
             cursor_file,
             once,
             log_level,
+            listeners,
+            proxy_enabled,
+            backend_sync_interval,
         })
     }
+}
+
+/// Parse listener bindings from a comma-separated string.
+fn parse_listeners(s: &str) -> Result<Vec<ListenerBinding>> {
+    let mut listeners = Vec::new();
+
+    for part in s.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+
+        let bind_addr: SocketAddr = part
+            .parse()
+            .with_context(|| format!("Invalid listener address: {}", part))?;
+
+        listeners.push(ListenerBinding {
+            bind_addr,
+            max_connections: 10000, // Default max connections
+        });
+    }
+
+    if listeners.is_empty() {
+        anyhow::bail!("No listeners configured. Set GHOST_LISTENERS (e.g., '[::]:443')");
+    }
+
+    Ok(listeners)
 }

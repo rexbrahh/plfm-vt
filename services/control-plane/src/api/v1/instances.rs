@@ -90,6 +90,10 @@ pub struct InstanceResponse {
     /// Release ID.
     pub release_id: String,
 
+    /// Overlay IPv6 address (for ingress routing).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overlay_ipv6: Option<String>,
+
     /// When the instance was created.
     pub created_at: DateTime<Utc>,
 
@@ -150,7 +154,7 @@ async fn list_instances(
         r#"
         SELECT
             d.instance_id, d.org_id, d.app_id, d.env_id, d.process_type,
-            d.node_id, d.desired_state, d.release_id,
+            d.node_id, d.desired_state, d.release_id, d.overlay_ipv6,
             d.created_at, d.updated_at,
             s.status
         FROM instances_desired_view d
@@ -207,7 +211,7 @@ async fn get_instance(
         r#"
         SELECT
             d.instance_id, d.org_id, d.app_id, d.env_id, d.process_type,
-            d.node_id, d.desired_state, d.release_id,
+            d.node_id, d.desired_state, d.release_id, d.overlay_ipv6,
             d.created_at, d.updated_at,
             s.status
         FROM instances_desired_view d
@@ -383,6 +387,7 @@ struct InstanceRow {
     node_id: String,
     desired_state: String,
     release_id: String,
+    overlay_ipv6: Option<String>,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
     status: Option<String>,
@@ -400,6 +405,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for InstanceRow {
             node_id: row.try_get("node_id")?,
             desired_state: row.try_get("desired_state")?,
             release_id: row.try_get("release_id")?,
+            overlay_ipv6: row.try_get("overlay_ipv6")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
             status: row.try_get("status")?,
@@ -419,6 +425,7 @@ impl From<InstanceRow> for InstanceResponse {
             desired_state: row.desired_state,
             status: row.status,
             release_id: row.release_id,
+            overlay_ipv6: row.overlay_ipv6,
             created_at: row.created_at,
             updated_at: row.updated_at,
         }

@@ -53,6 +53,8 @@ pub struct Route {
     pub protocol: ProtocolHint,
     /// PROXY protocol configuration.
     pub proxy_protocol: ProxyProtocol,
+    /// Application ID this route belongs to.
+    pub app_id: String,
     /// Environment ID this route belongs to.
     pub env_id: String,
     /// Backend process type to route to.
@@ -349,6 +351,7 @@ mod tests {
             port,
             protocol: ProtocolHint::TlsPassthrough,
             proxy_protocol: ProxyProtocol::Off,
+            app_id: "app-1".to_string(),
             env_id: "env-1".to_string(),
             backend_process_type: "web".to_string(),
             backend_port: 8080,

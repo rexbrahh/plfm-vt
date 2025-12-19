@@ -1,13 +1,14 @@
-//! Control plane synchronization (stub).
+//! Control plane synchronization.
 //!
-//! In v1, ingress will consume desired routing state from the control plane.
-//! For now, we implement a minimal event consumer that tails org-scoped events
-//! and maintains an in-memory route table.
+//! This module syncs route configuration from the control plane and updates
+//! the shared route table used by the proxy.
 
 use std::{
     collections::BTreeMap,
     fs,
+    net::Ipv6Addr,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use anyhow::{Context, Result};
@@ -19,6 +20,9 @@ use serde::Deserialize;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
+use crate::proxy::{
+    Backend, BackendSelector, ProtocolHint, ProxyProtocol, Route, RouteTable,
+};
 
 #[derive(Debug, Deserialize)]
 struct EventsResponse {
@@ -39,6 +43,7 @@ struct RouteState {
     route_id: String,
     hostname: String,
     listen_port: i32,
+    app_id: String,
     env_id: String,
     backend_process_type: String,
     backend_port: i32,
@@ -53,6 +58,7 @@ impl RouteState {
             route_id: payload.route_id.to_string(),
             hostname: payload.hostname,
             listen_port: payload.listen_port,
+            app_id: payload.app_id.to_string(),
             env_id: payload.env_id.to_string(),
             backend_process_type: payload.backend_process_type,
             backend_port: payload.backend_port,
@@ -109,6 +115,34 @@ fn proxy_protocol_label(p: RouteProxyProtocol) -> &'static str {
         RouteProxyProtocol::Off => "off",
         RouteProxyProtocol::V2 => "v2",
     }
+}
+
+/// Convert internal RouteState to proxy Route.
+fn route_state_to_proxy_route(state: &RouteState) -> Route {
+    Route {
+        id: state.route_id.clone(),
+        hostname: Route::normalize_hostname(&state.hostname),
+        port: state.listen_port as u16,
+        protocol: ProtocolHint::TlsPassthrough, // Assume TLS for now
+        proxy_protocol: match state.proxy_protocol {
+            RouteProxyProtocol::Off => ProxyProtocol::Off,
+            RouteProxyProtocol::V2 => ProxyProtocol::V2,
+        },
+        app_id: state.app_id.clone(),
+        env_id: state.env_id.clone(),
+        backend_process_type: state.backend_process_type.clone(),
+        backend_port: state.backend_port as u16,
+        allow_non_tls_fallback: false,
+    }
+}
+
+/// Update the shared route table from internal state.
+async fn update_proxy_route_table(
+    routes: &BTreeMap<String, RouteState>,
+    route_table: &RouteTable,
+) {
+    let proxy_routes: Vec<Route> = routes.values().map(route_state_to_proxy_route).collect();
+    route_table.update(proxy_routes).await;
 }
 
 fn read_cursor(path: &Path) -> Result<i64> {
@@ -256,8 +290,12 @@ fn apply_route_event(
     Ok(())
 }
 
-/// Poll route events and keep an in-memory routing table (stub).
-pub async fn run_route_sync_loop(config: &Config) -> Result<()> {
+/// Poll route events and update the shared route table.
+pub async fn run_route_sync_loop(
+    config: &Config,
+    route_table: Arc<RouteTable>,
+    backend_selector: Arc<BackendSelector>,
+) -> Result<()> {
     let mut headers = HeaderMap::new();
     if let Some(token) = &config.control_plane_token {
         let raw = token.expose().trim();
@@ -314,6 +352,8 @@ pub async fn run_route_sync_loop(config: &Config) -> Result<()> {
             continue;
         }
 
+        let mut routes_changed = false;
+
         for item in resp.items {
             cursor = item.event_id;
 
@@ -331,6 +371,12 @@ pub async fn run_route_sync_loop(config: &Config) -> Result<()> {
             };
 
             apply_route_event(&mut routes, item.event_id, &item.event_type, payload)?;
+            routes_changed = true;
+        }
+
+        // Update the shared route table if routes changed
+        if routes_changed {
+            update_proxy_route_table(&routes, &route_table).await;
         }
 
         cursor = resp.next_after_event_id.max(cursor);
@@ -338,6 +384,146 @@ pub async fn run_route_sync_loop(config: &Config) -> Result<()> {
         if let Some(path) = &config.cursor_file {
             write_cursor(path, cursor)?;
         }
+    }
+}
+
+/// Sync backend instances for all routes.
+///
+/// This fetches instance lists from the control plane and updates the backend
+/// selector with healthy instances for each route.
+pub async fn sync_backends(
+    config: &Config,
+    route_table: &RouteTable,
+    backend_selector: &BackendSelector,
+) -> Result<()> {
+    let mut headers = HeaderMap::new();
+    if let Some(token) = &config.control_plane_token {
+        let raw = token.expose().trim();
+        let bearer = if raw.starts_with("Bearer ") || raw.starts_with("bearer ") {
+            raw.to_string()
+        } else {
+            format!("Bearer {raw}")
+        };
+
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&bearer).context("Invalid control-plane token format")?,
+        );
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("plfm-ingress/0.1.0")
+        .default_headers(headers)
+        .build()?;
+
+    // Get all route IDs
+    let route_ids = route_table.route_ids().await;
+
+    for route_id in route_ids {
+        let Some(route) = route_table.get(&route_id).await else {
+            continue;
+        };
+
+        // Fetch instances for this route's environment and process type
+        match fetch_route_backends(&client, config, &route).await {
+            Ok(backends) => {
+                backend_selector
+                    .update_route_backends(&route_id, backends)
+                    .await;
+            }
+            Err(e) => {
+                warn!(
+                    route_id = %route_id,
+                    error = %e,
+                    "Failed to fetch backends"
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Response for listing instances.
+#[derive(Debug, Deserialize)]
+struct InstancesResponse {
+    items: Vec<InstanceItem>,
+}
+
+/// Instance item from API.
+#[derive(Debug, Deserialize)]
+struct InstanceItem {
+    id: String,
+    status: Option<String>,
+    #[serde(default)]
+    overlay_ipv6: Option<String>,
+}
+
+/// Fetch backends for a specific route.
+async fn fetch_route_backends(
+    client: &reqwest::Client,
+    config: &Config,
+    route: &Route,
+) -> Result<Vec<Backend>> {
+    let base = config.control_plane_url.trim_end_matches('/');
+
+    // Fetch instances for this environment and process type
+    // API: GET /v1/orgs/{org}/apps/{app}/envs/{env}/instances?process_type={pt}&status=ready
+    let url = format!(
+        "{}/v1/orgs/{}/apps/{}/envs/{}/instances",
+        base, config.org_id, route.app_id, route.env_id
+    );
+
+    let resp = client
+        .get(&url)
+        .query(&[
+            ("process_type", route.backend_process_type.as_str()),
+            ("status", "ready"),
+            ("limit", "100"),
+        ])
+        .send()
+        .await?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("instances query failed (status={}): {}", status, body);
+    }
+
+    let instances: InstancesResponse = resp.json().await?;
+
+    // Convert to backends
+    let backends: Vec<Backend> = instances
+        .items
+        .into_iter()
+        .filter_map(|inst| {
+            let overlay_ipv6 = inst.overlay_ipv6.as_ref()?;
+            let addr: Ipv6Addr = overlay_ipv6.parse().ok()?;
+            Some(Backend::new(addr, route.backend_port, inst.id))
+        })
+        .collect();
+
+    debug!(
+        route_id = %route.id,
+        backend_count = backends.len(),
+        "Fetched backends"
+    );
+
+    Ok(backends)
+}
+
+/// Run periodic backend sync loop.
+pub async fn run_backend_sync_loop(
+    config: Config,
+    route_table: Arc<RouteTable>,
+    backend_selector: Arc<BackendSelector>,
+) -> Result<()> {
+    loop {
+        if let Err(e) = sync_backends(&config, &route_table, &backend_selector).await {
+            warn!(error = %e, "Backend sync failed");
+        }
+
+        tokio::time::sleep(config.backend_sync_interval).await;
     }
 }
 
@@ -352,6 +538,7 @@ mod tests {
             route_id: "route_123".to_string(),
             hostname: "example.invalid".to_string(),
             listen_port: 443,
+            app_id: "app_123".to_string(),
             env_id: "env_123".to_string(),
             backend_process_type: "web".to_string(),
             backend_port: 8080,
