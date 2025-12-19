@@ -13,6 +13,7 @@ mod error;
 mod idempotency;
 mod manifest;
 mod output;
+mod resolve;
 
 use commands::Cli;
 

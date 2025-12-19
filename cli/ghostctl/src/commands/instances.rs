@@ -112,11 +112,14 @@ struct ListInstancesResponse {
 async fn list_instances(ctx: CommandContext, args: ListInstancesArgs) -> Result<()> {
     let client = ctx.client()?;
 
-    let org_id = ctx.require_org()?;
-    let app_id = ctx.require_app()?;
-    let env_id = ctx.resolve_env().ok_or_else(|| {
+    let org_ident = ctx.require_org()?;
+    let app_ident = ctx.require_app()?;
+    let env_ident = ctx.resolve_env().ok_or_else(|| {
         anyhow::anyhow!("No environment specified. Use --env or set a default context.")
     })?;
+    let org_id = crate::resolve::resolve_org_id(&client, org_ident).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, app_ident).await?;
+    let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env_ident).await?;
 
     if let Some(status) = args.status.as_deref() {
         match status {
@@ -152,11 +155,14 @@ async fn list_instances(ctx: CommandContext, args: ListInstancesArgs) -> Result<
 async fn get_instance(ctx: CommandContext, args: GetInstanceArgs) -> Result<()> {
     let client = ctx.client()?;
 
-    let org_id = ctx.require_org()?;
-    let app_id = ctx.require_app()?;
-    let env_id = ctx.resolve_env().ok_or_else(|| {
+    let org_ident = ctx.require_org()?;
+    let app_ident = ctx.require_app()?;
+    let env_ident = ctx.resolve_env().ok_or_else(|| {
         anyhow::anyhow!("No environment specified. Use --env or set a default context.")
     })?;
+    let org_id = crate::resolve::resolve_org_id(&client, org_ident).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, app_ident).await?;
+    let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env_ident).await?;
 
     let response: InstanceResponse = client
         .get(&format!(

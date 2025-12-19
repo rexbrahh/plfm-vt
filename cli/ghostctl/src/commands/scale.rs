@@ -48,11 +48,14 @@ impl ScaleCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         let client = ctx.client()?;
 
-        let org_id = ctx.require_org()?;
-        let app_id = ctx.require_app()?;
-        let env_id = ctx.resolve_env().ok_or_else(|| {
+        let org_ident = ctx.require_org()?;
+        let app_ident = ctx.require_app()?;
+        let env_ident = ctx.resolve_env().ok_or_else(|| {
             anyhow::anyhow!("No environment specified. Use --env or set a default context.")
         })?;
+        let org_id = crate::resolve::resolve_org_id(&client, org_ident).await?;
+        let app_id = crate::resolve::resolve_app_id(&client, org_id, app_ident).await?;
+        let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env_ident).await?;
 
         // Parse process specifications (deterministic ordering)
         let mut process_counts = std::collections::BTreeMap::<String, i32>::new();
@@ -98,7 +101,7 @@ impl ScaleCommand {
 
         let current: ScaleState = client.get(&path).await.map_err(|e| match e {
             CliError::Api { status: 404, .. } => {
-                CliError::NotFound(format!("Environment '{}' not found", env_id))
+                CliError::NotFound(format!("Environment '{}' not found", env_ident))
             }
             other => other,
         })?;

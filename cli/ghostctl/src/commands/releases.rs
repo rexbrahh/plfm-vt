@@ -129,9 +129,9 @@ struct CreateReleaseRequest {
 
 /// List all releases for the current app.
 async fn list_releases(ctx: CommandContext, args: ListReleasesArgs) -> Result<()> {
-    let org = ctx.require_org()?;
-    let app = ctx.require_app()?;
     let client = ctx.client()?;
+    let org = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app = crate::resolve::resolve_app_id(&client, org, ctx.require_app()?).await?;
 
     let mut path = format!(
         "/v1/orgs/{}/apps/{}/releases?limit={}",
@@ -152,9 +152,9 @@ async fn list_releases(ctx: CommandContext, args: ListReleasesArgs) -> Result<()
 
 /// Create a new release.
 async fn create_release(ctx: CommandContext, args: CreateReleaseArgs) -> Result<()> {
-    let org = ctx.require_org()?;
-    let app = ctx.require_app()?;
     let client = ctx.client()?;
+    let org = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app = crate::resolve::resolve_app_id(&client, org, ctx.require_app()?).await?;
 
     if args.manifest.is_some() && args.manifest_hash.is_some() {
         anyhow::bail!("use either --manifest or --manifest-hash (not both)");
@@ -195,9 +195,9 @@ async fn create_release(ctx: CommandContext, args: CreateReleaseArgs) -> Result<
 
 /// Get release details.
 async fn get_release(ctx: CommandContext, args: GetReleaseArgs) -> Result<()> {
-    let org = ctx.require_org()?;
-    let app = ctx.require_app()?;
     let client = ctx.client()?;
+    let org = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app = crate::resolve::resolve_app_id(&client, org, ctx.require_app()?).await?;
 
     let response: ReleaseResponse = client
         .get(&format!(

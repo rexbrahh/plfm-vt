@@ -210,8 +210,8 @@ impl MembersCommand {
 }
 
 async fn list_members(ctx: CommandContext, args: ListMembersArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let mut path = format!("/v1/orgs/{org_id}/members?limit={}", args.limit);
     if let Some(cursor) = args.cursor.as_deref() {
@@ -229,8 +229,8 @@ async fn list_members(ctx: CommandContext, args: ListMembersArgs) -> Result<()> 
 }
 
 async fn add_member(ctx: CommandContext, args: AddMemberArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let request = CreateMemberRequest {
         email: args.email,
@@ -260,8 +260,8 @@ async fn add_member(ctx: CommandContext, args: AddMemberArgs) -> Result<()> {
 }
 
 async fn update_member(ctx: CommandContext, args: UpdateMemberArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     if args.expected_version < 0 {
         return Err(anyhow::anyhow!("expected_version must be >= 0"));
@@ -295,8 +295,8 @@ async fn update_member(ctx: CommandContext, args: UpdateMemberArgs) -> Result<()
 }
 
 async fn remove_member(ctx: CommandContext, args: RemoveMemberArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let request_hash_input = serde_json::json!({
         "member_id": &args.member_id
@@ -374,9 +374,10 @@ async fn create_org(ctx: CommandContext, args: CreateOrgArgs) -> Result<()> {
 /// Get organization details.
 async fn get_org(ctx: CommandContext, args: GetOrgArgs) -> Result<()> {
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, &args.org).await?;
 
     let response: OrgResponse = client
-        .get(&format!("/v1/orgs/{}", args.org))
+        .get(&format!("/v1/orgs/{}", org_id))
         .await
         .map_err(|e| match e {
             CliError::Api { status: 404, .. } => {

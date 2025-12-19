@@ -290,8 +290,8 @@ impl From<&VolumeResponse> for VolumeListRow {
 }
 
 async fn list_volumes(ctx: CommandContext, args: ListVolumesArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let mut path = format!("/v1/orgs/{org_id}/volumes?limit={}", args.limit);
     if let Some(cursor) = args.cursor.as_deref() {
@@ -310,8 +310,8 @@ async fn list_volumes(ctx: CommandContext, args: ListVolumesArgs) -> Result<()> 
 }
 
 async fn create_volume(ctx: CommandContext, args: CreateVolumeArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let request = CreateVolumeRequest {
         name: args.name.clone(),
@@ -344,8 +344,8 @@ async fn create_volume(ctx: CommandContext, args: CreateVolumeArgs) -> Result<()
 }
 
 async fn get_volume(ctx: CommandContext, args: GetVolumeArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let response: VolumeResponse = client
         .get(&format!("/v1/orgs/{org_id}/volumes/{}", args.volume))
@@ -362,8 +362,8 @@ async fn get_volume(ctx: CommandContext, args: GetVolumeArgs) -> Result<()> {
 }
 
 async fn delete_volume(ctx: CommandContext, args: DeleteVolumeArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let path = format!("/v1/orgs/{org_id}/volumes/{}", args.volume);
     client.delete_with_idempotency_key(&path, None).await?;
@@ -381,10 +381,11 @@ async fn delete_volume(ctx: CommandContext, args: DeleteVolumeArgs) -> Result<()
 }
 
 async fn attach_volume(ctx: CommandContext, args: AttachVolumeArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
-    let app_id = ctx.require_app()?;
-    let env_id = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+    let env_id =
+        crate::resolve::resolve_env_id(&client, org_id, app_id, require_env(&ctx)?).await?;
 
     let request = CreateVolumeAttachmentRequest {
         volume_id: args.volume.clone(),
@@ -421,10 +422,11 @@ async fn attach_volume(ctx: CommandContext, args: AttachVolumeArgs) -> Result<()
 }
 
 async fn detach_volume(ctx: CommandContext, args: DetachVolumeArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
-    let app_id = ctx.require_app()?;
-    let env_id = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+    let env_id =
+        crate::resolve::resolve_env_id(&client, org_id, app_id, require_env(&ctx)?).await?;
 
     let path = format!(
         "/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/volume-attachments/{}",
@@ -441,8 +443,8 @@ async fn detach_volume(ctx: CommandContext, args: DetachVolumeArgs) -> Result<()
 }
 
 async fn snapshot_create(ctx: CommandContext, args: SnapshotCreateArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let path = format!("/v1/orgs/{org_id}/volumes/{}/snapshots", args.volume);
     let request = CreateSnapshotRequest { note: args.note };
@@ -470,8 +472,8 @@ async fn snapshot_create(ctx: CommandContext, args: SnapshotCreateArgs) -> Resul
 }
 
 async fn snapshot_list(ctx: CommandContext, args: SnapshotListArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let mut path = format!(
         "/v1/orgs/{org_id}/volumes/{}/snapshots?limit={}",
@@ -491,8 +493,8 @@ async fn snapshot_list(ctx: CommandContext, args: SnapshotListArgs) -> Result<()
 }
 
 async fn restore_volume(ctx: CommandContext, args: RestoreVolumeArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let path = format!("/v1/orgs/{org_id}/volumes/{}/restore", args.volume);
     let request = RestoreVolumeRequest {

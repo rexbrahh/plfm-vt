@@ -92,8 +92,8 @@ struct CreateProjectRequest {
 }
 
 async fn list_projects(ctx: CommandContext, args: ListProjectsArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let mut path = format!("/v1/orgs/{org_id}/projects?limit={}", args.limit);
     if let Some(cursor) = args.cursor.as_deref() {
@@ -111,8 +111,8 @@ async fn list_projects(ctx: CommandContext, args: ListProjectsArgs) -> Result<()
 }
 
 async fn create_project(ctx: CommandContext, args: CreateProjectArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let request = CreateProjectRequest { name: args.name };
     let path = format!("/v1/orgs/{org_id}/projects");
@@ -139,8 +139,8 @@ async fn create_project(ctx: CommandContext, args: CreateProjectArgs) -> Result<
 }
 
 async fn get_project(ctx: CommandContext, args: GetProjectArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let response: ProjectResponse = client
         .get(&format!("/v1/orgs/{}/projects/{}", org_id, args.project))

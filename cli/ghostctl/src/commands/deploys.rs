@@ -168,10 +168,13 @@ async fn list_deploys(ctx: CommandContext, args: ListDeploysArgs) -> Result<()> 
     let app = ctx.require_app()?;
     let env = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, org).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, app).await?;
+    let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env).await?;
 
     let mut path = format!(
         "/v1/orgs/{}/apps/{}/envs/{}/deploys?limit={}",
-        org, app, env, args.limit
+        org_id, app_id, env_id, args.limit
     );
     if let Some(cursor) = args.cursor.as_deref() {
         path.push_str(&format!("&cursor={cursor}"));
@@ -192,6 +195,9 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
     let app = ctx.require_app()?;
     let env = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, org).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, app).await?;
+    let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env).await?;
 
     let request = CreateDeployRequest {
         release_id: args.release.clone(),
@@ -202,7 +208,10 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
         },
         strategy: args.strategy,
     };
-    let path = format!("/v1/orgs/{}/apps/{}/envs/{}/deploys", org, app, env);
+    let path = format!(
+        "/v1/orgs/{}/apps/{}/envs/{}/deploys",
+        org_id, app_id, env_id
+    );
     let idempotency_key = match ctx.idempotency_key.as_deref() {
         Some(key) => key.to_string(),
         None => crate::idempotency::default_idempotency_key("deploys.create", &path, &request)?,
@@ -215,7 +224,10 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
     match ctx.format {
         OutputFormat::Json => print_single(&response, ctx.format),
         OutputFormat::Table => {
-            print_success(&format!("Created deploy {} for env {}", response.id, env));
+            print_success(&format!(
+                "Created deploy {} for env {}",
+                response.id, env_id
+            ));
         }
     }
 
@@ -228,11 +240,17 @@ async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
     let app = ctx.require_app()?;
     let env = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, org).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, app).await?;
+    let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env).await?;
 
     let request = RollbackRequest {
         release_id: args.release.clone(),
     };
-    let path = format!("/v1/orgs/{}/apps/{}/envs/{}/rollbacks", org, app, env);
+    let path = format!(
+        "/v1/orgs/{}/apps/{}/envs/{}/rollbacks",
+        org_id, app_id, env_id
+    );
     let idempotency_key = match ctx.idempotency_key.as_deref() {
         Some(key) => key.to_string(),
         None => crate::idempotency::default_idempotency_key("rollbacks.create", &path, &request)?,
@@ -245,7 +263,10 @@ async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
     match ctx.format {
         OutputFormat::Json => print_single(&response, ctx.format),
         OutputFormat::Table => {
-            print_success(&format!("Created rollback {} for env {}", response.id, env));
+            print_success(&format!(
+                "Created rollback {} for env {}",
+                response.id, env_id
+            ));
         }
     }
 
@@ -258,11 +279,14 @@ async fn get_deploy(ctx: CommandContext, args: GetDeployArgs) -> Result<()> {
     let app = ctx.require_app()?;
     let env = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, org).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, app).await?;
+    let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env).await?;
 
     let response: DeployResponse = client
         .get(&format!(
             "/v1/orgs/{}/apps/{}/envs/{}/deploys/{}",
-            org, app, env, args.deploy
+            org_id, app_id, env_id, args.deploy
         ))
         .await
         .map_err(|e| match e {

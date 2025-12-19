@@ -107,8 +107,8 @@ struct CreateAppRequest {
 
 /// List all applications in the current org.
 async fn list_apps(ctx: CommandContext, args: ListAppsArgs) -> Result<()> {
-    let org = ctx.require_org()?;
     let client = ctx.client()?;
+    let org = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let mut path = format!("/v1/orgs/{}/apps?limit={}", org, args.limit);
     if let Some(cursor) = args.cursor.as_deref() {
@@ -126,8 +126,8 @@ async fn list_apps(ctx: CommandContext, args: ListAppsArgs) -> Result<()> {
 
 /// Create a new application.
 async fn create_app(ctx: CommandContext, args: CreateAppArgs) -> Result<()> {
-    let org = ctx.require_org()?;
     let client = ctx.client()?;
+    let org = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
     let request = CreateAppRequest {
         name: args.name.clone(),
@@ -158,11 +158,12 @@ async fn create_app(ctx: CommandContext, args: CreateAppArgs) -> Result<()> {
 
 /// Get application details.
 async fn get_app(ctx: CommandContext, args: GetAppArgs) -> Result<()> {
-    let org = ctx.require_org()?;
     let client = ctx.client()?;
+    let org = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org, &args.app).await?;
 
     let response: AppResponse = client
-        .get(&format!("/v1/orgs/{}/apps/{}", org, args.app))
+        .get(&format!("/v1/orgs/{}/apps/{}", org, app_id))
         .await
         .map_err(|e| match e {
             CliError::Api { status: 404, .. } => {

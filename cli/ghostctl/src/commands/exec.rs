@@ -46,10 +46,11 @@ struct ExecGrantResponse {
 
 impl ExecCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
-        let org_id = ctx.require_org()?;
-        let app_id = ctx.require_app()?;
-        let env_id = require_env(&ctx)?;
         let client = ctx.client()?;
+        let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+        let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+        let env_id =
+            crate::resolve::resolve_env_id(&client, org_id, app_id, require_env(&ctx)?).await?;
 
         let path = format!(
             "/v1/orgs/{}/apps/{}/envs/{}/instances/{}/exec",

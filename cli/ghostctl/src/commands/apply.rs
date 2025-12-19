@@ -76,9 +76,9 @@ struct ApplyPlan {
 
 impl ApplyCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
-        let org_id = ctx.require_org()?;
-        let app_id = ctx.require_app()?;
-        let env_id = require_env(&ctx)?;
+        let org_ident = ctx.require_org()?;
+        let app_ident = ctx.require_app()?;
+        let env_ident = require_env(&ctx)?;
 
         let manifest_path = self.manifest.unwrap_or_else(|| PathBuf::from("vt.toml"));
         let contents = std::fs::read_to_string(&manifest_path).map_err(|e| {
@@ -103,19 +103,19 @@ impl ApplyCommand {
         let manifest_process_types = process_types_from_manifest(&manifest_json)?;
         let process_types = select_process_types(&manifest_process_types, &self.process_type)?;
 
-        let plan = ApplyPlan {
-            dry_run: self.dry_run,
-            org_id: org_id.to_string(),
-            app_id: app_id.to_string(),
-            env_id: env_id.to_string(),
-            manifest_path: manifest_path.display().to_string(),
-            manifest_hash: manifest_hash.clone(),
-            image_ref: image_ref.clone(),
-            image_digest: image_digest.clone(),
-            process_types: process_types.clone(),
-        };
-
         if self.dry_run {
+            let plan = ApplyPlan {
+                dry_run: self.dry_run,
+                org_id: org_ident.to_string(),
+                app_id: app_ident.to_string(),
+                env_id: env_ident.to_string(),
+                manifest_path: manifest_path.display().to_string(),
+                manifest_hash: manifest_hash.clone(),
+                image_ref: image_ref.clone(),
+                image_digest: image_digest.clone(),
+                process_types: process_types.clone(),
+            };
+
             match ctx.format {
                 OutputFormat::Json => print_single(&plan, ctx.format),
                 OutputFormat::Table => {
@@ -127,7 +127,7 @@ impl ApplyCommand {
                     );
                     println!(
                         "- create deploy: env_id={}, process_types={}",
-                        env_id,
+                        env_ident,
                         process_types.join(",")
                     );
                 }
@@ -136,6 +136,10 @@ impl ApplyCommand {
         }
 
         let client = ctx.client()?;
+
+        let org_id = crate::resolve::resolve_org_id(&client, org_ident).await?;
+        let app_id = crate::resolve::resolve_app_id(&client, org_id, app_ident).await?;
+        let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, env_ident).await?;
 
         // 1) Create release from (image digest + manifest hash).
         let release_path = format!("/v1/orgs/{}/apps/{}/releases", org_id, app_id);

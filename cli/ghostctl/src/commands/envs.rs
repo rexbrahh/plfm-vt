@@ -96,9 +96,9 @@ struct CreateEnvRequest {
 
 /// List all environments in the current app.
 async fn list_envs(ctx: CommandContext, args: ListEnvsArgs) -> Result<()> {
-    let org = ctx.require_org()?;
-    let app = ctx.require_app()?;
     let client = ctx.client()?;
+    let org = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app = crate::resolve::resolve_app_id(&client, org, ctx.require_app()?).await?;
 
     let mut path = format!("/v1/orgs/{}/apps/{}/envs?limit={}", org, app, args.limit);
     if let Some(cursor) = args.cursor.as_deref() {
@@ -116,9 +116,9 @@ async fn list_envs(ctx: CommandContext, args: ListEnvsArgs) -> Result<()> {
 
 /// Create a new environment.
 async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
-    let org = ctx.require_org()?;
-    let app = ctx.require_app()?;
     let client = ctx.client()?;
+    let org = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app = crate::resolve::resolve_app_id(&client, org, ctx.require_app()?).await?;
 
     let request = CreateEnvRequest {
         name: args.name.clone(),
@@ -148,12 +148,13 @@ async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
 
 /// Get environment details.
 async fn get_env(ctx: CommandContext, args: GetEnvArgs) -> Result<()> {
-    let org = ctx.require_org()?;
-    let app = ctx.require_app()?;
     let client = ctx.client()?;
+    let org = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app = crate::resolve::resolve_app_id(&client, org, ctx.require_app()?).await?;
+    let env_id = crate::resolve::resolve_env_id(&client, org, app, &args.env).await?;
 
     let response: EnvResponse = client
-        .get(&format!("/v1/orgs/{}/apps/{}/envs/{}", org, app, args.env))
+        .get(&format!("/v1/orgs/{}/apps/{}/envs/{}", org, app, env_id))
         .await
         .map_err(|e| match e {
             CliError::Api { status: 404, .. } => {

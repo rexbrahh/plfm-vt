@@ -119,15 +119,39 @@ impl EventsCommand {
 }
 
 async fn list_events(ctx: CommandContext, args: EventsListArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
-    let app_id = args
+    let app_ident = args
         .app_id
         .or_else(|| ctx.resolve_app().map(|s| s.to_string()));
-    let env_id = args
+    let env_ident = args
         .env_id
         .or_else(|| ctx.resolve_env().map(|s| s.to_string()));
+
+    let app_id = match app_ident.as_deref() {
+        None => None,
+        Some(ident) => Some(crate::resolve::resolve_app_id(&client, org_id, ident).await?),
+    };
+
+    let env_id = match env_ident.as_deref() {
+        None => None,
+        Some(ident) => match app_id {
+            Some(app_id) => {
+                Some(crate::resolve::resolve_env_id(&client, org_id, app_id, ident).await?)
+            }
+            None => {
+                if let Ok(id) = ident.parse::<plfm_id::EnvId>() {
+                    Some(id)
+                } else {
+                    anyhow::bail!(
+                        "Resolving env name '{}' requires app context (use --app or --app-id).",
+                        ident
+                    );
+                }
+            }
+        },
+    };
 
     let mut path = format!(
         "/v1/orgs/{}/events?after_event_id={}&limit={}",
@@ -137,10 +161,10 @@ async fn list_events(ctx: CommandContext, args: EventsListArgs) -> Result<()> {
     if let Some(event_type) = args.event_type.as_deref() {
         path.push_str(&format!("&event_type={event_type}"));
     }
-    if let Some(app_id) = app_id.as_deref() {
+    if let Some(app_id) = app_id.as_ref() {
         path.push_str(&format!("&app_id={app_id}"));
     }
-    if let Some(env_id) = env_id.as_deref() {
+    if let Some(env_id) = env_id.as_ref() {
         path.push_str(&format!("&env_id={env_id}"));
     }
 
@@ -155,15 +179,39 @@ async fn list_events(ctx: CommandContext, args: EventsListArgs) -> Result<()> {
 }
 
 async fn tail_events(ctx: CommandContext, args: EventsTailArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
 
-    let app_id = args
+    let app_ident = args
         .app_id
         .or_else(|| ctx.resolve_app().map(|s| s.to_string()));
-    let env_id = args
+    let env_ident = args
         .env_id
         .or_else(|| ctx.resolve_env().map(|s| s.to_string()));
+
+    let app_id = match app_ident.as_deref() {
+        None => None,
+        Some(ident) => Some(crate::resolve::resolve_app_id(&client, org_id, ident).await?),
+    };
+
+    let env_id = match env_ident.as_deref() {
+        None => None,
+        Some(ident) => match app_id {
+            Some(app_id) => {
+                Some(crate::resolve::resolve_env_id(&client, org_id, app_id, ident).await?)
+            }
+            None => {
+                if let Ok(id) = ident.parse::<plfm_id::EnvId>() {
+                    Some(id)
+                } else {
+                    anyhow::bail!(
+                        "Resolving env name '{}' requires app context (use --app or --app-id).",
+                        ident
+                    );
+                }
+            }
+        },
+    };
 
     let mut after_event_id = args.after;
     let poll = Duration::from_millis(args.poll_ms.max(100));
@@ -177,10 +225,10 @@ async fn tail_events(ctx: CommandContext, args: EventsTailArgs) -> Result<()> {
         if let Some(event_type) = args.event_type.as_deref() {
             path.push_str(&format!("&event_type={event_type}"));
         }
-        if let Some(app_id) = app_id.as_deref() {
+        if let Some(app_id) = app_id.as_ref() {
             path.push_str(&format!("&app_id={app_id}"));
         }
-        if let Some(env_id) = env_id.as_deref() {
+        if let Some(env_id) = env_id.as_ref() {
             path.push_str(&format!("&env_id={env_id}"));
         }
 

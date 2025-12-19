@@ -210,10 +210,11 @@ fn require_env(ctx: &CommandContext) -> Result<&str> {
 }
 
 async fn list_routes(ctx: CommandContext, args: ListRoutesArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
-    let app_id = ctx.require_app()?;
-    let env_id = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+    let env_id =
+        crate::resolve::resolve_env_id(&client, org_id, app_id, require_env(&ctx)?).await?;
 
     let mut path = format!(
         "/v1/orgs/{}/apps/{}/envs/{}/routes?limit={}",
@@ -234,10 +235,11 @@ async fn list_routes(ctx: CommandContext, args: ListRoutesArgs) -> Result<()> {
 }
 
 async fn get_route(ctx: CommandContext, args: GetRouteArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
-    let app_id = ctx.require_app()?;
-    let env_id = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+    let env_id =
+        crate::resolve::resolve_env_id(&client, org_id, app_id, require_env(&ctx)?).await?;
 
     let response: RouteResponse = client
         .get(&format!(
@@ -257,10 +259,11 @@ async fn get_route(ctx: CommandContext, args: GetRouteArgs) -> Result<()> {
 }
 
 async fn create_route(ctx: CommandContext, args: CreateRouteArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
-    let app_id = ctx.require_app()?;
-    let env_id = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+    let env_id =
+        crate::resolve::resolve_env_id(&client, org_id, app_id, require_env(&ctx)?).await?;
 
     let request = CreateRouteRequest {
         hostname: args.hostname.clone(),
@@ -299,10 +302,11 @@ async fn create_route(ctx: CommandContext, args: CreateRouteArgs) -> Result<()> 
 }
 
 async fn update_route(ctx: CommandContext, args: UpdateRouteArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
-    let app_id = ctx.require_app()?;
-    let env_id = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+    let env_id =
+        crate::resolve::resolve_env_id(&client, org_id, app_id, require_env(&ctx)?).await?;
 
     let request = UpdateRouteRequest {
         expected_version: args.expected_version,
@@ -345,10 +349,11 @@ async fn update_route(ctx: CommandContext, args: UpdateRouteArgs) -> Result<()> 
 }
 
 async fn delete_route(ctx: CommandContext, args: DeleteRouteArgs) -> Result<()> {
-    let org_id = ctx.require_org()?;
-    let app_id = ctx.require_app()?;
-    let env_id = require_env(&ctx)?;
     let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+    let env_id =
+        crate::resolve::resolve_env_id(&client, org_id, app_id, require_env(&ctx)?).await?;
 
     let path = format!(
         "/v1/orgs/{}/apps/{}/envs/{}/routes/{}",
