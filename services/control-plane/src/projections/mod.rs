@@ -16,6 +16,7 @@ mod envs;
 mod instances;
 mod nodes;
 mod orgs;
+mod projects;
 mod releases;
 mod routes;
 pub mod worker;
@@ -74,6 +75,7 @@ impl ProjectionRegistry {
         Self {
             handlers: vec![
                 Box::new(orgs::OrgsProjection),
+                Box::new(projects::ProjectsProjection),
                 Box::new(apps::AppsProjection),
                 Box::new(envs::EnvsProjection),
                 Box::new(releases::ReleasesProjection),
@@ -127,6 +129,12 @@ mod tests {
     fn test_registry_finds_org_handler() {
         let registry = ProjectionRegistry::new();
         assert!(registry.handler_for("org.created").is_some());
+    }
+
+    #[test]
+    fn test_registry_finds_project_handler() {
+        let registry = ProjectionRegistry::new();
+        assert!(registry.handler_for("project.created").is_some());
     }
 
     #[test]

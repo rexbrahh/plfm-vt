@@ -12,6 +12,7 @@ members = [
     "services/node-agent",
     "services/ingress",
     "cli/ghostctl",
+    "tools/api-validate",
 ]
 
 [workspace.package]

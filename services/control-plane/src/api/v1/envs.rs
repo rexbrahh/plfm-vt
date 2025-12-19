@@ -22,7 +22,7 @@ use crate::state::AppState;
 
 /// Create env routes.
 ///
-/// Envs are nested under apps: /v1/apps/{app_id}/envs
+/// Envs are nested under apps: /v1/orgs/{org_id}/apps/{app_id}/envs
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_env))
@@ -103,11 +103,11 @@ pub struct SetScaleResponse {
 
 /// Create a new environment.
 ///
-/// POST /v1/apps/{app_id}/envs
+/// POST /v1/orgs/{org_id}/apps/{app_id}/envs
 async fn create_env(
     State(state): State<AppState>,
     ctx: RequestContext,
-    Path(app_id): Path<String>,
+    Path((org_id, app_id)): Path<(String, String)>,
     Json(req): Json<CreateEnvRequest>,
 ) -> Result<Response, ApiError> {
     let RequestContext {
@@ -117,6 +117,12 @@ async fn create_env(
         actor_id,
     } = ctx;
     let endpoint_name = "envs.create";
+
+    // Validate org_id format
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
 
     // Validate app_id format
     let app_id: AppId = app_id.parse().map_err(|_| {
@@ -142,10 +148,21 @@ async fn create_env(
             .with_request_id(request_id.clone())
     })?;
 
-    let org_id: OrgId = app_row.org_id.parse().map_err(|_| {
+    let app_org_id: OrgId = app_row.org_id.parse().map_err(|_| {
         ApiError::internal("internal_error", "Invalid org_id in database")
             .with_request_id(request_id.clone())
     })?;
+
+    if app_org_id != org_id {
+        return Err(ApiError::not_found(
+            "app_not_found",
+            format!(
+                "Application {} not found in organization {}",
+                app_id, org_id
+            ),
+        )
+        .with_request_id(request_id.clone()));
+    }
 
     // Validate name
     if req.name.is_empty() {
@@ -325,16 +342,21 @@ async fn create_env(
 
 /// List environments in an application.
 ///
-/// GET /v1/apps/{app_id}/envs
+/// GET /v1/orgs/{org_id}/apps/{app_id}/envs
 async fn list_envs(
     State(state): State<AppState>,
     ctx: RequestContext,
-    Path(app_id): Path<String>,
+    Path((org_id, app_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = ctx.request_id;
 
-    // Validate app_id format
-    let _app_id: AppId = app_id.parse().map_err(|_| {
+    // Validate IDs
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
             .with_request_id(request_id.clone())
     })?;
@@ -344,12 +366,13 @@ async fn list_envs(
         r#"
         SELECT env_id, app_id, org_id, name, resource_version, created_at, updated_at
         FROM envs_view
-        WHERE app_id = $1 AND NOT is_deleted
+        WHERE org_id = $1 AND app_id = $2 AND NOT is_deleted
         ORDER BY created_at DESC
         LIMIT 100
         "#,
     )
-    .bind(&app_id)
+    .bind(org_id.to_string())
+    .bind(app_id.to_string())
     .fetch_all(state.db().pool())
     .await
     .map_err(|e| {
@@ -450,9 +473,11 @@ async fn set_scale(
 
     // Verify env exists
     let env_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM envs_view WHERE env_id = $1 AND NOT is_deleted)",
+        "SELECT EXISTS(SELECT 1 FROM envs_view WHERE env_id = $1 AND org_id = $2 AND app_id = $3 AND NOT is_deleted)",
     )
     .bind(env_id.to_string())
+    .bind(org_id.to_string())
+    .bind(app_id.to_string())
     .fetch_one(state.db().pool())
     .await
     .map_err(|e| {
@@ -575,22 +600,26 @@ async fn set_scale(
 
 /// Get a single environment by ID.
 ///
-/// GET /v1/apps/{app_id}/envs/{env_id}
+/// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}
 async fn get_env(
     State(state): State<AppState>,
     ctx: RequestContext,
-    Path((app_id, env_id)): Path<(String, String)>,
+    Path((org_id, app_id, env_id)): Path<(String, String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = ctx.request_id;
 
-    // Validate app_id format
-    let _app_id: AppId = app_id.parse().map_err(|_| {
+    // Validate IDs
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
             .with_request_id(request_id.clone())
     })?;
 
-    // Validate env_id format
-    let _env_id: EnvId = env_id.parse().map_err(|_| {
+    let env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
@@ -600,14 +629,21 @@ async fn get_env(
         r#"
         SELECT env_id, app_id, org_id, name, resource_version, created_at, updated_at
         FROM envs_view
-        WHERE env_id = $1 AND NOT is_deleted
+        WHERE env_id = $1 AND org_id = $2 AND app_id = $3 AND NOT is_deleted
         "#,
     )
-    .bind(&env_id)
+    .bind(env_id.to_string())
+    .bind(org_id.to_string())
+    .bind(app_id.to_string())
     .fetch_optional(state.db().pool())
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, request_id = %request_id, env_id = %env_id, "Failed to get env");
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            env_id = %env_id,
+            "Failed to get env"
+        );
         ApiError::internal("internal_error", "Failed to get environment")
             .with_request_id(request_id.clone())
     })?;

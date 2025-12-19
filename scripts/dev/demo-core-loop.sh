@@ -188,7 +188,7 @@ echo ""
 echo "== Create env =="
 env_body="$(jq -c -n --arg name "${env_name}" '{name: $name}')"
 idem_env="demo-env-${now_suffix}-key"
-req_env="$(api_post_json "/apps/${app_id}/envs" "${idem_env}" "${env_body}" "env")"
+req_env="$(api_post_json "/orgs/${org_id}/apps/${app_id}/envs" "${idem_env}" "${env_body}" "env")"
 env_id="$(jq -r '.id' "${TMP_DIR}/env.json")"
 echo "request_id=${req_env} env_id=${env_id}"
 

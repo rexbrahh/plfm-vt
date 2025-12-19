@@ -10,6 +10,7 @@ use crate::define_id;
 // =============================================================================
 
 define_id!(OrgId, "org");
+define_id!(ProjectId, "prj");
 define_id!(MemberId, "mem");
 define_id!(ServicePrincipalId, "sp");
 
@@ -293,6 +294,7 @@ mod tests {
         // Ensure all prefixes are unique
         let prefixes = vec![
             OrgId::PREFIX,
+            ProjectId::PREFIX,
             MemberId::PREFIX,
             ServicePrincipalId::PREFIX,
             AppId::PREFIX,

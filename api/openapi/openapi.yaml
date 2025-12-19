@@ -17,6 +17,7 @@ servers:
 tags:
   - name: Auth
   - name: Orgs
+  - name: Projects
   - name: Members
   - name: Apps
   - name: Envs
@@ -219,6 +220,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Org"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+
+  /orgs/{org_id}/projects:
+    get:
+      tags: [Projects]
+      summary: List projects
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Projects
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListProjectsResponse"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+    post:
+      tags: [Projects]
+      summary: Create project
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProjectRequest"
+      responses:
+        "200":
+          description: Project created
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "409":
+          $ref: "#/components/responses/Error409"
+
+  /orgs/{org_id}/projects/{project_id}:
+    get:
+      tags: [Projects]
+      summary: Get project
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/ProjectId"
+      responses:
+        "200":
+          description: Project
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
         "401":
           $ref: "#/components/responses/Error401"
         "403":
@@ -1507,6 +1585,13 @@ components:
       schema:
         type: string
 
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        type: string
+
     AppId:
       name: app_id
       in: path
@@ -1887,6 +1972,41 @@ components:
         created_at:
           type: string
         updated_at:
+          type: string
+
+    Project:
+      type: object
+      required: [id, org_id, name, created_at, updated_at, resource_version]
+      properties:
+        id:
+          type: string
+        org_id:
+          type: string
+        name:
+          type: string
+        created_at:
+          type: string
+        updated_at:
+          type: string
+        resource_version:
+          type: integer
+
+    ListProjectsResponse:
+      type: object
+      required: [items, next_cursor]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+        next_cursor:
+          type: [string, "null"]
+
+    CreateProjectRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
           type: string
 
     ListOrgsResponse:

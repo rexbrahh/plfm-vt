@@ -9,6 +9,7 @@ mod instances;
 mod logs;
 mod nodes;
 mod orgs;
+mod projects;
 mod releases;
 mod routes;
 mod scale;
@@ -52,6 +53,9 @@ enum Commands {
 
     /// Manage organizations.
     Orgs(orgs::OrgsCommand),
+
+    /// Manage projects.
+    Projects(projects::ProjectsCommand),
 
     /// Manage applications.
     Apps(apps::AppsCommand),
@@ -111,6 +115,7 @@ impl Cli {
         match self.command {
             Commands::Auth(cmd) => cmd.run(ctx).await,
             Commands::Orgs(cmd) => cmd.run(ctx).await,
+            Commands::Projects(cmd) => cmd.run(ctx).await,
             Commands::Apps(cmd) => cmd.run(ctx).await,
             Commands::Envs(cmd) => cmd.run(ctx).await,
             Commands::Releases(cmd) => cmd.run(ctx).await,

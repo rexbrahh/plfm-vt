@@ -106,6 +106,11 @@ lint:
 test: test-unit test-integration
     @echo "All tests passed."
 
+# Validate OpenAPI and JSON schemas under api/
+api-validate:
+    @echo "Validating API schemas..."
+    scripts/dev/with-macos-libiconv.sh cargo run -q -p plfm-api-validate
+
 # Run unit tests only
 test-unit:
     @echo "Running unit tests..."
@@ -130,7 +135,7 @@ test-perf:
     @echo "[placeholder] go test -bench=. ./test/perf/..."
 
 # Full verification (fmt + lint + test)
-verify: fmt-check lint test
+verify: fmt-check api-validate lint test
     @echo "Verification complete."
 
 # =============================================================================

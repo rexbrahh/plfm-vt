@@ -86,10 +86,13 @@ struct CreateEnvRequest {
 
 /// List all environments in the current app.
 async fn list_envs(ctx: CommandContext) -> Result<()> {
+    let org = ctx.require_org()?;
     let app = ctx.require_app()?;
     let client = ctx.client()?;
 
-    let response: ListEnvsResponse = client.get(&format!("/v1/apps/{}/envs", app)).await?;
+    let response: ListEnvsResponse = client
+        .get(&format!("/v1/orgs/{}/apps/{}/envs", org, app))
+        .await?;
 
     print_output(&response.items, ctx.format);
     Ok(())
@@ -97,6 +100,7 @@ async fn list_envs(ctx: CommandContext) -> Result<()> {
 
 /// Create a new environment.
 async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
+    let org = ctx.require_org()?;
     let app = ctx.require_app()?;
     let client = ctx.client()?;
 
@@ -105,15 +109,15 @@ async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
     };
 
     let response: EnvResponse = client
-        .post(&format!("/v1/apps/{}/envs", app), &request)
+        .post(&format!("/v1/orgs/{}/apps/{}/envs", org, app), &request)
         .await?;
 
     match ctx.format {
         OutputFormat::Json => print_single(&response, ctx.format),
         OutputFormat::Table => {
             print_success(&format!(
-                "Created environment '{}' ({}) in app {}",
-                response.name, response.id, app
+                "Created environment '{}' ({}) in {}/{}",
+                response.name, response.id, org, app
             ));
         }
     }
@@ -123,11 +127,12 @@ async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
 
 /// Get environment details.
 async fn get_env(ctx: CommandContext, args: GetEnvArgs) -> Result<()> {
+    let org = ctx.require_org()?;
     let app = ctx.require_app()?;
     let client = ctx.client()?;
 
     let response: EnvResponse = client
-        .get(&format!("/v1/apps/{}/envs/{}", app, args.env))
+        .get(&format!("/v1/orgs/{}/apps/{}/envs/{}", org, app, args.env))
         .await
         .map_err(|e| match e {
             CliError::Api { status: 404, .. } => {

@@ -31,6 +31,7 @@ impl std::fmt::Display for ActorType {
 #[serde(rename_all = "snake_case")]
 pub enum AggregateType {
     Org,
+    Project,
     OrgMember,
     ServicePrincipal,
     App,
@@ -52,6 +53,7 @@ impl std::fmt::Display for AggregateType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             AggregateType::Org => "org",
+            AggregateType::Project => "project",
             AggregateType::OrgMember => "org_member",
             AggregateType::ServicePrincipal => "service_principal",
             AggregateType::App => "app",
