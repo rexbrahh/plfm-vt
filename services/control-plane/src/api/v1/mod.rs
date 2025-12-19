@@ -9,6 +9,7 @@ mod logs;
 mod nodes;
 mod orgs;
 mod releases;
+mod routes;
 
 use axum::Router;
 
@@ -37,9 +38,20 @@ pub fn routes() -> Router<AppState> {
         // Releases are nested under apps: /v1/orgs/{org_id}/apps/{app_id}/releases
         .nest("/orgs/{org_id}/apps/{app_id}/releases", releases::routes())
         // Deploys are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/deploys
-        .nest("/orgs/{org_id}/apps/{app_id}/envs/{env_id}/deploys", deploys::routes())
+        .nest(
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/deploys",
+            deploys::routes(),
+        )
+        // Routes are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/routes
+        .nest(
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/routes",
+            routes::routes(),
+        )
         // Scale is nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
-        .nest("/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale", envs::scale_routes())
+        .nest(
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale",
+            envs::scale_routes(),
+        )
         // Nodes are infrastructure resources: /v1/nodes
         .nest("/nodes", nodes::routes())
         // Instances are VM instances: /v1/instances

@@ -173,6 +173,32 @@ pub enum MemberRole {
 }
 
 // =============================================================================
+// Route Enums
+// =============================================================================
+
+/// Protocol hint for edge routing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RouteProtocolHint {
+    TlsPassthrough,
+    TcpRaw,
+}
+
+/// Proxy Protocol mode for edge -> backend connections.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RouteProxyProtocol {
+    Off,
+    V2,
+}
+
+impl Default for RouteProxyProtocol {
+    fn default() -> Self {
+        Self::Off
+    }
+}
+
+// =============================================================================
 // Event Payloads
 // =============================================================================
 
@@ -361,26 +387,42 @@ pub struct DeployStatusChangedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouteCreatedPayload {
     pub route_id: RouteId,
+    pub org_id: OrgId,
+    pub app_id: AppId,
     pub env_id: EnvId,
     pub hostname: String,
-    pub process_type: String,
-    pub port: i32,
+    pub listen_port: i32,
+    pub protocol_hint: RouteProtocolHint,
+    pub backend_process_type: String,
+    pub backend_port: i32,
+    pub proxy_protocol: RouteProxyProtocol,
+    pub backend_expects_proxy_protocol: bool,
+    pub ipv4_required: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouteUpdatedPayload {
     pub route_id: RouteId,
+    pub org_id: OrgId,
+    pub env_id: EnvId,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub hostname: Option<String>,
+    pub backend_process_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub process_type: Option<String>,
+    pub backend_port: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub port: Option<i32>,
+    pub proxy_protocol: Option<RouteProxyProtocol>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend_expects_proxy_protocol: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ipv4_required: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouteDeletedPayload {
     pub route_id: RouteId,
+    pub org_id: OrgId,
+    pub env_id: EnvId,
+    pub hostname: String,
 }
 
 // -----------------------------------------------------------------------------

@@ -17,13 +17,14 @@ mod instances;
 mod nodes;
 mod orgs;
 mod releases;
+mod routes;
 pub mod worker;
 
 pub use worker::ProjectionWorker;
 
 use async_trait::async_trait;
 
-use crate::db::{EventRow, DbError};
+use crate::db::{DbError, EventRow};
 
 /// Result type for projection operations.
 pub type ProjectionResult<T> = Result<T, ProjectionError>;
@@ -83,6 +84,7 @@ impl ProjectionRegistry {
                 Box::new(nodes::NodesProjection),
                 Box::new(instances::InstancesProjection),
                 Box::new(env_config::EnvConfigProjection),
+                Box::new(routes::RoutesProjection),
             ],
         }
     }
@@ -173,7 +175,9 @@ mod tests {
     fn test_registry_finds_instance_handler() {
         let registry = ProjectionRegistry::new();
         assert!(registry.handler_for("instance.allocated").is_some());
-        assert!(registry.handler_for("instance.desired_state_changed").is_some());
+        assert!(registry
+            .handler_for("instance.desired_state_changed")
+            .is_some());
     }
 
     #[test]

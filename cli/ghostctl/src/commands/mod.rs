@@ -10,6 +10,7 @@ mod logs;
 mod nodes;
 mod orgs;
 mod releases;
+mod routes;
 mod scale;
 
 use anyhow::Result;
@@ -79,6 +80,9 @@ enum Commands {
     /// Query or tail org-scoped events.
     Events(events::EventsCommand),
 
+    /// Manage routes (hostname bindings).
+    Routes(routes::RoutesCommand),
+
     /// Show CLI version.
     Version,
 }
@@ -116,6 +120,7 @@ impl Cli {
             Commands::Scale(cmd) => cmd.run(ctx).await,
             Commands::Logs(cmd) => cmd.run(ctx).await,
             Commands::Events(cmd) => cmd.run(ctx).await,
+            Commands::Routes(cmd) => cmd.run(ctx).await,
             Commands::Version => {
                 println!("vt {}", env!("CARGO_PKG_VERSION"));
                 Ok(())
@@ -147,34 +152,30 @@ impl CommandContext {
 
     /// Resolve the current org, preferring flag over context.
     pub fn resolve_org(&self) -> Option<&str> {
-        self.org
-            .as_deref()
-            .or(self.config.context.org.as_deref())
+        self.org.as_deref().or(self.config.context.org.as_deref())
     }
 
     /// Resolve the current app, preferring flag over context.
     pub fn resolve_app(&self) -> Option<&str> {
-        self.app
-            .as_deref()
-            .or(self.config.context.app.as_deref())
+        self.app.as_deref().or(self.config.context.app.as_deref())
     }
 
     /// Resolve the current env, preferring flag over context.
     pub fn resolve_env(&self) -> Option<&str> {
-        self.env
-            .as_deref()
-            .or(self.config.context.env.as_deref())
+        self.env.as_deref().or(self.config.context.env.as_deref())
     }
 
     /// Require an org to be specified.
     pub fn require_org(&self) -> Result<&str> {
-        self.resolve_org()
-            .ok_or_else(|| anyhow::anyhow!("No organization specified. Use --org or set a default context."))
+        self.resolve_org().ok_or_else(|| {
+            anyhow::anyhow!("No organization specified. Use --org or set a default context.")
+        })
     }
 
     /// Require an app to be specified.
     pub fn require_app(&self) -> Result<&str> {
-        self.resolve_app()
-            .ok_or_else(|| anyhow::anyhow!("No application specified. Use --app or set a default context."))
+        self.resolve_app().ok_or_else(|| {
+            anyhow::anyhow!("No application specified. Use --app or set a default context.")
+        })
     }
 }

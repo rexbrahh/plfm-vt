@@ -58,11 +58,7 @@ impl ApiClient {
 
     /// Make a GET request.
     pub async fn get<T: DeserializeOwned>(&self, path: &str) -> Result<T, CliError> {
-        let response = self
-            .client
-            .get(self.url(path))
-            .send()
-            .await?;
+        let response = self.client.get(self.url(path)).send().await?;
 
         self.handle_response(response).await
     }
@@ -100,23 +96,25 @@ impl ApiClient {
         path: &str,
         body: &B,
     ) -> Result<T, CliError> {
-        let response = self
-            .client
-            .post(self.url(path))
-            .json(body)
-            .send()
-            .await?;
+        let response = self.client.post(self.url(path)).json(body).send().await?;
+
+        self.handle_response(response).await
+    }
+
+    /// Make a PATCH request.
+    pub async fn patch<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<T, CliError> {
+        let response = self.client.patch(self.url(path)).json(body).send().await?;
 
         self.handle_response(response).await
     }
 
     /// Make a DELETE request.
     pub async fn delete(&self, path: &str) -> Result<(), CliError> {
-        let response = self
-            .client
-            .delete(self.url(path))
-            .send()
-            .await?;
+        let response = self.client.delete(self.url(path)).send().await?;
 
         if response.status().is_success() {
             Ok(())
@@ -147,10 +145,8 @@ impl ApiClient {
         let status = response.status().as_u16();
 
         // Try to parse error response
-        let error_body: ApiErrorResponse = response
-            .json()
-            .await
-            .unwrap_or_else(|_| ApiErrorResponse {
+        let error_body: ApiErrorResponse =
+            response.json().await.unwrap_or_else(|_| ApiErrorResponse {
                 code: "unknown".to_string(),
                 message: "Unknown error".to_string(),
                 request_id: None,
