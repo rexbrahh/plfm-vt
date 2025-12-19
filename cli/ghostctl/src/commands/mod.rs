@@ -3,6 +3,7 @@
 mod apply;
 mod apps;
 mod auth;
+mod context;
 mod deploys;
 mod envs;
 mod events;
@@ -61,6 +62,9 @@ pub struct Cli {
 enum Commands {
     /// Authenticate with the platform.
     Auth(auth::AuthCommand),
+
+    /// Show or clear saved CLI context.
+    Context(context::ContextCommand),
 
     /// Manage organizations.
     Orgs(orgs::OrgsCommand),
@@ -141,6 +145,7 @@ impl Cli {
 
         match self.command {
             Commands::Auth(cmd) => cmd.run(ctx).await,
+            Commands::Context(cmd) => cmd.run(ctx).await,
             Commands::Orgs(cmd) => cmd.run(ctx).await,
             Commands::Projects(cmd) => cmd.run(ctx).await,
             Commands::Apps(cmd) => cmd.run(ctx).await,

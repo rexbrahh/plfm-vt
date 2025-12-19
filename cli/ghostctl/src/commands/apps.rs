@@ -27,6 +27,9 @@ enum AppsSubcommand {
 
     /// Get application details.
     Get(GetAppArgs),
+
+    /// Set the default application in local context.
+    Use(UseAppArgs),
 }
 
 #[derive(Debug, Args)]
@@ -56,12 +59,19 @@ struct GetAppArgs {
     app: String,
 }
 
+#[derive(Debug, Args)]
+struct UseAppArgs {
+    /// Application ID or name.
+    app: String,
+}
+
 impl AppsCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         match self.command {
             AppsSubcommand::List(args) => list_apps(ctx, args).await,
             AppsSubcommand::Create(args) => create_app(ctx, args).await,
             AppsSubcommand::Get(args) => get_app(ctx, args).await,
+            AppsSubcommand::Use(args) => use_app(ctx, args).await,
         }
     }
 }
@@ -173,5 +183,48 @@ async fn get_app(ctx: CommandContext, args: GetAppArgs) -> Result<()> {
         })?;
 
     print_single(&response, ctx.format);
+    Ok(())
+}
+
+/// Set the default application context (and optionally env via `--env`).
+async fn use_app(mut ctx: CommandContext, args: UseAppArgs) -> Result<()> {
+    let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, &args.app).await?;
+
+    let env_id = match ctx.env.as_deref() {
+        None => None,
+        Some(env_ident) => {
+            Some(crate::resolve::resolve_env_id(&client, org_id, app_id, env_ident).await?)
+        }
+    };
+
+    ctx.config.context.org = Some(org_id.to_string());
+    ctx.config.context.app = Some(app_id.to_string());
+    ctx.config.context.env = env_id.map(|id| id.to_string());
+    ctx.config.save()?;
+
+    match ctx.format {
+        OutputFormat::Json => print_single(
+            &serde_json::json!({
+                "ok": true,
+                "org_id": org_id,
+                "app_id": app_id,
+                "env_id": env_id,
+            }),
+            ctx.format,
+        ),
+        OutputFormat::Table => match env_id {
+            Some(env_id) => print_success(&format!(
+                "Set default app to {} (org {}) and env to {}",
+                app_id, org_id, env_id
+            )),
+            None => print_success(&format!(
+                "Set default app to {} (org {}) (cleared env)",
+                app_id, org_id
+            )),
+        },
+    }
+
     Ok(())
 }

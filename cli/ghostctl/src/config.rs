@@ -70,6 +70,38 @@ impl Config {
     pub fn api_url(&self) -> &str {
         &self.api_url
     }
+
+    /// Save config to disk.
+    pub fn save(&self) -> Result<()> {
+        let dir = config_dir()?;
+        fs::create_dir_all(&dir)?;
+
+        let path = dir.join(CONFIG_FILE);
+        let contents = serde_json::to_string_pretty(self)?;
+
+        #[cfg(unix)]
+        {
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .mode(0o600)
+                .open(&path)?;
+            file.write_all(contents.as_bytes())?;
+        }
+
+        #[cfg(not(unix))]
+        {
+            fs::write(&path, contents)
+                .with_context(|| format!("Failed to write config to {:?}", path))
+                .map(|_| ())?;
+        }
+
+        Ok(())
+    }
 }
 
 /// Current CLI context (selected org, app, env).

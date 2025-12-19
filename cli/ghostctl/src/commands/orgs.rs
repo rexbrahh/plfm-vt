@@ -28,6 +28,9 @@ enum OrgsSubcommand {
     /// Get organization details.
     Get(GetOrgArgs),
 
+    /// Set the default organization in local context.
+    Use(UseOrgArgs),
+
     /// Manage organization members.
     Members(MembersCommand),
 }
@@ -44,12 +47,19 @@ struct GetOrgArgs {
     org: String,
 }
 
+#[derive(Debug, Args)]
+struct UseOrgArgs {
+    /// Organization ID or name.
+    org: String,
+}
+
 impl OrgsCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         match self.command {
             OrgsSubcommand::List => list_orgs(ctx).await,
             OrgsSubcommand::Create(args) => create_org(ctx, args).await,
             OrgsSubcommand::Get(args) => get_org(ctx, args).await,
+            OrgsSubcommand::Use(args) => use_org(ctx, args).await,
             OrgsSubcommand::Members(cmd) => cmd.run(ctx).await,
         }
     }
@@ -387,5 +397,33 @@ async fn get_org(ctx: CommandContext, args: GetOrgArgs) -> Result<()> {
         })?;
 
     print_single(&response, ctx.format);
+    Ok(())
+}
+
+/// Set the default organization context.
+async fn use_org(mut ctx: CommandContext, args: UseOrgArgs) -> Result<()> {
+    let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, &args.org).await?;
+
+    ctx.config.context.org = Some(org_id.to_string());
+    ctx.config.context.app = None;
+    ctx.config.context.env = None;
+    ctx.config.save()?;
+
+    match ctx.format {
+        OutputFormat::Json => print_single(
+            &serde_json::json!({
+                "ok": true,
+                "org_id": org_id,
+                "app_id": null,
+                "env_id": null
+            }),
+            ctx.format,
+        ),
+        OutputFormat::Table => {
+            print_success(&format!("Set default org to {} (cleared app/env)", org_id));
+        }
+    }
+
     Ok(())
 }

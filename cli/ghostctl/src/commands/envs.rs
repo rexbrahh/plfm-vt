@@ -27,6 +27,9 @@ enum EnvsSubcommand {
 
     /// Get environment details.
     Get(GetEnvArgs),
+
+    /// Set the default environment in local context.
+    Use(UseEnvArgs),
 }
 
 #[derive(Debug, Args)]
@@ -52,12 +55,19 @@ struct GetEnvArgs {
     env: String,
 }
 
+#[derive(Debug, Args)]
+struct UseEnvArgs {
+    /// Environment ID or name.
+    env: String,
+}
+
 impl EnvsCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         match self.command {
             EnvsSubcommand::List(args) => list_envs(ctx, args).await,
             EnvsSubcommand::Create(args) => create_env(ctx, args).await,
             EnvsSubcommand::Get(args) => get_env(ctx, args).await,
+            EnvsSubcommand::Use(args) => use_env(ctx, args).await,
         }
     }
 }
@@ -164,5 +174,36 @@ async fn get_env(ctx: CommandContext, args: GetEnvArgs) -> Result<()> {
         })?;
 
     print_single(&response, ctx.format);
+    Ok(())
+}
+
+/// Set the default environment context.
+async fn use_env(mut ctx: CommandContext, args: UseEnvArgs) -> Result<()> {
+    let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+    let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, &args.env).await?;
+
+    ctx.config.context.org = Some(org_id.to_string());
+    ctx.config.context.app = Some(app_id.to_string());
+    ctx.config.context.env = Some(env_id.to_string());
+    ctx.config.save()?;
+
+    match ctx.format {
+        OutputFormat::Json => print_single(
+            &serde_json::json!({
+                "ok": true,
+                "org_id": org_id,
+                "app_id": app_id,
+                "env_id": env_id,
+            }),
+            ctx.format,
+        ),
+        OutputFormat::Table => print_success(&format!(
+            "Set default env to {} (app {}, org {})",
+            env_id, app_id, org_id
+        )),
+    }
+
     Ok(())
 }
