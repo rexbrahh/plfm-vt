@@ -122,6 +122,16 @@ Fields (high level):
 - `name`
 - `created_at`
 
+### Project
+A named grouping within an org (for organization, policy, and future quotas).
+
+Fields:
+- `id`
+- `org_id`
+- `name`
+- `resource_version`
+- `created_at`
+
 ### App
 A named service in an org.
 
@@ -221,6 +231,14 @@ See `docs/specs/api/auth.md` for exact flow behavior.
 - `POST /v1/orgs/{org_id}/members` (admin)
 - `PATCH /v1/orgs/{org_id}/members/{member_id}` (admin)
 - `DELETE /v1/orgs/{org_id}/members/{member_id}` (admin)
+
+### Projects
+- `GET  /v1/orgs/{org_id}/projects`
+- `POST /v1/orgs/{org_id}/projects`
+- `GET  /v1/orgs/{org_id}/projects/{project_id}`
+
+Validation:
+- project name unique per org
 
 ### Apps
 - `GET  /v1/orgs/{org_id}/apps`

@@ -186,6 +186,15 @@ dev-control-plane:
 dev-node-agent:
     GHOST_CONTROL_PLANE_URL=http://localhost:8080 GHOST_DATA_DIR=/tmp/ghost RUST_LOG=debug cargo run -p plfm-node-agent
 
+# Run ingress in dev mode (route sync stub; requires control plane running)
+dev-ingress:
+    @if [ -z "${GHOST_ORG_ID:-${VT_ORG:-}}" ]; then \
+        echo "Missing org id. Set GHOST_ORG_ID (or VT_ORG) to an org id to sync."; \
+        exit 1; \
+    fi
+    GHOST_CONTROL_PLANE_URL="${GHOST_CONTROL_PLANE_URL:-http://localhost:8080}" \
+        scripts/dev/with-macos-libiconv.sh cargo run -p plfm-ingress --bin ingress
+
 # =============================================================================
 # Frontend / Web Terminal
 # =============================================================================

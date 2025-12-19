@@ -52,6 +52,7 @@ Where useful, set:
 
 Tenant-scoped aggregates:
 - `org` (aggregate_id = org_id)
+- `project` (aggregate_id = project_id)
 - `org_member` (aggregate_id = member_id)
 - `service_principal` (aggregate_id = service_principal_id)
 - `app` (aggregate_id = app_id)
@@ -279,6 +280,70 @@ Invariants:
 
 Consumers:
 - auth projection
+
+---
+
+## Projects
+
+### project.created (v1)
+Aggregate:
+- type: `project`
+- id: `project_id`
+
+Emitted when:
+- a project is created.
+
+Payload:
+- `project_id`
+- `org_id`
+- `name`
+
+Invariants:
+- project name unique per org.
+
+Consumers:
+- project projection
+
+---
+
+### project.updated (v1)
+Aggregate:
+- type: `project`
+- id: `project_id`
+
+Emitted when:
+- project metadata changes.
+
+Payload:
+- `project_id`
+- `org_id`
+- `name` (optional)
+
+Invariants:
+- if name changes, still unique per org.
+
+Consumers:
+- project projection
+
+---
+
+### project.deleted (v1)
+Aggregate:
+- type: `project`
+- id: `project_id`
+
+Emitted when:
+- a project is deleted (soft delete recommended).
+
+Payload:
+- `project_id`
+- `org_id`
+
+Invariants:
+- deletion must handle dependent apps by policy (reject if apps exist, or cascade with explicit deletes).
+
+Consumers:
+- project projection
 
 ---
 

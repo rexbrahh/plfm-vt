@@ -138,7 +138,33 @@ Note:
 
 ---
 
-### 4) `apps_view`
+### 4) `projects_view`
+Represents:
+- projects in an org
+
+Primary key:
+- `project_id`
+
+Unique constraints:
+- `(org_id, name)` unique for non-deleted projects
+
+Consumes events:
+- `project.created`
+- `project.updated`
+- `project.deleted`
+
+Columns:
+- `project_id`
+- `org_id`
+- `name`
+- `resource_version`
+- `created_at`
+- `updated_at`
+- `is_deleted`
+
+---
+
+### 5) `apps_view`
 Represents:
 - apps in an org
 
@@ -164,7 +190,7 @@ Columns:
 
 ---
 
-### 5) `envs_view`
+### 6) `envs_view`
 Represents:
 - environments for apps
 
@@ -190,7 +216,7 @@ Columns:
 
 ---
 
-### 6) `releases_view`
+### 7) `releases_view`
 Represents:
 - immutable releases per app
 
@@ -216,7 +242,7 @@ Notes:
 
 ---
 
-### 7) `deploys_view`
+### 8) `deploys_view`
 Represents:
 - deploy records and status
 
@@ -243,7 +269,7 @@ Columns:
 
 ---
 
-### 8) `env_desired_releases_view`
+### 9) `env_desired_releases_view`
 Represents:
 - desired release per `(env_id, process_type)`
 
@@ -266,7 +292,7 @@ This view is the primary input to scheduler reconciliation for rollouts.
 
 ---
 
-### 9) `env_scale_view`
+### 10) `env_scale_view`
 Represents:
 - desired replica counts per `(env_id, process_type)`
 
@@ -290,7 +316,7 @@ Rules:
 
 ---
 
-### 10) `env_networking_view`
+### 11) `env_networking_view`
 Represents:
 - env-level networking state (IPv4 add-on)
 
@@ -312,7 +338,7 @@ Columns:
 
 ---
 
-### 11) `routes_view`
+### 12) `routes_view`
 Represents:
 - current routes (hostname bindings and backend targets)
 
@@ -346,7 +372,7 @@ Columns:
 
 ---
 
-### 12) `secret_bundles_view`
+### 13) `secret_bundles_view`
 Represents:
 - env-scoped secret bundle metadata and current version
 
@@ -377,7 +403,7 @@ Important:
 
 ---
 
-### 13) `volumes_view`
+### 14) `volumes_view`
 Represents:
 - volume metadata
 
@@ -401,7 +427,7 @@ Columns:
 
 ---
 
-### 14) `volume_attachments_view`
+### 15) `volume_attachments_view`
 Represents:
 - volume attachments to env/process type
 
@@ -430,7 +456,7 @@ Columns:
 
 ---
 
-### 15) `snapshots_view`
+### 16) `snapshots_view`
 Represents:
 - snapshot requests and status
 
@@ -454,7 +480,7 @@ Columns:
 
 ---
 
-### 16) `restore_jobs_view`
+### 17) `restore_jobs_view`
 Represents:
 - restore operations and status
 
@@ -478,7 +504,7 @@ Columns:
 
 ---
 
-### 17) `instances_desired_view`
+### 18) `instances_desired_view`
 Represents:
 - desired instances and assignments (scheduler output)
 
@@ -511,7 +537,7 @@ Notes:
 
 ---
 
-### 18) `instances_status_view`
+### 19) `instances_status_view`
 Represents:
 - latest reported runtime status per instance
 
@@ -541,7 +567,7 @@ Rules:
 
 ---
 
-### 19) `exec_sessions_view`
+### 20) `exec_sessions_view`
 Represents:
 - exec session metadata for auditing
 
@@ -571,7 +597,7 @@ Columns:
 
 ---
 
-### 20) `nodes_view` (infrastructure)
+### 21) `nodes_view` (infrastructure)
 Represents:
 - node metadata and state
 
