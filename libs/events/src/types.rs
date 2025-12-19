@@ -611,23 +611,33 @@ pub struct NodeCapacityUpdatedPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecSessionGrantedPayload {
-    pub session_id: ExecSessionId,
+    pub exec_session_id: ExecSessionId,
+    pub org_id: OrgId,
+    pub app_id: AppId,
+    pub env_id: EnvId,
     pub instance_id: InstanceId,
-    pub command: Vec<String>,
+    pub requested_command: Vec<String>,
+    pub tty: bool,
     pub expires_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecSessionConnectedPayload {
-    pub session_id: ExecSessionId,
+    pub exec_session_id: ExecSessionId,
+    pub org_id: OrgId,
+    pub instance_id: InstanceId,
     pub connected_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecSessionEndedPayload {
-    pub session_id: ExecSessionId,
+    pub exec_session_id: ExecSessionId,
+    pub org_id: OrgId,
+    pub instance_id: InstanceId,
     pub ended_at: String,
     pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_reason: Option<String>,
 }
 
 // =============================================================================

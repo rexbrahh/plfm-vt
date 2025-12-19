@@ -13,6 +13,7 @@ mod apps;
 mod deploys;
 mod env_config;
 mod envs;
+mod exec_sessions;
 mod instances;
 mod members;
 mod nodes;
@@ -96,6 +97,7 @@ impl ProjectionRegistry {
                 Box::new(volume_attachments::VolumeAttachmentsProjection),
                 Box::new(snapshots::SnapshotsProjection),
                 Box::new(restore_jobs::RestoreJobsProjection),
+                Box::new(exec_sessions::ExecSessionsProjection),
             ],
         }
     }

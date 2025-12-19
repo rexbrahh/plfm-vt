@@ -480,6 +480,101 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         1
     );
 
+    let first_instance_id = first["items"][0]["id"]
+        .as_str()
+        .expect("missing instance id")
+        .to_string();
+
+    // Report instance status as ready (system actor) so exec grants are allowed.
+    let report_status_url = format!("{base_url}/v1/instances/{first_instance_id}/status");
+    let resp_status = client
+        .post(&report_status_url)
+        .json(&serde_json::json!({ "status": "ready" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_status.status().is_success());
+
+    // Wait until env-scoped instance view reflects ready status.
+    let get_instance_url = format!(
+        "{base_url}/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/instances/{first_instance_id}"
+    );
+    let start = std::time::Instant::now();
+    let timeout = Duration::from_secs(10);
+    loop {
+        let resp = client
+            .get(&get_instance_url)
+            .header("Authorization", auth_header)
+            .send()
+            .await
+            .unwrap();
+        assert!(resp.status().is_success());
+        let body: serde_json::Value = resp.json().await.unwrap();
+        if body["status"].as_str() == Some("ready") {
+            break;
+        }
+        if start.elapsed() > timeout {
+            panic!("timed out waiting for instance to become ready; last body: {body}");
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+
+    // Exec: create an exec grant (and verify idempotency replay).
+    let exec_url = format!(
+        "{base_url}/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/instances/{first_instance_id}/exec"
+    );
+    let idem_exec = format!("itest-exec-{}-key", unique_suffix());
+    let exec_body = serde_json::json!({
+        "command": ["sh", "-lc", "uptime"],
+        "tty": true
+    });
+
+    let resp_exec_1 = client
+        .post(&exec_url)
+        .header("Authorization", auth_header)
+        .header("Idempotency-Key", &idem_exec)
+        .json(&exec_body)
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_exec_1.status().is_success());
+    let exec_1: serde_json::Value = resp_exec_1.json().await.unwrap();
+    let exec_session_id = exec_1["session_id"]
+        .as_str()
+        .expect("missing session_id")
+        .to_string();
+
+    let resp_exec_2 = client
+        .post(&exec_url)
+        .header("Authorization", auth_header)
+        .header("Idempotency-Key", &idem_exec)
+        .json(&exec_body)
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_exec_2.status().is_success());
+    let exec_2: serde_json::Value = resp_exec_2.json().await.unwrap();
+    assert_eq!(exec_2["session_id"], exec_1["session_id"]);
+    assert_eq!(exec_2["connect_url"], exec_1["connect_url"]);
+    assert_eq!(exec_2["session_token"], exec_1["session_token"]);
+    assert_eq!(exec_2["expires_in_seconds"], exec_1["expires_in_seconds"]);
+
+    // Verify the exec session is materialized for auditing.
+    let exec_row = sqlx::query_as::<_, (String, serde_json::Value, bool)>(
+        r#"
+        SELECT status, requested_command, tty
+        FROM exec_sessions_view
+        WHERE exec_session_id = $1
+        "#,
+    )
+    .bind(&exec_session_id)
+    .fetch_one(&scheduler_pool)
+    .await
+    .unwrap();
+    assert_eq!(exec_row.0, "granted");
+    assert!(exec_row.2);
+    assert_eq!(exec_row.1, serde_json::json!(["sh", "-lc", "uptime"]));
+
     // Scale up to 2 instances using optimistic concurrency (GET then PUT).
     let scale_url = format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale");
     let resp_scale_get = client

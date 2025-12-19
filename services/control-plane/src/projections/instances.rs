@@ -244,26 +244,31 @@ impl InstancesProjection {
 
         let node_id = node_id.unwrap_or_else(|| "unknown".to_string());
 
-        // Map exit_code to reason_code if failed
-        let reason_code = if payload.new_status == "failed" {
-            payload.error_message.as_deref().or(Some("unknown_error"))
+        let (reason_code, reason_detail) = if payload.new_status == "failed" {
+            (Some("unknown_error"), payload.error_message.as_deref())
         } else {
-            None
+            (None, None)
         };
 
         sqlx::query(
             r#"
             INSERT INTO instances_status_view (
                 instance_id, org_id, env_id, node_id, status,
-                boot_id, exit_code, reason_code,
-                resource_version, created_at, updated_at
+                boot_id, exit_code, reason_code, reason_detail,
+                reported_at,
+                resource_version, updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 1, $10)
             ON CONFLICT (instance_id) DO UPDATE SET
+                org_id = EXCLUDED.org_id,
+                env_id = EXCLUDED.env_id,
+                node_id = EXCLUDED.node_id,
                 status = EXCLUDED.status,
                 boot_id = COALESCE(EXCLUDED.boot_id, instances_status_view.boot_id),
                 exit_code = EXCLUDED.exit_code,
                 reason_code = EXCLUDED.reason_code,
+                reason_detail = EXCLUDED.reason_detail,
+                reported_at = EXCLUDED.reported_at,
                 resource_version = instances_status_view.resource_version + 1,
                 updated_at = EXCLUDED.updated_at
             "#,
@@ -276,6 +281,7 @@ impl InstancesProjection {
         .bind(payload.boot_id.as_deref())
         .bind(payload.exit_code)
         .bind(reason_code)
+        .bind(reason_detail)
         .bind(event.occurred_at)
         .execute(&mut **tx)
         .await?;

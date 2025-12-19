@@ -47,6 +47,7 @@ tracing-subscriber = { workspace = true }
 
 # Crypto
 sha2 = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }

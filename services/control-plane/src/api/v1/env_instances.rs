@@ -18,10 +18,13 @@ use crate::api::error::ApiError;
 use crate::api::request_context::RequestContext;
 use crate::state::AppState;
 
+use super::exec;
+
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_instances))
         .route("/:instance_id", get(get_instance))
+        .nest("/:instance_id/exec", exec::routes())
 }
 
 // =============================================================================

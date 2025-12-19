@@ -7,6 +7,7 @@ mod deploys;
 mod env_instances;
 mod envs;
 mod events;
+mod exec;
 mod instances;
 mod logs;
 mod members;

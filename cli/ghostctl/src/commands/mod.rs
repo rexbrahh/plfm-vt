@@ -5,6 +5,7 @@ mod auth;
 mod deploys;
 mod envs;
 mod events;
+mod exec;
 mod instances;
 mod logs;
 mod nodes;
@@ -89,6 +90,9 @@ enum Commands {
     /// View application logs.
     Logs(logs::LogsCommand),
 
+    /// Create an exec session grant for an instance.
+    Exec(exec::ExecCommand),
+
     /// Query or tail org-scoped events.
     Events(events::EventsCommand),
 
@@ -139,6 +143,7 @@ impl Cli {
             Commands::Instances(cmd) => cmd.run(ctx).await,
             Commands::Scale(cmd) => cmd.run(ctx).await,
             Commands::Logs(cmd) => cmd.run(ctx).await,
+            Commands::Exec(cmd) => cmd.run(ctx).await,
             Commands::Events(cmd) => cmd.run(ctx).await,
             Commands::Routes(cmd) => cmd.run(ctx).await,
             Commands::Secrets(cmd) => cmd.run(ctx).await,
