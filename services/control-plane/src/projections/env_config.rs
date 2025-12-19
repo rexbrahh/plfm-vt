@@ -134,6 +134,40 @@ impl EnvConfigProjection {
             "Setting scale for environment"
         );
 
+        let current_version: Option<i64> = sqlx::query_scalar(
+            "SELECT MAX(resource_version) FROM env_scale_view WHERE env_id = $1",
+        )
+        .bind(&payload.env_id)
+        .fetch_one(&mut **tx)
+        .await?;
+
+        let next_version: i32 = current_version.unwrap_or(0).saturating_add(1) as i32;
+
+        let process_types: Vec<String> = payload
+            .scales
+            .iter()
+            .map(|s| s.process_type.clone())
+            .collect();
+
+        if process_types.is_empty() {
+            sqlx::query("DELETE FROM env_scale_view WHERE env_id = $1")
+                .bind(&payload.env_id)
+                .execute(&mut **tx)
+                .await?;
+            return Ok(());
+        }
+
+        sqlx::query(
+            r#"
+            DELETE FROM env_scale_view
+            WHERE env_id = $1 AND process_type != ALL($2)
+            "#,
+        )
+        .bind(&payload.env_id)
+        .bind(&process_types)
+        .execute(&mut **tx)
+        .await?;
+
         for scale in &payload.scales {
             sqlx::query(
                 r#"
@@ -141,10 +175,12 @@ impl EnvConfigProjection {
                     env_id, process_type, org_id, app_id, desired_replicas,
                     resource_version, updated_at
                 )
-                VALUES ($1, $2, $3, $4, $5, 1, $6)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 ON CONFLICT (env_id, process_type) DO UPDATE SET
+                    org_id = EXCLUDED.org_id,
+                    app_id = EXCLUDED.app_id,
                     desired_replicas = EXCLUDED.desired_replicas,
-                    resource_version = env_scale_view.resource_version + 1,
+                    resource_version = EXCLUDED.resource_version,
                     updated_at = EXCLUDED.updated_at
                 "#,
             )
@@ -153,6 +189,7 @@ impl EnvConfigProjection {
             .bind(&payload.org_id)
             .bind(&payload.app_id)
             .bind(scale.desired)
+            .bind(next_version)
             .bind(event.occurred_at)
             .execute(&mut **tx)
             .await?;

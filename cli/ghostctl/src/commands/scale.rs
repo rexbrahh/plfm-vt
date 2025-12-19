@@ -3,6 +3,10 @@
 use anyhow::Result;
 use clap::Args;
 use serde::{Deserialize, Serialize};
+use tabled::Tabled;
+
+use crate::error::CliError;
+use crate::output::{print_output, print_single, print_success, OutputFormat};
 
 use super::CommandContext;
 
@@ -15,17 +19,29 @@ pub struct ScaleCommand {
     processes: Vec<String>,
 }
 
-/// Set scale request.
-#[derive(Debug, Serialize)]
-struct SetScaleRequest {
-    process_counts: std::collections::HashMap<String, i32>,
+#[derive(Debug, Deserialize, Serialize)]
+struct ScaleState {
+    #[allow(dead_code)]
+    env_id: String,
+    processes: Vec<ProcessScale>,
+    #[allow(dead_code)]
+    updated_at: String,
+    #[serde(default)]
+    resource_version: Option<i32>,
 }
 
-/// Set scale response.
-#[derive(Debug, Deserialize)]
-struct SetScaleResponse {
-    #[allow(dead_code)]
-    success: bool,
+#[derive(Debug, Deserialize, Serialize, Clone, Tabled)]
+struct ProcessScale {
+    #[tabled(rename = "Process")]
+    process_type: String,
+    #[tabled(rename = "Desired")]
+    desired: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct ScaleUpdateRequest {
+    processes: Vec<ProcessScale>,
+    expected_version: i32,
 }
 
 impl ScaleCommand {
@@ -38,22 +54,29 @@ impl ScaleCommand {
             anyhow::anyhow!("No environment specified. Use --env or set a default context.")
         })?;
 
-        // Parse process specifications
-        let mut process_counts = std::collections::HashMap::new();
+        // Parse process specifications (deterministic ordering)
+        let mut process_counts = std::collections::BTreeMap::<String, i32>::new();
         for spec in &self.processes {
-            let parts: Vec<&str> = spec.split('=').collect();
-            if parts.len() != 2 {
+            let Some((process_type_raw, count_raw)) = spec.split_once('=') else {
                 return Err(anyhow::anyhow!(
                     "Invalid process specification '{}'. Use format TYPE=COUNT (e.g., web=3)",
                     spec
                 ));
+            };
+
+            let process_type = process_type_raw.trim().to_string();
+            if process_type.is_empty() {
+                return Err(anyhow::anyhow!(
+                    "Invalid process specification '{}'. process type cannot be empty.",
+                    spec
+                ));
             }
-            let process_type = parts[0].to_string();
-            let count: i32 = parts[1].parse().map_err(|_| {
+
+            let count: i32 = count_raw.parse().map_err(|_| {
                 anyhow::anyhow!(
                     "Invalid count '{}' for process type '{}'. Must be a number.",
-                    parts[1],
-                    parts[0]
+                    count_raw,
+                    process_type
                 )
             })?;
             if count < 0 {
@@ -62,26 +85,59 @@ impl ScaleCommand {
                     process_type
                 ));
             }
-            process_counts.insert(process_type, count);
+
+            if process_counts.insert(process_type.clone(), count).is_some() {
+                return Err(anyhow::anyhow!(
+                    "Process type '{}' specified multiple times",
+                    process_type
+                ));
+            }
         }
 
-        let request = SetScaleRequest {
-            process_counts: process_counts.clone(),
-        };
         let path = format!("/v1/orgs/{}/apps/{}/envs/{}/scale", org_id, app_id, env_id);
+
+        let current: ScaleState = client.get(&path).await.map_err(|e| match e {
+            CliError::Api { status: 404, .. } => {
+                CliError::NotFound(format!("Environment '{}' not found", env_id))
+            }
+            other => other,
+        })?;
+
+        let expected_version = current.resource_version.unwrap_or(0);
+        let processes: Vec<ProcessScale> = process_counts
+            .into_iter()
+            .map(|(process_type, desired)| ProcessScale {
+                process_type,
+                desired,
+            })
+            .collect();
+
+        let request = ScaleUpdateRequest {
+            processes: processes.clone(),
+            expected_version,
+        };
         let idempotency_key = match ctx.idempotency_key.as_deref() {
             Some(key) => key.to_string(),
             None => crate::idempotency::default_idempotency_key("envs.set_scale", &path, &request)?,
         };
 
-        let _response: SetScaleResponse = client
-            .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
+        let response: ScaleState = client
+            .put_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
             .await?;
 
-        // Print what was set
-        println!("Scaling environment {} in {}/{}:", env_id, org_id, app_id);
-        for (process_type, count) in &process_counts {
-            println!("  {} -> {} instances", process_type, count);
+        match ctx.format {
+            OutputFormat::Json => print_single(&response, ctx.format),
+            OutputFormat::Table => {
+                let version = response.resource_version.unwrap_or(0);
+                print_success(&format!(
+                    "Updated scale for environment {} in {}/{} (resource_version {})",
+                    env_id, org_id, app_id, version
+                ));
+
+                let mut rows = response.processes.clone();
+                rows.sort_by(|a, b| a.process_type.cmp(&b.process_type));
+                print_output(&rows, ctx.format);
+            }
         }
 
         Ok(())

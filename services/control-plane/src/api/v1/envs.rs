@@ -6,7 +6,7 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, post, put},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -35,7 +35,11 @@ pub fn routes() -> Router<AppState> {
 ///
 /// Scale is nested under orgs/apps/envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
 pub fn scale_routes() -> Router<AppState> {
-    Router::new().route("/", post(set_scale))
+    Router::new()
+        .route("/", get(get_scale))
+        .route("/", put(update_scale))
+        // Backwards-compatible dev endpoint (deprecated; use PUT).
+        .route("/", post(update_scale))
 }
 
 // =============================================================================
@@ -93,23 +97,107 @@ pub struct ListEnvsQuery {
     pub cursor: Option<String>,
 }
 
-/// Request to set scale for an environment.
 #[derive(Debug, Deserialize, Serialize)]
-pub struct SetScaleRequest {
-    /// Process type to count mapping.
-    pub process_counts: std::collections::HashMap<String, i32>,
+pub struct ProcessScale {
+    pub process_type: String,
+    pub desired: i32,
 }
 
-/// Response for setting scale.
 #[derive(Debug, Serialize)]
-pub struct SetScaleResponse {
-    /// Whether the scale was set successfully.
-    pub success: bool,
+pub struct ScaleState {
+    pub env_id: String,
+    pub processes: Vec<ProcessScale>,
+    pub updated_at: DateTime<Utc>,
+    pub resource_version: i32,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct ScaleUpdateRequest {
+    pub processes: Vec<ProcessScale>,
+    pub expected_version: i32,
 }
 
 // =============================================================================
 // Handlers
 // =============================================================================
+
+async fn load_scale_state(
+    state: &AppState,
+    request_id: &str,
+    org_id: &OrgId,
+    app_id: &AppId,
+    env_id: &EnvId,
+) -> Result<ScaleState, ApiError> {
+    let env_updated_at: DateTime<Utc> = sqlx::query_scalar(
+        r#"
+        SELECT updated_at
+        FROM envs_view
+        WHERE env_id = $1 AND org_id = $2 AND app_id = $3 AND NOT is_deleted
+        "#,
+    )
+    .bind(env_id.to_string())
+    .bind(org_id.to_string())
+    .bind(app_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            env_id = %env_id,
+            "Failed to load env"
+        );
+        ApiError::internal("internal_error", "Failed to get scale")
+            .with_request_id(request_id.to_string())
+    })?
+    .ok_or_else(|| {
+        ApiError::not_found("env_not_found", format!("Environment {} not found", env_id))
+            .with_request_id(request_id.to_string())
+    })?;
+
+    let rows = sqlx::query_as::<_, ScaleRow>(
+        r#"
+        SELECT process_type, desired_replicas, resource_version, updated_at
+        FROM env_scale_view
+        WHERE env_id = $1 AND org_id = $2 AND app_id = $3
+        ORDER BY process_type ASC
+        "#,
+    )
+    .bind(env_id.to_string())
+    .bind(org_id.to_string())
+    .bind(app_id.to_string())
+    .fetch_all(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            env_id = %env_id,
+            "Failed to load scale"
+        );
+        ApiError::internal("internal_error", "Failed to get scale")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    let mut resource_version = 0;
+    let mut updated_at = env_updated_at;
+    let mut processes = Vec::with_capacity(rows.len());
+    for row in rows {
+        resource_version = resource_version.max(row.resource_version);
+        updated_at = updated_at.max(row.updated_at);
+        processes.push(ProcessScale {
+            process_type: row.process_type,
+            desired: row.desired_replicas,
+        });
+    }
+
+    Ok(ScaleState {
+        env_id: env_id.to_string(),
+        processes,
+        updated_at,
+        resource_version,
+    })
+}
 
 /// Create a new environment.
 ///
@@ -420,14 +508,53 @@ async fn list_envs(
     Ok(Json(ListEnvsResponse { items, next_cursor }))
 }
 
-/// Set scale for an environment.
+/// Get desired scale for an environment.
 ///
-/// POST /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
-async fn set_scale(
+/// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
+async fn get_scale(
     State(state): State<AppState>,
     ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
-    Json(req): Json<SetScaleRequest>,
+) -> Result<impl IntoResponse, ApiError> {
+    let request_id = ctx.request_id.clone();
+
+    let org_id_typed: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let app_id_typed: AppId = app_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_app_id", "Invalid application ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let env_id_typed: EnvId = env_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let _role = authz::require_org_member(&state, &org_id_typed, &ctx).await?;
+
+    Ok(Json(
+        load_scale_state(
+            &state,
+            &request_id,
+            &org_id_typed,
+            &app_id_typed,
+            &env_id_typed,
+        )
+        .await?,
+    ))
+}
+
+/// Set desired scale for an environment.
+///
+/// PUT /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
+async fn update_scale(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    Path((org_id, app_id, env_id)): Path<(String, String, String)>,
+    Json(mut req): Json<ScaleUpdateRequest>,
 ) -> Result<Response, ApiError> {
     let request_id = ctx.request_id.clone();
     let idempotency_key = ctx.idempotency_key.clone();
@@ -435,54 +562,74 @@ async fn set_scale(
     let actor_id = ctx.actor_id.clone();
     let endpoint_name = "envs.set_scale";
 
-    // Validate IDs
-    let org_id: OrgId = org_id.parse().map_err(|_| {
+    let org_id_typed: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
 
-    let app_id: AppId = app_id.parse().map_err(|_| {
+    let app_id_typed: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
             .with_request_id(request_id.clone())
     })?;
 
-    let env_id: EnvId = env_id.parse().map_err(|_| {
+    let env_id_typed: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
 
-    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    let role = authz::require_org_member(&state, &org_id_typed, &ctx).await?;
     authz::require_org_write(role, &request_id)?;
 
-    // Validate process counts
-    for (process_type, count) in &req.process_counts {
-        if process_type.is_empty() {
+    if req.expected_version < 0 {
+        return Err(ApiError::bad_request(
+            "invalid_expected_version",
+            "expected_version must be >= 0",
+        )
+        .with_request_id(request_id));
+    }
+
+    if req.processes.is_empty() {
+        return Err(
+            ApiError::bad_request("invalid_processes", "processes cannot be empty")
+                .with_request_id(request_id),
+        );
+    }
+
+    for process in &req.processes {
+        if process.process_type.trim().is_empty() {
             return Err(ApiError::bad_request(
                 "invalid_process_type",
-                "Process type cannot be empty",
+                "process_type cannot be empty",
             )
             .with_request_id(request_id.clone()));
         }
-        if *count < 0 {
-            return Err(ApiError::bad_request(
-                "invalid_count",
-                format!("Count for '{}' must be non-negative", process_type),
-            )
-            .with_request_id(request_id.clone()));
+        if process.desired < 0 {
+            return Err(
+                ApiError::bad_request("invalid_desired", "desired must be >= 0")
+                    .with_request_id(request_id.clone()),
+            );
         }
     }
 
-    let org_scope = org_id.to_string();
+    req.processes
+        .sort_by(|a, b| a.process_type.cmp(&b.process_type));
+    for pair in req.processes.windows(2) {
+        if let [a, b] = pair {
+            if a.process_type == b.process_type {
+                return Err(ApiError::bad_request(
+                    "duplicate_process_type",
+                    "process_type values must be unique",
+                )
+                .with_request_id(request_id));
+            }
+        }
+    }
+
+    let org_scope = org_id_typed.to_string();
     let request_hash = idempotency_key
         .as_deref()
         .map(|key| {
-            let hash_input = serde_json::json!({
-                "app_id": app_id.to_string(),
-                "env_id": env_id.to_string(),
-                "body": &req
-            });
-            idempotency::request_hash(endpoint_name, &hash_input)
-                .map(|hash| (key.to_string(), hash))
+            idempotency::request_hash(endpoint_name, &req).map(|hash| (key.to_string(), hash))
         })
         .transpose()
         .map_err(|e| e.with_request_id(request_id.clone()))?;
@@ -505,89 +652,72 @@ async fn set_scale(
         }
     }
 
-    // Verify env exists
-    let env_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM envs_view WHERE env_id = $1 AND org_id = $2 AND app_id = $3 AND NOT is_deleted)",
+    let current = load_scale_state(
+        &state,
+        &request_id,
+        &org_id_typed,
+        &app_id_typed,
+        &env_id_typed,
     )
-    .bind(env_id.to_string())
-    .bind(org_id.to_string())
-    .bind(app_id.to_string())
-    .fetch_one(state.db().pool())
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to check env existence");
-        ApiError::internal("internal_error", "Failed to verify environment")
-            .with_request_id(request_id.clone())
-    })?;
+    .await?;
 
-    if !env_exists {
-        return Err(ApiError::not_found(
-            "env_not_found",
-            format!("Environment {} not found", env_id),
-        )
-        .with_request_id(request_id.clone()));
+    if req.expected_version != current.resource_version {
+        return Err(
+            ApiError::conflict("version_conflict", "Resource version mismatch")
+                .with_request_id(request_id.clone()),
+        );
     }
 
     let event_store = state.db().event_store();
     let current_seq = event_store
-        .get_latest_aggregate_seq(&AggregateType::Env, &env_id.to_string())
+        .get_latest_aggregate_seq(&AggregateType::Env, &env_id_typed.to_string())
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "Failed to get aggregate sequence");
+            tracing::error!(error = %e, request_id = %request_id, "Failed to get aggregate sequence");
             ApiError::internal("internal_error", "Failed to set scale")
                 .with_request_id(request_id.clone())
         })?
         .unwrap_or(0);
 
-    // Convert process_counts map to scales array format expected by projection
-    let mut process_counts: Vec<_> = req.process_counts.iter().collect();
-    process_counts.sort_by(|(a, _), (b, _)| a.cmp(b));
-    let scales: Vec<serde_json::Value> = process_counts
-        .into_iter()
-        .map(|(process_type, count)| {
+    let scales: Vec<serde_json::Value> = req
+        .processes
+        .iter()
+        .map(|p| {
             serde_json::json!({
-                "process_type": process_type,
-                "desired": *count
+                "process_type": &p.process_type,
+                "desired": p.desired
             })
         })
         .collect();
 
-    // Create the event
     let event = AppendEvent {
         aggregate_type: AggregateType::Env,
-        aggregate_id: env_id.to_string(),
+        aggregate_id: env_id_typed.to_string(),
         aggregate_seq: current_seq + 1,
         event_type: "env.scale_set".to_string(),
         event_version: 1,
         actor_type,
         actor_id: actor_id.clone(),
-        org_id: Some(org_id),
+        org_id: Some(org_id_typed),
         request_id: request_id.clone(),
         idempotency_key: idempotency_key.clone(),
-        app_id: Some(app_id),
-        env_id: Some(env_id),
+        app_id: Some(app_id_typed),
+        env_id: Some(env_id_typed),
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
-            "env_id": env_id.to_string(),
-            "org_id": org_id.to_string(),
-            "app_id": app_id.to_string(),
+            "env_id": env_id,
+            "org_id": org_id,
+            "app_id": app_id,
             "scales": scales
         }),
     };
 
-    // Append the event
     let event_id = event_store.append(event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to set scale");
         ApiError::internal("internal_error", "Failed to set scale")
             .with_request_id(request_id.clone())
     })?;
-
-    tracing::info!(
-        env_id = %env_id,
-        scale_entries = scales.len(),
-        "Scale set for environment"
-    );
 
     state
         .db()
@@ -604,10 +734,17 @@ async fn set_scale(
                 .with_request_id(request_id.clone())
         })?;
 
-    let response = SetScaleResponse { success: true };
+    let updated = load_scale_state(
+        &state,
+        &request_id,
+        &org_id_typed,
+        &app_id_typed,
+        &env_id_typed,
+    )
+    .await?;
 
     if let Some((key, hash)) = request_hash {
-        let body = serde_json::to_value(&response).map_err(|e| {
+        let body = serde_json::to_value(&updated).map_err(|e| {
             tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
             ApiError::internal("internal_error", "Failed to set scale")
                 .with_request_id(request_id.clone())
@@ -629,7 +766,7 @@ async fn set_scale(
         .await;
     }
 
-    Ok((StatusCode::OK, Json(response)).into_response())
+    Ok((StatusCode::OK, Json(updated)).into_response())
 }
 
 /// Get a single environment by ID.
@@ -752,6 +889,25 @@ impl From<EnvRow> for EnvResponse {
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
+    }
+}
+
+struct ScaleRow {
+    process_type: String,
+    desired_replicas: i32,
+    resource_version: i32,
+    updated_at: DateTime<Utc>,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for ScaleRow {
+    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            process_type: row.try_get("process_type")?,
+            desired_replicas: row.try_get("desired_replicas")?,
+            resource_version: row.try_get("resource_version")?,
+            updated_at: row.try_get("updated_at")?,
+        })
     }
 }
 

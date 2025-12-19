@@ -36,13 +36,13 @@ struct ListInstancesArgs {
     #[arg(long)]
     cursor: Option<String>,
 
-    /// Filter by environment (optional).
+    /// Filter by process type (optional).
     #[arg(long)]
-    env: Option<String>,
+    process_type: Option<String>,
 
-    /// Filter by node (optional).
+    /// Filter by instance status (optional).
     #[arg(long)]
-    node: Option<String>,
+    status: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -66,24 +66,27 @@ struct InstanceResponse {
     #[tabled(rename = "ID")]
     id: String,
 
-    #[tabled(rename = "Env")]
-    env_id: String,
-
-    #[tabled(rename = "Node")]
-    node_id: String,
-
     #[tabled(rename = "Process")]
     process_type: String,
 
-    #[tabled(rename = "Desired")]
-    desired_state: String,
+    #[tabled(rename = "Status")]
+    status: String,
 
-    #[tabled(rename = "Status", display_with = "display_option")]
+    #[tabled(rename = "Node", display_with = "display_option")]
     #[serde(default)]
-    status: Option<String>,
+    node_id: Option<String>,
 
-    #[tabled(rename = "Release")]
-    release_id: String,
+    #[tabled(rename = "Gen", display_with = "display_option_i32")]
+    #[serde(default)]
+    generation: Option<i32>,
+
+    #[tabled(rename = "Last Transition", display_with = "display_option")]
+    #[serde(default)]
+    last_transition_at: Option<String>,
+
+    #[tabled(rename = "Failure", display_with = "display_option")]
+    #[serde(default)]
+    failure_reason: Option<String>,
 
     #[tabled(rename = "Created")]
     created_at: String,
@@ -91,6 +94,11 @@ struct InstanceResponse {
 
 fn display_option(opt: &Option<String>) -> String {
     opt.as_deref().unwrap_or("-").to_string()
+}
+
+fn display_option_i32(opt: &Option<i32>) -> String {
+    opt.map(|v| v.to_string())
+        .unwrap_or_else(|| "-".to_string())
 }
 
 /// List response from API.
@@ -104,15 +112,31 @@ struct ListInstancesResponse {
 async fn list_instances(ctx: CommandContext, args: ListInstancesArgs) -> Result<()> {
     let client = ctx.client()?;
 
-    let mut path = format!("/v1/instances?limit={}", args.limit);
+    let org_id = ctx.require_org()?;
+    let app_id = ctx.require_app()?;
+    let env_id = ctx.resolve_env().ok_or_else(|| {
+        anyhow::anyhow!("No environment specified. Use --env or set a default context.")
+    })?;
+
+    if let Some(status) = args.status.as_deref() {
+        match status {
+            "booting" | "ready" | "draining" | "stopped" | "failed" => {}
+            _ => return Err(anyhow::anyhow!("Invalid status '{}'", status)),
+        }
+    }
+
+    let mut path = format!(
+        "/v1/orgs/{}/apps/{}/envs/{}/instances?limit={}",
+        org_id, app_id, env_id, args.limit
+    );
     if let Some(cursor) = args.cursor.as_deref() {
         path.push_str(&format!("&cursor={cursor}"));
     }
-    if let Some(env) = args.env.as_deref() {
-        path.push_str(&format!("&env_id={env}"));
+    if let Some(process_type) = args.process_type.as_deref() {
+        path.push_str(&format!("&process_type={process_type}"));
     }
-    if let Some(node) = args.node.as_deref() {
-        path.push_str(&format!("&node_id={node}"));
+    if let Some(status) = args.status.as_deref() {
+        path.push_str(&format!("&status={status}"));
     }
 
     let response: ListInstancesResponse = client.get(&path).await?;
@@ -128,8 +152,17 @@ async fn list_instances(ctx: CommandContext, args: ListInstancesArgs) -> Result<
 async fn get_instance(ctx: CommandContext, args: GetInstanceArgs) -> Result<()> {
     let client = ctx.client()?;
 
+    let org_id = ctx.require_org()?;
+    let app_id = ctx.require_app()?;
+    let env_id = ctx.resolve_env().ok_or_else(|| {
+        anyhow::anyhow!("No environment specified. Use --env or set a default context.")
+    })?;
+
     let response: InstanceResponse = client
-        .get(&format!("/v1/instances/{}", args.instance))
+        .get(&format!(
+            "/v1/orgs/{}/apps/{}/envs/{}/instances/{}",
+            org_id, app_id, env_id, args.instance
+        ))
         .await
         .map_err(|e| match e {
             CliError::Api { status: 404, .. } => {

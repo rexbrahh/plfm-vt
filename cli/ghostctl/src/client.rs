@@ -83,6 +83,22 @@ impl ApiClient {
         self.handle_response(response).await
     }
 
+    /// Make a PUT request with an optional Idempotency-Key.
+    pub async fn put_with_idempotency_key<T: DeserializeOwned, B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+        idempotency_key: Option<&str>,
+    ) -> Result<T, CliError> {
+        let mut request = self.client.put(self.url(path)).json(body);
+        if let Some(key) = idempotency_key {
+            request = request.header(crate::idempotency::IDEMPOTENCY_KEY_HEADER, key);
+        }
+        let response = request.send().await?;
+
+        self.handle_response(response).await
+    }
+
     /// Make a PATCH request with an optional Idempotency-Key.
     pub async fn patch_with_idempotency_key<T: DeserializeOwned, B: Serialize>(
         &self,

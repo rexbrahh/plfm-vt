@@ -132,7 +132,15 @@ async fn list_instances(
     ctx: RequestContext,
     Query(query): Query<ListInstancesQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
+
+    if ctx.actor_type != ActorType::System {
+        return Err(ApiError::forbidden(
+            "forbidden",
+            "This endpoint is only available to system actors",
+        )
+        .with_request_id(request_id));
+    }
 
     let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
     let cursor = query.cursor;
@@ -185,7 +193,15 @@ async fn get_instance(
     ctx: RequestContext,
     Path(instance_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
+
+    if ctx.actor_type != ActorType::System {
+        return Err(ApiError::forbidden(
+            "forbidden",
+            "This endpoint is only available to system actors",
+        )
+        .with_request_id(request_id));
+    }
 
     let row = sqlx::query_as::<_, InstanceRow>(
         r#"
@@ -227,7 +243,15 @@ async fn report_status(
     Path(instance_id): Path<String>,
     Json(req): Json<ReportStatusRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
+
+    if ctx.actor_type != ActorType::System {
+        return Err(ApiError::forbidden(
+            "forbidden",
+            "This endpoint is only available to system actors",
+        )
+        .with_request_id(request_id));
+    }
 
     // Validate status
     let valid_statuses = ["booting", "ready", "draining", "stopped", "failed"];

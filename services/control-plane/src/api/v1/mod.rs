@@ -4,6 +4,7 @@ mod apps;
 mod auth;
 mod debug;
 mod deploys;
+mod env_instances;
 mod envs;
 mod events;
 mod instances;
@@ -52,6 +53,11 @@ pub fn routes() -> Router<AppState> {
         .nest(
             "/orgs/:org_id/apps/:app_id/envs/:env_id/deploys",
             deploys::routes(),
+        )
+        // Instances are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/instances
+        .nest(
+            "/orgs/:org_id/apps/:app_id/envs/:env_id/instances",
+            env_instances::routes(),
         )
         // Routes are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/routes
         .nest(
