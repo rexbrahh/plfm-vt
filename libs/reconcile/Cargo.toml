@@ -2,5 +2,11 @@
 name = "plfm-reconcile"
 version.workspace = true
 edition.workspace = true
+description = "Reconciliation loop primitives and convergence helpers"
 
 [dependencies]
+sha2 = { workspace = true }
+hex = "0.4"
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }

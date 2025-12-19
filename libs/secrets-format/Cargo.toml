@@ -2,5 +2,12 @@
 name = "plfm-secrets-format"
 version.workspace = true
 edition.workspace = true
+description = "Secrets file format (dotenv-style) for platform runtime delivery"
 
 [dependencies]
+sha2 = { workspace = true }
+hex = "0.4"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

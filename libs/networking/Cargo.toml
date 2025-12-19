@@ -2,5 +2,7 @@
 name = "plfm-networking"
 version.workspace = true
 edition.workspace = true
+description = "Networking utilities (IPAM, WireGuard config, MTU helpers)"
 
 [dependencies]
+thiserror = { workspace = true }
