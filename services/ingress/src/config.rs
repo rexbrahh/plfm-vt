@@ -6,11 +6,33 @@ use std::{path::PathBuf, time::Duration};
 
 use anyhow::{Context, Result};
 
+#[derive(Clone)]
+pub struct RedactedString(String);
+
+impl RedactedString {
+    pub fn new(value: String) -> Self {
+        Self(value)
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for RedactedString {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<redacted>")
+    }
+}
+
 /// Ingress configuration (env-driven).
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Control plane base URL (example: http://localhost:8080).
     pub control_plane_url: String,
+
+    /// Optional bearer token for control-plane API access (dev stub).
+    pub control_plane_token: Option<RedactedString>,
 
     /// Organization ID to sync routes for (stub mode).
     pub org_id: String,
@@ -36,6 +58,13 @@ impl Config {
     pub fn from_env() -> Result<Self> {
         let control_plane_url = std::env::var("GHOST_CONTROL_PLANE_URL")
             .unwrap_or_else(|_| "http://localhost:8080".to_string());
+
+        let control_plane_token = std::env::var("GHOST_API_TOKEN")
+            .or_else(|_| std::env::var("VT_TOKEN"))
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty())
+            .map(RedactedString::new);
 
         let org_id = std::env::var("GHOST_ORG_ID")
             .or_else(|_| std::env::var("VT_ORG"))
@@ -69,6 +98,7 @@ impl Config {
 
         Ok(Self {
             control_plane_url,
+            control_plane_token,
             org_id,
             fetch_limit,
             poll_interval,

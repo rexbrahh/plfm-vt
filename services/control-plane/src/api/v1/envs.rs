@@ -14,6 +14,7 @@ use plfm_events::AggregateType;
 use plfm_id::{AppId, EnvId, OrgId};
 use serde::{Deserialize, Serialize};
 
+use crate::api::authz;
 use crate::api::error::ApiError;
 use crate::api::idempotency;
 use crate::api::request_context::RequestContext;
@@ -119,12 +120,10 @@ async fn create_env(
     Path((org_id, app_id)): Path<(String, String)>,
     Json(req): Json<CreateEnvRequest>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
     let endpoint_name = "envs.create";
 
     // Validate org_id format
@@ -138,6 +137,9 @@ async fn create_env(
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
 
     // Get app and verify it exists
     let app_row = sqlx::query_as::<_, AppInfoRow>(
@@ -358,7 +360,7 @@ async fn list_envs(
     Path((org_id, app_id)): Path<(String, String)>,
     Query(query): Query<ListEnvsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     // Validate IDs
     let org_id: OrgId = org_id.parse().map_err(|_| {
@@ -370,6 +372,8 @@ async fn list_envs(
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
     let cursor = match query.cursor.as_deref() {
@@ -425,12 +429,10 @@ async fn set_scale(
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Json(req): Json<SetScaleRequest>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
     let endpoint_name = "envs.set_scale";
 
     // Validate IDs
@@ -448,6 +450,9 @@ async fn set_scale(
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
 
     // Validate process counts
     for (process_type, count) in &req.process_counts {
@@ -635,7 +640,7 @@ async fn get_env(
     ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     // Validate IDs
     let org_id: OrgId = org_id.parse().map_err(|_| {
@@ -652,6 +657,8 @@ async fn get_env(
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     // Query the envs_view table
     let row = sqlx::query_as::<_, EnvRow>(
@@ -683,7 +690,7 @@ async fn get_env(
             "env_not_found",
             format!("Environment {} not found", env_id),
         )
-        .with_request_id(request_id)),
+        .with_request_id(request_id.clone())),
     }
 }
 

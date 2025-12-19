@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use plfm_id::OrgId;
 use serde::{Deserialize, Serialize};
 
+use crate::api::authz;
 use crate::api::error::ApiError;
 use crate::api::request_context::RequestContext;
 use crate::state::AppState;
@@ -73,12 +74,14 @@ pub async fn list_events(
     Path(org_id): Path<String>,
     Query(query): Query<ListEventsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     let after_event_id = query.after_event_id.unwrap_or(0).max(0);
     let limit: i32 = query.limit.unwrap_or(50).clamp(1, 200) as i32;

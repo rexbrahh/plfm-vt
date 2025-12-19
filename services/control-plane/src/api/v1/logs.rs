@@ -24,6 +24,7 @@ use futures_core::Stream;
 use plfm_id::{AppId, EnvId, OrgId};
 use serde::{Deserialize, Serialize};
 
+use crate::api::authz;
 use crate::api::error::ApiError;
 use crate::api::request_context::RequestContext;
 use crate::state::AppState;
@@ -59,12 +60,12 @@ pub struct LogsResponse {
 ///
 /// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs
 pub async fn query_logs(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Query(query): Query<QueryLogsParams>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
@@ -78,6 +79,8 @@ pub async fn query_logs(
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     if let Some(since) = query.since.as_deref() {
         DateTime::parse_from_rfc3339(since).map_err(|_| {
@@ -118,12 +121,12 @@ pub async fn query_logs(
 ///
 /// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs/stream
 pub async fn stream_logs(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
     ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Query(query): Query<QueryLogsParams>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
@@ -137,6 +140,8 @@ pub async fn stream_logs(
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     tracing::info!(
         request_id = %request_id,

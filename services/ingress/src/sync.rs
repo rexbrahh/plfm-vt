@@ -14,6 +14,7 @@ use anyhow::{Context, Result};
 use plfm_events::{
     RouteCreatedPayload, RouteDeletedPayload, RouteProxyProtocol, RouteUpdatedPayload,
 };
+use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde::Deserialize;
 use tracing::{debug, info, warn};
 
@@ -257,8 +258,24 @@ fn apply_route_event(
 
 /// Poll route events and keep an in-memory routing table (stub).
 pub async fn run_route_sync_loop(config: &Config) -> Result<()> {
+    let mut headers = HeaderMap::new();
+    if let Some(token) = &config.control_plane_token {
+        let raw = token.expose().trim();
+        let bearer = if raw.starts_with("Bearer ") || raw.starts_with("bearer ") {
+            raw.to_string()
+        } else {
+            format!("Bearer {raw}")
+        };
+
+        headers.insert(
+            AUTHORIZATION,
+            HeaderValue::from_str(&bearer).context("Invalid control-plane token format")?,
+        );
+    }
+
     let client = reqwest::Client::builder()
         .user_agent("plfm-ingress/0.1.0")
+        .default_headers(headers)
         .build()?;
 
     let mut routes: BTreeMap<String, RouteState> = BTreeMap::new();

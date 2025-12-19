@@ -87,6 +87,7 @@ async fn core_loop_request_id_idempotency_and_ryw() {
         axum::serve(listener, app).await.unwrap();
     });
 
+    let auth_header = "Bearer user:itest@example.com";
     let client = reqwest::Client::new();
 
     let idem_key = format!("itest-org-{}-key", unique_suffix());
@@ -95,6 +96,7 @@ async fn core_loop_request_id_idempotency_and_ryw() {
 
     let resp1 = client
         .post(&create_url)
+        .header("Authorization", auth_header)
         .header("Idempotency-Key", &idem_key)
         .json(&serde_json::json!({ "name": org_name }))
         .send()
@@ -110,6 +112,7 @@ async fn core_loop_request_id_idempotency_and_ryw() {
 
     let resp2 = client
         .post(&create_url)
+        .header("Authorization", auth_header)
         .header("Idempotency-Key", &idem_key)
         .json(&serde_json::json!({ "name": org_name }))
         .send()
@@ -125,7 +128,12 @@ async fn core_loop_request_id_idempotency_and_ryw() {
 
     // RYW proof: the create endpoint waits for projections; GET immediately must succeed.
     let get_url = format!("{base_url}/v1/orgs/{org_id}");
-    let resp_get = client.get(&get_url).send().await.unwrap();
+    let resp_get = client
+        .get(&get_url)
+        .header("Authorization", auth_header)
+        .send()
+        .await
+        .unwrap();
     assert!(resp_get.status().is_success());
 
     let request_id_get =

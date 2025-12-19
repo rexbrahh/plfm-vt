@@ -8,6 +8,7 @@ mod envs;
 mod events;
 mod instances;
 mod logs;
+mod members;
 mod nodes;
 mod orgs;
 mod projects;
@@ -23,6 +24,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .nest("/auth", auth::routes())
         .nest("/orgs", orgs::routes())
+        .nest("/orgs/:org_id/members", members::routes())
         .nest("/orgs/:org_id/projects", projects::routes())
         .route(
             "/orgs/:org_id/events",

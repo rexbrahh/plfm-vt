@@ -15,6 +15,7 @@ use plfm_events::{AggregateType, DeployStatus};
 use plfm_id::{AppId, DeployId, EnvId, OrgId, ReleaseId};
 use serde::{Deserialize, Serialize};
 
+use crate::api::authz;
 use crate::api::error::ApiError;
 use crate::api::idempotency;
 use crate::api::request_context::RequestContext;
@@ -143,12 +144,10 @@ async fn create_deploy(
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Json(req): Json<CreateDeployRequest>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
     let endpoint_name = "deploys.create";
 
     // Validate IDs
@@ -166,6 +165,9 @@ async fn create_deploy(
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
 
     let release_id: ReleaseId = req.release_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_release_id", "Invalid release ID format")
@@ -207,9 +209,10 @@ async fn create_deploy(
 
     // Validate env exists and belongs to app
     let env_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM envs_view WHERE env_id = $1 AND app_id = $2 AND NOT is_deleted)",
+        "SELECT EXISTS(SELECT 1 FROM envs_view WHERE env_id = $1 AND org_id = $2 AND app_id = $3 AND NOT is_deleted)",
     )
     .bind(env_id.to_string())
+    .bind(org_id.to_string())
     .bind(app_id.to_string())
     .fetch_one(state.db().pool())
     .await
@@ -229,9 +232,10 @@ async fn create_deploy(
 
     // Validate release exists and belongs to app
     let release_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM releases_view WHERE release_id = $1 AND app_id = $2)",
+        "SELECT EXISTS(SELECT 1 FROM releases_view WHERE release_id = $1 AND org_id = $2 AND app_id = $3)",
     )
     .bind(release_id.to_string())
+    .bind(org_id.to_string())
     .bind(app_id.to_string())
     .fetch_one(state.db().pool())
     .await
@@ -361,12 +365,10 @@ pub async fn create_rollback(
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Json(req): Json<RollbackRequest>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
     let endpoint_name = "rollbacks.create";
 
     // Validate IDs
@@ -384,6 +386,9 @@ pub async fn create_rollback(
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
 
     let release_id: ReleaseId = req.release_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_release_id", "Invalid release ID format")
@@ -425,9 +430,10 @@ pub async fn create_rollback(
 
     // Validate env exists and belongs to app
     let env_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM envs_view WHERE env_id = $1 AND app_id = $2 AND NOT is_deleted)",
+        "SELECT EXISTS(SELECT 1 FROM envs_view WHERE env_id = $1 AND org_id = $2 AND app_id = $3 AND NOT is_deleted)",
     )
     .bind(env_id.to_string())
+    .bind(org_id.to_string())
     .bind(app_id.to_string())
     .fetch_one(state.db().pool())
     .await
@@ -447,9 +453,10 @@ pub async fn create_rollback(
 
     // Validate release exists and belongs to app
     let release_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM releases_view WHERE release_id = $1 AND app_id = $2)",
+        "SELECT EXISTS(SELECT 1 FROM releases_view WHERE release_id = $1 AND org_id = $2 AND app_id = $3)",
     )
     .bind(release_id.to_string())
+    .bind(org_id.to_string())
     .bind(app_id.to_string())
     .fetch_one(state.db().pool())
     .await
@@ -576,10 +583,10 @@ async fn list_deploys(
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Query(query): Query<ListDeploysQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     // Validate IDs
-    let _org_id: OrgId = org_id.parse().map_err(|_| {
+    let org_id_typed: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
@@ -593,6 +600,8 @@ async fn list_deploys(
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id_typed, &ctx).await?;
 
     let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
     let cursor = match query.cursor.as_deref() {
@@ -649,10 +658,10 @@ async fn get_deploy(
     ctx: RequestContext,
     Path((org_id, app_id, env_id, deploy_id)): Path<(String, String, String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     // Validate IDs
-    let _org_id: OrgId = org_id.parse().map_err(|_| {
+    let org_id_typed: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
@@ -671,6 +680,8 @@ async fn get_deploy(
         ApiError::bad_request("invalid_deploy_id", "Invalid deploy ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id_typed, &ctx).await?;
 
     // Query the deploys_view table
     let row = sqlx::query_as::<_, DeployRow>(
@@ -699,7 +710,7 @@ async fn get_deploy(
             "deploy_not_found",
             format!("Deploy {} not found", deploy_id),
         )
-        .with_request_id(request_id)),
+        .with_request_id(request_id.clone())),
     }
 }
 

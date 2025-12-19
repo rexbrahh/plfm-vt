@@ -17,6 +17,7 @@ use plfm_events::{
 use plfm_id::{AppId, EnvId, OrgId, RouteId};
 use serde::{Deserialize, Serialize};
 
+use crate::api::authz;
 use crate::api::error::ApiError;
 use crate::api::idempotency;
 use crate::api::request_context::RequestContext;
@@ -117,7 +118,7 @@ async fn list_routes(
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Query(query): Query<ListRoutesQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
@@ -131,6 +132,8 @@ async fn list_routes(
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let cursor = query.cursor.as_deref();
@@ -198,12 +201,10 @@ async fn create_route(
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Json(req): Json<CreateRouteRequest>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
     let endpoint_name = "routes.create";
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
@@ -218,6 +219,9 @@ async fn create_route(
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
 
     validate_hostname(&req.hostname, &request_id)?;
     validate_port(req.listen_port, "listen_port", &request_id)?;
@@ -494,7 +498,7 @@ async fn get_route(
     ctx: RequestContext,
     Path((org_id, app_id, env_id, route_id)): Path<(String, String, String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
@@ -512,6 +516,8 @@ async fn get_route(
         ApiError::bad_request("invalid_route_id", "Invalid route ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     let row = sqlx::query_as::<_, RouteRow>(
         r#"
@@ -585,12 +591,10 @@ async fn update_route(
     Path((org_id, app_id, env_id, route_id)): Path<(String, String, String, String)>,
     Json(req): Json<UpdateRouteRequest>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
     let endpoint_name = "routes.update";
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
@@ -609,6 +613,9 @@ async fn update_route(
         ApiError::bad_request("invalid_route_id", "Invalid route ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
 
     if req.expected_version < 0 {
         return Err(ApiError::bad_request(
@@ -858,12 +865,10 @@ async fn delete_route(
     ctx: RequestContext,
     Path((org_id, app_id, env_id, route_id)): Path<(String, String, String, String)>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
     let endpoint_name = "routes.delete";
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
@@ -882,6 +887,9 @@ async fn delete_route(
         ApiError::bad_request("invalid_route_id", "Invalid route ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
 
     let org_scope = org_id.to_string();
     let request_hash = idempotency_key

@@ -14,6 +14,7 @@ use plfm_events::AggregateType;
 use plfm_id::{OrgId, ProjectId};
 use serde::{Deserialize, Serialize};
 
+use crate::api::authz;
 use crate::api::error::ApiError;
 use crate::api::idempotency;
 use crate::api::request_context::RequestContext;
@@ -92,12 +93,10 @@ async fn create_project(
     Path(org_id): Path<String>,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
     let endpoint_name = "projects.create";
 
     // Validate org_id format
@@ -105,6 +104,9 @@ async fn create_project(
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
 
     // Validate name
     if req.name.is_empty() {
@@ -294,12 +296,14 @@ async fn list_projects(
     Path(org_id): Path<String>,
     Query(query): Query<ListProjectsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
     let cursor = query.cursor.as_deref();
@@ -339,7 +343,7 @@ async fn get_project(
     ctx: RequestContext,
     Path((org_id, project_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
@@ -349,6 +353,8 @@ async fn get_project(
         ApiError::bad_request("invalid_project_id", "Invalid project ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     let row = sqlx::query_as::<_, ProjectRow>(
         r#"
@@ -373,7 +379,7 @@ async fn get_project(
             "project_not_found",
             format!("Project {} not found", project_id),
         )
-        .with_request_id(request_id)),
+        .with_request_id(request_id.clone())),
     }
 }
 

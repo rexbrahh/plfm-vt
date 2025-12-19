@@ -223,7 +223,7 @@ pub struct OrgUpdatedPayload {
 pub struct OrgMemberAddedPayload {
     pub member_id: MemberId,
     pub org_id: OrgId,
-    pub user_id: String,
+    pub email: String,
     pub role: MemberRole,
 }
 
@@ -239,6 +239,7 @@ pub struct OrgMemberRoleUpdatedPayload {
 pub struct OrgMemberRemovedPayload {
     pub member_id: MemberId,
     pub org_id: OrgId,
+    pub email: String,
 }
 
 // -----------------------------------------------------------------------------

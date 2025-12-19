@@ -14,6 +14,7 @@ mod deploys;
 mod env_config;
 mod envs;
 mod instances;
+mod members;
 mod nodes;
 mod orgs;
 mod projects;
@@ -75,6 +76,7 @@ impl ProjectionRegistry {
         Self {
             handlers: vec![
                 Box::new(orgs::OrgsProjection),
+                Box::new(members::MembersProjection),
                 Box::new(projects::ProjectsProjection),
                 Box::new(apps::AppsProjection),
                 Box::new(envs::EnvsProjection),

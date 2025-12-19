@@ -14,6 +14,7 @@ use plfm_events::AggregateType;
 use plfm_id::{AppId, OrgId};
 use serde::{Deserialize, Serialize};
 
+use crate::api::authz;
 use crate::api::error::ApiError;
 use crate::api::idempotency;
 use crate::api::request_context::RequestContext;
@@ -103,12 +104,10 @@ async fn create_app(
     Path(org_id): Path<String>,
     Json(req): Json<CreateAppRequest>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
     let endpoint_name = "apps.create";
 
     // Validate org_id format
@@ -116,6 +115,9 @@ async fn create_app(
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
 
     // Validate name
     if req.name.is_empty() {
@@ -305,13 +307,15 @@ async fn list_apps(
     Path(org_id): Path<String>,
     Query(query): Query<ListAppsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     // Validate org_id format
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
     let cursor = match query.cursor.as_deref() {
@@ -365,33 +369,42 @@ async fn get_app(
     ctx: RequestContext,
     Path((org_id, app_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     // Validate org_id format
-    let _org_id: OrgId = org_id.parse().map_err(|_| {
+    let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
 
     // Validate app_id format
-    let _app_id: AppId = app_id.parse().map_err(|_| {
+    let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     // Query the apps_view table
     let row = sqlx::query_as::<_, AppRow>(
         r#"
         SELECT app_id, org_id, name, description, resource_version, created_at, updated_at
         FROM apps_view
-        WHERE app_id = $1 AND NOT is_deleted
+        WHERE app_id = $1 AND org_id = $2 AND NOT is_deleted
         "#,
     )
-    .bind(&app_id)
+    .bind(app_id.to_string())
+    .bind(org_id.to_string())
     .fetch_optional(state.db().pool())
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, request_id = %request_id, app_id = %app_id, "Failed to get app");
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            app_id = %app_id,
+            org_id = %org_id,
+            "Failed to get app"
+        );
         ApiError::internal("internal_error", "Failed to get application")
             .with_request_id(request_id.clone())
     })?;

@@ -1,5 +1,6 @@
 //! HTTP API handlers and routing.
 
+pub mod authz;
 pub mod error;
 mod health;
 pub mod idempotency;

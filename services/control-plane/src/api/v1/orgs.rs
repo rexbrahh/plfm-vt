@@ -10,10 +10,11 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use plfm_events::AggregateType;
-use plfm_id::OrgId;
+use plfm_events::{event_types, AggregateType, MemberRole, OrgMemberAddedPayload};
+use plfm_id::{MemberId, OrgId};
 use serde::{Deserialize, Serialize};
 
+use crate::api::authz;
 use crate::api::error::ApiError;
 use crate::api::idempotency;
 use crate::api::request_context::RequestContext;
@@ -80,12 +81,19 @@ async fn create_org(
     ctx: RequestContext,
     Json(req): Json<CreateOrgRequest>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    authz::require_authenticated(&ctx)?;
+
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
+    let Some(actor_email) = ctx.actor_email.clone() else {
+        return Err(ApiError::unauthorized(
+            "unauthorized",
+            "Token subject email is required for org creation (use Bearer user:<email> in dev)",
+        )
+        .with_request_id(request_id));
+    };
     let endpoint_name = "orgs.create";
 
     // Validate name
@@ -131,13 +139,13 @@ async fn create_org(
     }
 
     let org_id = OrgId::new();
+    let member_id = MemberId::new();
 
-    // Create the event
-    let event = AppendEvent {
+    let org_event = AppendEvent {
         aggregate_type: AggregateType::Org,
         aggregate_id: org_id.to_string(),
         aggregate_seq: 1, // First event for this org
-        event_type: "org.created".to_string(),
+        event_type: event_types::ORG_CREATED.to_string(),
         event_version: 1,
         actor_type,
         actor_id: actor_id.clone(),
@@ -153,16 +161,81 @@ async fn create_org(
         }),
     };
 
-    let event_id = state.db().event_store().append(event).await.map_err(|e| {
-        tracing::error!(error = %e, request_id = %request_id, "Failed to create org");
+    let member_payload = OrgMemberAddedPayload {
+        member_id,
+        org_id,
+        email: actor_email,
+        role: MemberRole::Owner,
+    };
+
+    let member_payload = serde_json::to_value(&member_payload).map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to serialize org owner membership payload");
         ApiError::internal("internal_error", "Failed to create organization")
             .with_request_id(request_id.clone())
     })?;
 
+    let member_event = AppendEvent {
+        aggregate_type: AggregateType::OrgMember,
+        aggregate_id: member_id.to_string(),
+        aggregate_seq: 1,
+        event_type: event_types::ORG_MEMBER_ADDED.to_string(),
+        event_version: 1,
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: None,
+        env_id: None,
+        correlation_id: None,
+        causation_id: None,
+        payload: member_payload,
+    };
+
+    let event_ids = state
+        .db()
+        .event_store()
+        .append_batch(vec![org_event, member_event])
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to create org");
+            ApiError::internal("internal_error", "Failed to create organization")
+                .with_request_id(request_id.clone())
+        })?;
+
+    let (org_event_id, member_event_id) = match event_ids.as_slice() {
+        [org_event_id, member_event_id] => (*org_event_id, *member_event_id),
+        _ => {
+            return Err(
+                ApiError::internal("internal_error", "Failed to create organization")
+                    .with_request_id(request_id.clone()),
+            );
+        }
+    };
+
     state
         .db()
         .projection_store()
-        .wait_for_checkpoint("orgs", event_id.value(), std::time::Duration::from_secs(2))
+        .wait_for_checkpoint(
+            "orgs",
+            org_event_id.value(),
+            std::time::Duration::from_secs(2),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
+
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "members",
+            member_event_id.value(),
+            std::time::Duration::from_secs(2),
+        )
         .await
         .map_err(|e| {
             tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
@@ -231,45 +304,55 @@ async fn list_orgs(
     State(state): State<AppState>,
     ctx: RequestContext,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    authz::require_authenticated(&ctx)?;
 
-    // Query the orgs_view table
-    let result = sqlx::query_as::<_, OrgRow>(
+    let request_id = ctx.request_id.clone();
+    let Some(email) = ctx.actor_email.as_deref() else {
+        return Err(ApiError::unauthorized(
+            "unauthorized",
+            "Token subject email is required for org-scoped APIs (use Bearer user:<email> in dev)",
+        )
+        .with_request_id(request_id));
+    };
+
+    let rows = sqlx::query_as::<_, OrgRow>(
         r#"
-        SELECT org_id, name, resource_version, created_at, updated_at
-        FROM orgs_view
-        ORDER BY created_at DESC
-        LIMIT 100
+        SELECT o.org_id, o.name, o.resource_version, o.created_at, o.updated_at
+        FROM orgs_view o
+        INNER JOIN org_members_view m ON m.org_id = o.org_id
+        WHERE m.email = $1 AND NOT m.is_deleted
+        ORDER BY o.org_id ASC
+        LIMIT 200
         "#,
     )
+    .bind(email)
     .fetch_all(state.db().pool())
-    .await;
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            email = %email,
+            "Failed to list orgs"
+        );
+        ApiError::internal("internal_error", "Failed to list organizations")
+            .with_request_id(request_id.clone())
+    })?;
 
-    match result {
-        Ok(rows) => {
-            let items: Vec<OrgResponse> = rows
-                .into_iter()
-                .map(|row| OrgResponse {
-                    id: row.org_id,
-                    name: row.name,
-                    resource_version: row.resource_version,
-                    created_at: row.created_at,
-                    updated_at: row.updated_at,
-                })
-                .collect();
+    let items: Vec<OrgResponse> = rows
+        .into_iter()
+        .map(|row| OrgResponse {
+            id: row.org_id,
+            name: row.name,
+            resource_version: row.resource_version,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+        })
+        .collect();
 
-            let total = items.len() as i64;
+    let total = items.len() as i64;
 
-            Ok(Json(ListOrgsResponse { items, total }))
-        }
-        Err(e) => {
-            tracing::error!(error = %e, request_id = %request_id, "Failed to list orgs");
-            Err(
-                ApiError::internal("internal_error", "Failed to list organizations")
-                    .with_request_id(request_id),
-            )
-        }
-    }
+    Ok(Json(ListOrgsResponse { items, total }))
 }
 
 /// Get a single organization by ID.
@@ -280,10 +363,10 @@ async fn get_org(
     ctx: RequestContext,
     Path(org_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     // Validate org_id format
-    let _org_id: OrgId = org_id.parse().map_err(|_| {
+    let org_id_typed: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
@@ -301,13 +384,17 @@ async fn get_org(
     .await;
 
     match result {
-        Ok(Some(row)) => Ok(Json(OrgResponse {
-            id: row.org_id,
-            name: row.name,
-            resource_version: row.resource_version,
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-        })),
+        Ok(Some(row)) => {
+            let _role = authz::require_org_member(&state, &org_id_typed, &ctx).await?;
+
+            Ok(Json(OrgResponse {
+                id: row.org_id,
+                name: row.name,
+                resource_version: row.resource_version,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+            }))
+        }
         Ok(None) => Err(ApiError::not_found(
             "org_not_found",
             format!("Organization {} not found", org_id),

@@ -18,6 +18,7 @@ pub struct RequestContext {
     pub idempotency_key: Option<String>,
     pub actor_type: ActorType,
     pub actor_id: String,
+    pub actor_email: Option<String>,
 }
 
 fn header_string(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -30,7 +31,7 @@ fn header_string(headers: &HeaderMap, name: &str) -> Option<String> {
 fn actor_from_authorization_header(
     headers: &HeaderMap,
     request_id: &str,
-) -> Result<Option<(ActorType, String)>, ApiError> {
+) -> Result<Option<(ActorType, String, Option<String>)>, ApiError> {
     let Some(auth_value) = header_string(headers, AUTHORIZATION_HEADER) else {
         return Ok(None);
     };
@@ -53,12 +54,50 @@ fn actor_from_authorization_header(
         .with_request_id(request_id.to_string()));
     }
 
-    // Important: never persist or log bearer tokens. Derive a stable, non-secret actor id.
+    // v1 dev stub:
+    // - `user:<email>` tokens are treated as a user identity with an email.
+    // - `sp:<id>` tokens are treated as a service principal identity.
+    // - other tokens are treated as opaque and mapped to a stable hashed actor id.
+    if let Some(email) = token.strip_prefix("user:") {
+        let email = email.trim();
+        if email.is_empty() || email.len() > 320 || !email.contains('@') {
+            return Err(ApiError::unauthorized(
+                "invalid_token",
+                "user token must be in the form 'user:<email>'",
+            )
+            .with_request_id(request_id.to_string()));
+        }
+
+        // Important: never persist or log bearer tokens. Derive a stable, non-secret actor id.
+        let digest = Sha256::digest(email.as_bytes());
+        let hex = format!("{:x}", digest);
+        let short = hex.get(..32).unwrap_or(&hex);
+
+        return Ok(Some((
+            ActorType::User,
+            format!("usr_{short}"),
+            Some(email.to_string()),
+        )));
+    }
+
+    if let Some(sp_id) = token.strip_prefix("sp:") {
+        let sp_id = sp_id.trim();
+        if sp_id.is_empty() {
+            return Err(ApiError::unauthorized(
+                "invalid_token",
+                "service principal token must be in the form 'sp:<id>'",
+            )
+            .with_request_id(request_id.to_string()));
+        }
+
+        return Ok(Some((ActorType::ServicePrincipal, sp_id.to_string(), None)));
+    }
+
     let digest = Sha256::digest(token.as_bytes());
     let hex = format!("{:x}", digest);
     let short = hex.get(..32).unwrap_or(&hex);
 
-    Ok(Some((ActorType::User, format!("usr_{short}"))))
+    Ok(Some((ActorType::User, format!("usr_{short}"), None)))
 }
 
 #[axum::async_trait]
@@ -83,14 +122,18 @@ where
             }
         }
 
-        let (actor_type, actor_id) = actor_from_authorization_header(&parts.headers, &request_id)?
-            .unwrap_or((ActorType::System, "system".to_string()));
+        let (actor_type, actor_id, actor_email) = actor_from_authorization_header(
+            &parts.headers,
+            &request_id,
+        )?
+        .unwrap_or((ActorType::System, "system".to_string(), None));
 
         Ok(Self {
             request_id,
             idempotency_key,
             actor_type,
             actor_id,
+            actor_email,
         })
     }
 }

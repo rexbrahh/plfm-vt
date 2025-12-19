@@ -15,6 +15,7 @@ use plfm_events::AggregateType;
 use plfm_id::{AppId, OrgId, ReleaseId};
 use serde::{Deserialize, Serialize};
 
+use crate::api::authz;
 use crate::api::error::ApiError;
 use crate::api::idempotency;
 use crate::api::request_context::RequestContext;
@@ -119,12 +120,10 @@ async fn create_release(
     Path((org_id, app_id)): Path<(String, String)>,
     Json(req): Json<CreateReleaseRequest>,
 ) -> Result<Response, ApiError> {
-    let RequestContext {
-        request_id,
-        idempotency_key,
-        actor_type,
-        actor_id,
-    } = ctx;
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
     let endpoint_name = "releases.create";
 
     // Validate org_id format
@@ -138,6 +137,9 @@ async fn create_release(
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
 
     // Validate required fields
     if req.image_ref.is_empty() {
@@ -333,22 +335,24 @@ async fn create_release(
 async fn list_releases(
     State(state): State<AppState>,
     ctx: RequestContext,
-    Path((org_id, app_id)): Path<(String, String)>,
+    Path((org_id_raw, app_id_raw)): Path<(String, String)>,
     Query(query): Query<ListReleasesQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     // Validate org_id format
-    let _org_id: OrgId = org_id.parse().map_err(|_| {
+    let org_id: OrgId = org_id_raw.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
 
     // Validate app_id format
-    let _app_id: AppId = app_id.parse().map_err(|_| {
+    let _app_id: AppId = app_id_raw.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
 
     let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
     let cursor = match query.cursor.as_deref() {
@@ -374,8 +378,8 @@ async fn list_releases(
         LIMIT $4
         "#,
     )
-    .bind(&org_id)
-    .bind(&app_id)
+    .bind(&org_id_raw)
+    .bind(&app_id_raw)
     .bind(cursor.as_deref())
     .bind(limit)
     .fetch_all(state.db().pool())
@@ -404,10 +408,10 @@ async fn get_release(
     ctx: RequestContext,
     Path((org_id, app_id, release_id)): Path<(String, String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = ctx.request_id;
+    let request_id = ctx.request_id.clone();
 
     // Validate IDs
-    let _org_id: OrgId = org_id.parse().map_err(|_| {
+    let org_id_typed: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
             .with_request_id(request_id.clone())
     })?;
@@ -421,6 +425,8 @@ async fn get_release(
         ApiError::bad_request("invalid_release_id", "Invalid release ID format")
             .with_request_id(request_id.clone())
     })?;
+
+    let _role = authz::require_org_member(&state, &org_id_typed, &ctx).await?;
 
     // Query the releases_view table
     let row = sqlx::query_as::<_, ReleaseRow>(
@@ -448,7 +454,7 @@ async fn get_release(
             "release_not_found",
             format!("Release {} not found", release_id),
         )
-        .with_request_id(request_id)),
+        .with_request_id(request_id.clone())),
     }
 }
 
