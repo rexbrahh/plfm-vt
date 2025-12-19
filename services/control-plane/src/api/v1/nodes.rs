@@ -4,7 +4,7 @@
 //! These are internal APIs called by node-agents, not tenant-facing.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -123,8 +123,17 @@ pub struct ListNodesResponse {
     /// List of nodes.
     pub items: Vec<NodeResponse>,
 
-    /// Total count (for pagination).
-    pub total: i64,
+    /// Next cursor (null if no more results).
+    pub next_cursor: Option<String>,
+}
+
+/// Query parameters for listing nodes.
+#[derive(Debug, Deserialize)]
+pub struct ListNodesQuery {
+    /// Max number of items to return.
+    pub limit: Option<i64>,
+    /// Cursor (exclusive). Interpreted as a node_id.
+    pub cursor: Option<String>,
 }
 
 /// Request for node heartbeat.
@@ -387,8 +396,12 @@ async fn enroll_node(
 async fn list_nodes(
     State(state): State<AppState>,
     ctx: RequestContext,
+    Query(query): Query<ListNodesQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = ctx.request_id;
+
+    let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
+    let cursor = query.cursor;
 
     let rows = sqlx::query_as::<_, NodeRow>(
         r#"
@@ -398,10 +411,13 @@ async fn list_nodes(
                labels, allocatable, mtu,
                resource_version, created_at, updated_at
         FROM nodes_view
-        ORDER BY created_at DESC
-        LIMIT 100
+        WHERE ($1::text IS NULL OR node_id > $1)
+        ORDER BY node_id ASC
+        LIMIT $2
         "#,
     )
+    .bind(cursor.as_deref())
+    .bind(limit)
     .fetch_all(state.db().pool())
     .await
     .map_err(|e| {
@@ -411,9 +427,13 @@ async fn list_nodes(
     })?;
 
     let items: Vec<NodeResponse> = rows.into_iter().map(NodeResponse::from).collect();
-    let total = items.len() as i64;
+    let next_cursor = if items.len() == limit as usize {
+        items.last().map(|item| item.id.clone())
+    } else {
+        None
+    };
 
-    Ok(Json(ListNodesResponse { items, total }))
+    Ok(Json(ListNodesResponse { items, next_cursor }))
 }
 
 /// Get a single node by ID.

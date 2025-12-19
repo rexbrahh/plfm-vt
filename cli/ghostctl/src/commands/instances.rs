@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_single};
+use crate::output::{print_output, print_single, OutputFormat};
 
 use super::CommandContext;
 
@@ -28,6 +28,14 @@ enum InstancesSubcommand {
 
 #[derive(Debug, Args)]
 struct ListInstancesArgs {
+    /// Maximum number of items to return (1-200).
+    #[arg(long, default_value = "50")]
+    limit: i64,
+
+    /// Pagination cursor (opaque).
+    #[arg(long)]
+    cursor: Option<String>,
+
     /// Filter by environment (optional).
     #[arg(long)]
     env: Option<String>,
@@ -86,21 +94,33 @@ fn display_option(opt: &Option<String>) -> String {
 }
 
 /// List response from API.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ListInstancesResponse {
     items: Vec<InstanceResponse>,
-    #[allow(dead_code)]
-    total: i64,
+    next_cursor: Option<String>,
 }
 
 /// List instances.
-async fn list_instances(ctx: CommandContext, _args: ListInstancesArgs) -> Result<()> {
+async fn list_instances(ctx: CommandContext, args: ListInstancesArgs) -> Result<()> {
     let client = ctx.client()?;
 
-    // TODO: Add query params for filtering by env/node
-    let response: ListInstancesResponse = client.get("/v1/instances").await?;
+    let mut path = format!("/v1/instances?limit={}", args.limit);
+    if let Some(cursor) = args.cursor.as_deref() {
+        path.push_str(&format!("&cursor={cursor}"));
+    }
+    if let Some(env) = args.env.as_deref() {
+        path.push_str(&format!("&env_id={env}"));
+    }
+    if let Some(node) = args.node.as_deref() {
+        path.push_str(&format!("&node_id={node}"));
+    }
 
-    print_output(&response.items, ctx.format);
+    let response: ListInstancesResponse = client.get(&path).await?;
+
+    match ctx.format {
+        OutputFormat::Table => print_output(&response.items, ctx.format),
+        OutputFormat::Json => print_single(&response, ctx.format),
+    }
     Ok(())
 }
 

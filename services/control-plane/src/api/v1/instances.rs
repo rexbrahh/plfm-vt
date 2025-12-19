@@ -4,7 +4,7 @@
 //! These are primarily used by node-agents to report status.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{get, post},
@@ -103,8 +103,21 @@ pub struct ListInstancesResponse {
     /// List of instances.
     pub items: Vec<InstanceResponse>,
 
-    /// Total count.
-    pub total: i64,
+    /// Next cursor (null if no more results).
+    pub next_cursor: Option<String>,
+}
+
+/// Query parameters for listing instances.
+#[derive(Debug, Deserialize)]
+pub struct ListInstancesQuery {
+    /// Max number of items to return.
+    pub limit: Option<i64>,
+    /// Cursor (exclusive). Interpreted as an instance_id.
+    pub cursor: Option<String>,
+    /// Filter by env_id.
+    pub env_id: Option<String>,
+    /// Filter by node_id.
+    pub node_id: Option<String>,
 }
 
 // =============================================================================
@@ -117,8 +130,12 @@ pub struct ListInstancesResponse {
 async fn list_instances(
     State(state): State<AppState>,
     ctx: RequestContext,
+    Query(query): Query<ListInstancesQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = ctx.request_id;
+
+    let limit: i64 = query.limit.unwrap_or(50).clamp(1, 200);
+    let cursor = query.cursor;
 
     // Query instances from the desired view, joined with status view
     let rows = sqlx::query_as::<_, InstanceRow>(
@@ -131,10 +148,17 @@ async fn list_instances(
         FROM instances_desired_view d
         LEFT JOIN instances_status_view s ON d.instance_id = s.instance_id
         WHERE d.desired_state != 'stopped'
-        ORDER BY d.created_at DESC
-        LIMIT 100
+          AND ($1::text IS NULL OR d.instance_id > $1)
+          AND ($2::text IS NULL OR d.env_id = $2)
+          AND ($3::text IS NULL OR d.node_id = $3)
+        ORDER BY d.instance_id ASC
+        LIMIT $4
         "#,
     )
+    .bind(cursor.as_deref())
+    .bind(query.env_id.as_deref())
+    .bind(query.node_id.as_deref())
+    .bind(limit)
     .fetch_all(state.db().pool())
     .await
     .map_err(|e| {
@@ -144,9 +168,13 @@ async fn list_instances(
     })?;
 
     let items: Vec<InstanceResponse> = rows.into_iter().map(InstanceResponse::from).collect();
-    let total = items.len() as i64;
+    let next_cursor = if items.len() == limit as usize {
+        items.last().map(|item| item.id.clone())
+    } else {
+        None
+    };
 
-    Ok(Json(ListInstancesResponse { items, total }))
+    Ok(Json(ListInstancesResponse { items, next_cursor }))
 }
 
 /// Get a single instance by ID.

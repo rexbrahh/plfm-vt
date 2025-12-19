@@ -20,10 +20,21 @@ pub struct NodesCommand {
 #[derive(Debug, Subcommand)]
 enum NodesSubcommand {
     /// List all nodes in the cluster.
-    List,
+    List(ListNodesArgs),
 
     /// Get node details.
     Get(GetNodeArgs),
+}
+
+#[derive(Debug, Args)]
+struct ListNodesArgs {
+    /// Maximum number of items to return (1-200).
+    #[arg(long, default_value = "50")]
+    limit: i64,
+
+    /// Pagination cursor (opaque).
+    #[arg(long)]
+    cursor: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -35,7 +46,7 @@ struct GetNodeArgs {
 impl NodesCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         match self.command {
-            NodesSubcommand::List => list_nodes(ctx).await,
+            NodesSubcommand::List(args) => list_nodes(ctx, args).await,
             NodesSubcommand::Get(args) => get_node(ctx, args).await,
         }
     }
@@ -76,20 +87,27 @@ fn display_option_i32(opt: &Option<i32>) -> String {
 }
 
 /// List response from API.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ListNodesResponse {
     items: Vec<NodeResponse>,
-    #[allow(dead_code)]
-    total: i64,
+    next_cursor: Option<String>,
 }
 
 /// List all nodes.
-async fn list_nodes(ctx: CommandContext) -> Result<()> {
+async fn list_nodes(ctx: CommandContext, args: ListNodesArgs) -> Result<()> {
     let client = ctx.client()?;
 
-    let response: ListNodesResponse = client.get("/v1/nodes").await?;
+    let mut path = format!("/v1/nodes?limit={}", args.limit);
+    if let Some(cursor) = args.cursor.as_deref() {
+        path.push_str(&format!("&cursor={cursor}"));
+    }
 
-    print_output(&response.items, ctx.format);
+    let response: ListNodesResponse = client.get(&path).await?;
+
+    match ctx.format {
+        crate::output::OutputFormat::Table => print_output(&response.items, ctx.format),
+        crate::output::OutputFormat::Json => print_single(&response, ctx.format),
+    }
     Ok(())
 }
 
