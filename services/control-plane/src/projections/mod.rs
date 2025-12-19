@@ -20,6 +20,7 @@ mod orgs;
 mod projects;
 mod releases;
 mod routes;
+mod secret_bundles;
 pub mod worker;
 
 pub use worker::ProjectionWorker;
@@ -86,6 +87,7 @@ impl ProjectionRegistry {
                 Box::new(instances::InstancesProjection),
                 Box::new(env_config::EnvConfigProjection),
                 Box::new(routes::RoutesProjection),
+                Box::new(secret_bundles::SecretBundlesProjection),
             ],
         }
     }

@@ -433,17 +433,22 @@ pub struct RouteDeletedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretBundleCreatedPayload {
     pub bundle_id: SecretBundleId,
+    pub org_id: OrgId,
+    pub app_id: AppId,
     pub env_id: EnvId,
-    pub version_id: SecretVersionId,
-    pub key_count: i32,
+    pub format: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SecretBundleVersionSetPayload {
     pub bundle_id: SecretBundleId,
-    pub old_version_id: SecretVersionId,
-    pub new_version_id: SecretVersionId,
-    pub key_count: i32,
+    pub org_id: OrgId,
+    pub env_id: EnvId,
+    pub version_id: SecretVersionId,
+    pub format: String,
+    pub data_hash: String,
+    pub updated_at: String,
 }
 
 // -----------------------------------------------------------------------------

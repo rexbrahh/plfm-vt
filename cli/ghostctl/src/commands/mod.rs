@@ -13,6 +13,7 @@ mod projects;
 mod releases;
 mod routes;
 mod scale;
+mod secrets;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -93,6 +94,9 @@ enum Commands {
     /// Manage routes (hostname bindings).
     Routes(routes::RoutesCommand),
 
+    /// Manage environment secrets.
+    Secrets(secrets::SecretsCommand),
+
     /// Show CLI version.
     Version,
 }
@@ -133,6 +137,7 @@ impl Cli {
             Commands::Logs(cmd) => cmd.run(ctx).await,
             Commands::Events(cmd) => cmd.run(ctx).await,
             Commands::Routes(cmd) => cmd.run(ctx).await,
+            Commands::Secrets(cmd) => cmd.run(ctx).await,
             Commands::Version => {
                 println!("vt {}", env!("CARGO_PKG_VERSION"));
                 Ok(())

@@ -192,6 +192,59 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         .expect("missing env id")
         .to_string();
 
+    // Secrets: initially not configured.
+    let secrets_url = format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/secrets");
+    let resp_secrets_get = client
+        .get(&secrets_url)
+        .header("Authorization", auth_header)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp_secrets_get.status().as_u16(), 404);
+
+    // Set secrets (and verify idempotency replay).
+    let idem_secrets = format!("itest-secrets-{}-key", unique_suffix());
+    let secrets_body = serde_json::json!({
+        "values": { "DB_PASSWORD": "supersecret" }
+    });
+
+    let resp_secrets_put_1 = client
+        .put(&secrets_url)
+        .header("Authorization", auth_header)
+        .header("Idempotency-Key", &idem_secrets)
+        .json(&secrets_body)
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_secrets_put_1.status().is_success());
+    let secrets_put_1: serde_json::Value = resp_secrets_put_1.json().await.unwrap();
+    let bundle_id = secrets_put_1["bundle_id"].clone();
+    let version_id = secrets_put_1["current_version_id"].clone();
+
+    let resp_secrets_put_2 = client
+        .put(&secrets_url)
+        .header("Authorization", auth_header)
+        .header("Idempotency-Key", &idem_secrets)
+        .json(&secrets_body)
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_secrets_put_2.status().is_success());
+    let secrets_put_2: serde_json::Value = resp_secrets_put_2.json().await.unwrap();
+    assert_eq!(secrets_put_2["bundle_id"], bundle_id);
+    assert_eq!(secrets_put_2["current_version_id"], version_id);
+
+    let resp_secrets_get_2 = client
+        .get(&secrets_url)
+        .header("Authorization", auth_header)
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_secrets_get_2.status().is_success());
+    let secrets_get_2: serde_json::Value = resp_secrets_get_2.json().await.unwrap();
+    assert_eq!(secrets_get_2["bundle_id"], bundle_id);
+    assert_eq!(secrets_get_2["current_version_id"], version_id);
+
     // Create a release.
     let create_release_url = format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}/releases");
     let idem_release = format!("itest-release-{}-key", unique_suffix());

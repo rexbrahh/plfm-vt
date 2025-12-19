@@ -15,6 +15,7 @@ mod orgs;
 mod projects;
 mod releases;
 mod routes;
+mod secrets;
 
 use axum::Router;
 
@@ -63,6 +64,11 @@ pub fn routes() -> Router<AppState> {
         .nest(
             "/orgs/:org_id/apps/:app_id/envs/:env_id/routes",
             routes::routes(),
+        )
+        // Secrets are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/secrets
+        .nest(
+            "/orgs/:org_id/apps/:app_id/envs/:env_id/secrets",
+            secrets::routes(),
         )
         // Scale is nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
         .nest(
