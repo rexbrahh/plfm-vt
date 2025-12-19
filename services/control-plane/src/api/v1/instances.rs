@@ -120,7 +120,7 @@ async fn list_instances(State(state): State<AppState>) -> Result<impl IntoRespon
     // Query instances from the desired view, joined with status view
     let rows = sqlx::query_as::<_, InstanceRow>(
         r#"
-        SELECT 
+        SELECT
             d.instance_id, d.org_id, d.app_id, d.env_id, d.process_type,
             d.node_id, d.desired_state, d.release_id,
             d.created_at, d.updated_at,
@@ -157,7 +157,7 @@ async fn get_instance(
 
     let row = sqlx::query_as::<_, InstanceRow>(
         r#"
-        SELECT 
+        SELECT
             d.instance_id, d.org_id, d.app_id, d.env_id, d.process_type,
             d.node_id, d.desired_state, d.release_id,
             d.created_at, d.updated_at,
@@ -244,16 +244,27 @@ async fn report_status(
         }
     };
 
-    // Get current aggregate sequence
-    let current_seq: i32 = sqlx::query_scalar(
-        "SELECT COALESCE(MAX(aggregate_seq), 0) FROM event_log WHERE aggregate_id = $1",
-    )
-    .bind(&instance_id)
-    .fetch_one(state.db().pool())
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to get aggregate sequence");
-        ApiError::internal("internal_error", "Failed to process status")
+    let event_store = state.db().event_store();
+    let current_seq = event_store
+        .get_latest_aggregate_seq(&AggregateType::Instance, &instance_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to get aggregate sequence");
+            ApiError::internal("internal_error", "Failed to process status")
+                .with_request_id(request_id.to_string())
+        })?
+        .unwrap_or(0);
+
+    let org_id = instance_info.org_id.parse().map_err(|_| {
+        ApiError::internal("internal_error", "Invalid org_id in instances_desired_view")
+            .with_request_id(request_id.to_string())
+    })?;
+    let app_id = instance_info.app_id.parse().map_err(|_| {
+        ApiError::internal("internal_error", "Invalid app_id in instances_desired_view")
+            .with_request_id(request_id.to_string())
+    })?;
+    let env_id = instance_info.env_id.parse().map_err(|_| {
+        ApiError::internal("internal_error", "Invalid env_id in instances_desired_view")
             .with_request_id(request_id.to_string())
     })?;
 
@@ -266,11 +277,11 @@ async fn report_status(
         event_version: 1,
         actor_type: ActorType::ServicePrincipal, // Node agent
         actor_id: "node-agent".to_string(),
-        org_id: Some(instance_info.org_id.parse().unwrap_or_else(|_| plfm_id::OrgId::new())),
+        org_id: Some(org_id),
         request_id: request_id.to_string(),
         idempotency_key: None,
-        app_id: Some(instance_info.app_id.parse().unwrap_or_else(|_| plfm_id::AppId::new())),
-        env_id: Some(instance_info.env_id.parse().unwrap_or_else(|_| plfm_id::EnvId::new())),
+        app_id: Some(app_id),
+        env_id: Some(env_id),
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
@@ -284,7 +295,6 @@ async fn report_status(
     };
 
     // Append the event
-    let event_store = state.db().event_store();
     event_store.append(event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to record status");
         ApiError::internal("internal_error", "Failed to record status")
@@ -297,7 +307,10 @@ async fn report_status(
         "Instance status reported"
     );
 
-    Ok((StatusCode::OK, Json(ReportStatusResponse { accepted: true })))
+    Ok((
+        StatusCode::OK,
+        Json(ReportStatusResponse { accepted: true }),
+    ))
 }
 
 // =============================================================================

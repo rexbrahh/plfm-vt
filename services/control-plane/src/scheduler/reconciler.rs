@@ -8,15 +8,13 @@
 //!
 //! See: docs/specs/scheduler/reconciliation-loop.md
 
-use chrono::Utc;
 use plfm_events::{ActorType, AggregateType};
-use plfm_id::{AppId, EnvId, InstanceId, OrgId, RequestId, ReleaseId};
-use serde::Deserialize;
+use plfm_id::{AppId, EnvId, InstanceId, OrgId, ReleaseId, RequestId};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
 use tracing::{debug, info, instrument, warn};
 
-use crate::db::AppendEvent;
+use crate::db::{AppendEvent, EventStore};
 
 /// Result type for scheduler operations.
 pub type SchedulerResult<T> = Result<T, SchedulerError>;
@@ -127,7 +125,7 @@ impl SchedulerReconciler {
         // Join env_desired_releases_view with env_scale_view to get full group info
         let rows = sqlx::query_as::<_, GroupRow>(
             r#"
-            SELECT 
+            SELECT
                 r.org_id,
                 r.app_id,
                 r.env_id,
@@ -136,7 +134,7 @@ impl SchedulerReconciler {
                 r.deploy_id,
                 COALESCE(s.desired_replicas, 1) as desired_replicas
             FROM env_desired_releases_view r
-            LEFT JOIN env_scale_view s 
+            LEFT JOIN env_scale_view s
                 ON r.env_id = s.env_id AND r.process_type = s.process_type
             "#,
         )
@@ -169,7 +167,7 @@ impl SchedulerReconciler {
 
         // Get current instances for this group
         let current_instances = self.get_group_instances(group).await?;
-        
+
         // Partition instances
         let matching: Vec<_> = current_instances
             .iter()
@@ -238,7 +236,7 @@ impl SchedulerReconciler {
             // Drain oldest instances first (by instance_id which is ULID-based)
             let mut to_drain_instances: Vec<_> = matching.iter().collect();
             to_drain_instances.sort_by(|a, b| a.instance_id.cmp(&b.instance_id));
-            
+
             for instance in to_drain_instances.into_iter().take(to_drain) {
                 match self.drain_instance(instance).await {
                     Ok(_) => {
@@ -263,7 +261,10 @@ impl SchedulerReconciler {
     }
 
     /// Get current instances for a group.
-    async fn get_group_instances(&self, group: &GroupDesiredState) -> SchedulerResult<Vec<InstanceState>> {
+    async fn get_group_instances(
+        &self,
+        group: &GroupDesiredState,
+    ) -> SchedulerResult<Vec<InstanceState>> {
         let rows = sqlx::query_as::<_, InstanceRow>(
             r#"
             SELECT instance_id, node_id, desired_state, spec_hash, release_id
@@ -336,38 +337,11 @@ impl SchedulerReconciler {
             }),
         };
 
-        // Append to event store
-        sqlx::query(
-            r#"
-            INSERT INTO event_log (
-                aggregate_type, aggregate_id, aggregate_seq, event_type, event_version,
-                actor_type, actor_id, org_id, request_id, app_id, env_id,
-                correlation_id, payload, occurred_at
-            )
-            VALUES (
-                $1, $2, $3, $4, $5,
-                $6, $7, $8, $9, $10, $11,
-                $12, $13, $14
-            )
-            "#,
-        )
-        .bind(event.aggregate_type.to_string())
-        .bind(&event.aggregate_id)
-        .bind(event.aggregate_seq)
-        .bind(&event.event_type)
-        .bind(event.event_version)
-        .bind(event.actor_type.to_string())
-        .bind(&event.actor_id)
-        .bind(event.org_id.as_ref().map(|o| o.to_string()))
-        .bind(&event.request_id)
-        .bind(event.app_id.as_ref().map(|a| a.to_string()))
-        .bind(event.env_id.as_ref().map(|e| e.to_string()))
-        .bind(&event.correlation_id)
-        .bind(&event.payload)
-        .bind(Utc::now())
-        .execute(&self.pool)
-        .await
-        .map_err(|e| SchedulerError::EventStore(e.to_string()))?;
+        let event_store = EventStore::new(self.pool.clone());
+        event_store
+            .append(event)
+            .await
+            .map_err(|e| SchedulerError::EventStore(e.to_string()))?;
 
         Ok(instance_id)
     }
@@ -381,39 +355,39 @@ impl SchedulerReconciler {
 
         let request_id = RequestId::new();
 
-        // Get current aggregate sequence
-        let current_seq: i32 = sqlx::query_scalar(
-            "SELECT COALESCE(MAX(aggregate_seq), 0) FROM event_log WHERE aggregate_id = $1",
-        )
-        .bind(&instance.instance_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let event_store = EventStore::new(self.pool.clone());
+        let current_seq = event_store
+            .get_latest_aggregate_seq(&AggregateType::Instance, &instance.instance_id)
+            .await
+            .map_err(|e| SchedulerError::EventStore(e.to_string()))?
+            .unwrap_or(0);
 
-        // Create instance.desired_state_changed event
-        sqlx::query(
-            r#"
-            INSERT INTO event_log (
-                aggregate_type, aggregate_id, aggregate_seq, event_type, event_version,
-                actor_type, actor_id, request_id, payload, occurred_at
-            )
-            VALUES (
-                'instance', $1, $2, 'instance.desired_state_changed', 1,
-                'system', 'scheduler', $3, $4, $5
-            )
-            "#,
-        )
-        .bind(&instance.instance_id)
-        .bind(current_seq + 1)
-        .bind(request_id.to_string())
-        .bind(serde_json::json!({
-            "instance_id": instance.instance_id,
-            "old_state": instance.desired_state,
-            "new_state": "draining",
-        }))
-        .bind(Utc::now())
-        .execute(&self.pool)
-        .await
-        .map_err(|e| SchedulerError::EventStore(e.to_string()))?;
+        let event = AppendEvent {
+            aggregate_type: AggregateType::Instance,
+            aggregate_id: instance.instance_id.clone(),
+            aggregate_seq: current_seq + 1,
+            event_type: "instance.desired_state_changed".to_string(),
+            event_version: 1,
+            actor_type: ActorType::System,
+            actor_id: "scheduler".to_string(),
+            org_id: None,
+            request_id: request_id.to_string(),
+            idempotency_key: None,
+            app_id: None,
+            env_id: None,
+            correlation_id: None,
+            causation_id: None,
+            payload: serde_json::json!({
+                "instance_id": instance.instance_id,
+                "old_state": instance.desired_state,
+                "new_state": "draining",
+            }),
+        };
+
+        event_store
+            .append(event)
+            .await
+            .map_err(|e| SchedulerError::EventStore(e.to_string()))?;
 
         Ok(())
     }
@@ -423,7 +397,7 @@ impl SchedulerReconciler {
         // Get all active nodes with their capacity
         let nodes = sqlx::query_as::<_, NodeCapacityRow>(
             r#"
-            SELECT 
+            SELECT
                 n.node_id,
                 n.state,
                 COALESCE((n.allocatable->>'memory_bytes')::BIGINT, 0) as allocatable_memory_bytes,
@@ -433,7 +407,7 @@ impl SchedulerReconciler {
                 COALESCE((n.allocatable->>'instance_count')::INT, 0) as instance_count
             FROM nodes_view n
             WHERE n.state = 'active'
-            ORDER BY 
+            ORDER BY
                 -- Prefer nodes with more available resources
                 COALESCE((n.allocatable->>'available_memory_bytes')::BIGINT, 0) DESC,
                 COALESCE((n.allocatable->>'available_cpu_cores')::INT, 0) DESC,
@@ -521,7 +495,11 @@ struct ReleaseInfo {
 }
 
 /// Compute a deterministic spec hash for a group.
-fn compute_spec_hash(release_id: &ReleaseId, process_type: &str, secrets_version: Option<&str>) -> String {
+fn compute_spec_hash(
+    release_id: &ReleaseId,
+    process_type: &str,
+    secrets_version: Option<&str>,
+) -> String {
     let mut hasher = Sha256::new();
     hasher.update(release_id.to_string().as_bytes());
     hasher.update(b":");
@@ -539,11 +517,10 @@ fn generate_overlay_ipv6(instance_id: &InstanceId) -> String {
     let mut hasher = Sha256::new();
     hasher.update(instance_id.to_string().as_bytes());
     let hash = hasher.finalize();
-    
+
     format!(
         "fd00::{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}",
-        hash[0], hash[1], hash[2], hash[3],
-        hash[4], hash[5], hash[6], hash[7]
+        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7]
     )
 }
 

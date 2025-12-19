@@ -140,8 +140,10 @@ async fn create_env(
 
     // Validate name
     if req.name.is_empty() {
-        return Err(ApiError::bad_request("invalid_name", "Environment name cannot be empty")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::bad_request("invalid_name", "Environment name cannot be empty")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     if req.name.len() > 50 {
@@ -340,18 +342,16 @@ async fn set_scale(
         }
     }
 
-    // Get current aggregate sequence
-    let current_seq: i32 = sqlx::query_scalar(
-        "SELECT COALESCE(MAX(aggregate_seq), 0) FROM event_log WHERE aggregate_id = $1",
-    )
-    .bind(env_id.to_string())
-    .fetch_one(state.db().pool())
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to get aggregate sequence");
-        ApiError::internal("internal_error", "Failed to set scale")
-            .with_request_id(request_id.to_string())
-    })?;
+    let event_store = state.db().event_store();
+    let current_seq = event_store
+        .get_latest_aggregate_seq(&AggregateType::Env, &env_id.to_string())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to get aggregate sequence");
+            ApiError::internal("internal_error", "Failed to set scale")
+                .with_request_id(request_id.to_string())
+        })?
+        .unwrap_or(0);
 
     // Convert process_counts map to scales array format expected by projection
     let scales: Vec<serde_json::Value> = req
@@ -390,7 +390,6 @@ async fn set_scale(
     };
 
     // Append the event
-    let event_store = state.db().event_store();
     event_store.append(event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to set scale");
         ApiError::internal("internal_error", "Failed to set scale")

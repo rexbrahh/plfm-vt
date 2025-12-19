@@ -237,8 +237,10 @@ async fn enroll_node(
 
     // Validate hostname
     if req.hostname.is_empty() {
-        return Err(ApiError::bad_request("invalid_hostname", "Hostname cannot be empty")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::bad_request("invalid_hostname", "Hostname cannot be empty")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     if req.hostname.len() > 255 {
@@ -251,8 +253,10 @@ async fn enroll_node(
 
     // Validate region
     if req.region.is_empty() {
-        return Err(ApiError::bad_request("invalid_region", "Region cannot be empty")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::bad_request("invalid_region", "Region cannot be empty")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     // Validate WireGuard key (should be base64-encoded 32 bytes = 44 chars with padding)
@@ -266,19 +270,17 @@ async fn enroll_node(
 
     // Validate resources
     if req.cpu_cores < 1 {
-        return Err(ApiError::bad_request(
-            "invalid_cpu_cores",
-            "CPU cores must be at least 1",
-        )
-        .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::bad_request("invalid_cpu_cores", "CPU cores must be at least 1")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     if req.memory_bytes < 1024 * 1024 * 512 {
-        return Err(ApiError::bad_request(
-            "invalid_memory",
-            "Memory must be at least 512MB",
-        )
-        .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::bad_request("invalid_memory", "Memory must be at least 512MB")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     // Check for duplicate WireGuard key
@@ -446,11 +448,10 @@ async fn get_node(
 
     match row {
         Some(row) => Ok(Json(NodeResponse::from(row))),
-        None => Err(ApiError::not_found(
-            "node_not_found",
-            format!("Node {} not found", node_id),
-        )
-        .with_request_id(request_id.to_string())),
+        None => Err(
+            ApiError::not_found("node_not_found", format!("Node {} not found", node_id))
+                .with_request_id(request_id.to_string()),
+        ),
     }
 }
 
@@ -471,17 +472,16 @@ async fn heartbeat(
     })?;
 
     // Check node exists and get current state
-    let current_state = sqlx::query_scalar::<_, String>(
-        "SELECT state FROM nodes_view WHERE node_id = $1",
-    )
-    .bind(&node_id)
-    .fetch_optional(state.db().pool())
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to check node existence");
-        ApiError::internal("internal_error", "Failed to verify node")
-            .with_request_id(request_id.to_string())
-    })?;
+    let current_state =
+        sqlx::query_scalar::<_, String>("SELECT state FROM nodes_view WHERE node_id = $1")
+            .bind(&node_id)
+            .fetch_optional(state.db().pool())
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to check node existence");
+                ApiError::internal("internal_error", "Failed to verify node")
+                    .with_request_id(request_id.to_string())
+            })?;
 
     let current_state = match current_state {
         Some(s) => s,
@@ -494,18 +494,16 @@ async fn heartbeat(
         }
     };
 
-    // Get current aggregate sequence
-    let current_seq = sqlx::query_scalar::<_, i32>(
-        "SELECT COALESCE(MAX(aggregate_seq), 0) FROM event_log WHERE aggregate_id = $1",
-    )
-    .bind(&node_id)
-    .fetch_one(state.db().pool())
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to get aggregate sequence");
-        ApiError::internal("internal_error", "Failed to process heartbeat")
-            .with_request_id(request_id.to_string())
-    })?;
+    let event_store = state.db().event_store();
+    let current_seq = event_store
+        .get_latest_aggregate_seq(&AggregateType::Node, &node_id)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "Failed to get aggregate sequence");
+            ApiError::internal("internal_error", "Failed to process heartbeat")
+                .with_request_id(request_id.to_string())
+        })?
+        .unwrap_or(0);
 
     // Emit capacity update event
     let capacity_event = AppendEvent {
@@ -531,7 +529,6 @@ async fn heartbeat(
         }),
     };
 
-    let event_store = state.db().event_store();
     event_store.append(capacity_event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to record capacity update");
         ApiError::internal("internal_error", "Failed to process heartbeat")
@@ -609,24 +606,22 @@ async fn get_plan(
     })?;
 
     // Check node exists
-    let node_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM nodes_view WHERE node_id = $1)",
-    )
-    .bind(&node_id)
-    .fetch_one(state.db().pool())
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to check node existence");
-        ApiError::internal("internal_error", "Failed to get plan")
-            .with_request_id(request_id.to_string())
-    })?;
+    let node_exists =
+        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM nodes_view WHERE node_id = $1)")
+            .bind(&node_id)
+            .fetch_one(state.db().pool())
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to check node existence");
+                ApiError::internal("internal_error", "Failed to get plan")
+                    .with_request_id(request_id.to_string())
+            })?;
 
     if !node_exists {
-        return Err(ApiError::not_found(
-            "node_not_found",
-            format!("Node {} not found", node_id),
-        )
-        .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::not_found("node_not_found", format!("Node {} not found", node_id))
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     // Query instances assigned to this node from instances_desired_view
@@ -653,10 +648,12 @@ async fn get_plan(
     })?;
 
     // Get max event_id as plan version
-    let plan_version = sqlx::query_scalar::<_, i64>("SELECT COALESCE(MAX(event_id), 0) FROM event_log")
-        .fetch_one(state.db().pool())
-        .await
-        .unwrap_or(0);
+    let event_store = state.db().event_store();
+    let plan_version = event_store.get_max_event_id().await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to get plan version");
+        ApiError::internal("internal_error", "Failed to get plan")
+            .with_request_id(request_id.to_string())
+    })?;
 
     let instance_plans: Vec<InstancePlan> = instances.into_iter().map(InstancePlan::from).collect();
 
@@ -764,7 +761,7 @@ impl From<InstancePlanRow> for InstancePlan {
             deploy_id: row.deploy_id,
             image: row.image,
             resources: InstanceResources {
-                cpu: 1.0,           // Default, would come from release spec
+                cpu: 1.0,                        // Default, would come from release spec
                 memory_bytes: 512 * 1024 * 1024, // Default 512MB
             },
             env_vars: serde_json::json!({}),
