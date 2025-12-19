@@ -1,7 +1,7 @@
 //! HTTP client for API communication.
 
 use anyhow::{Context, Result};
-use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::config::{Config, Credentials};
@@ -65,6 +65,33 @@ impl ApiClient {
             .await?;
 
         self.handle_response(response).await
+    }
+
+    /// Make a GET request and return the raw response body.
+    pub async fn get_raw(&self, path: &str) -> Result<reqwest::Response, CliError> {
+        let response = self.client.get(self.url(path)).send().await?;
+
+        if response.status().is_success() {
+            Ok(response)
+        } else {
+            self.handle_error(response).await
+        }
+    }
+
+    /// Make a GET request to an SSE endpoint and return the raw response body.
+    pub async fn get_event_stream(&self, path: &str) -> Result<reqwest::Response, CliError> {
+        let response = self
+            .client
+            .get(self.url(path))
+            .header(ACCEPT, "text/event-stream")
+            .send()
+            .await?;
+
+        if response.status().is_success() {
+            Ok(response)
+        } else {
+            self.handle_error(response).await
+        }
     }
 
     /// Make a POST request.

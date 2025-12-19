@@ -49,7 +49,12 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 axum = "0.7"
 tower = { version = "0.4", features = ["util"] }
 tower-http = { version = "0.5", features = ["trace", "cors", "request-id"] }
-reqwest = { version = "0.11", features = ["json", "rustls-tls"], default-features = false }
+reqwest = { version = "0.11", features = [
+    "json",
+    "rustls-tls",
+    "stream",
+], default-features = false }
+futures-core = "0.3"
 
 # CLI
 clap = { version = "4.5", features = ["derive", "env"] }
@@ -59,7 +64,14 @@ colored = "2.1"
 
 # Database
 # Note: macros feature disabled to avoid compile-time db connection requirement
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "chrono", "uuid", "json", "migrate"] }
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "postgres",
+    "chrono",
+    "uuid",
+    "json",
+    "migrate",
+] }
 
 # Async traits
 async-trait = "0.1"

@@ -5,6 +5,7 @@ mod deploys;
 mod envs;
 mod events;
 mod instances;
+mod logs;
 mod nodes;
 mod orgs;
 mod releases;
@@ -20,6 +21,14 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/orgs/{org_id}/events",
             axum::routing::get(events::list_events),
+        )
+        .route(
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs",
+            axum::routing::get(logs::query_logs),
+        )
+        .route(
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs/stream",
+            axum::routing::get(logs::stream_logs),
         )
         // Apps are nested under orgs: /v1/orgs/{org_id}/apps
         .nest("/orgs/{org_id}/apps", apps::routes())
