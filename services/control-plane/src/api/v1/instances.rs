@@ -12,10 +12,10 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use plfm_events::{ActorType, AggregateType};
-use plfm_id::RequestId;
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
+use crate::api::request_context::RequestContext;
 use crate::db::AppendEvent;
 use crate::state::AppState;
 
@@ -25,8 +25,8 @@ use crate::state::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_instances))
-        .route("/{instance_id}", get(get_instance))
-        .route("/{instance_id}/status", post(report_status))
+        .route("/:instance_id", get(get_instance))
+        .route("/:instance_id/status", post(report_status))
 }
 
 // =============================================================================
@@ -114,8 +114,11 @@ pub struct ListInstancesResponse {
 /// List all instances (optionally filtered by env or node).
 ///
 /// GET /v1/instances
-async fn list_instances(State(state): State<AppState>) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+async fn list_instances(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<impl IntoResponse, ApiError> {
+    let request_id = ctx.request_id;
 
     // Query instances from the desired view, joined with status view
     let rows = sqlx::query_as::<_, InstanceRow>(
@@ -137,7 +140,7 @@ async fn list_instances(State(state): State<AppState>) -> Result<impl IntoRespon
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to list instances");
         ApiError::internal("internal_error", "Failed to list instances")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let items: Vec<InstanceResponse> = rows.into_iter().map(InstanceResponse::from).collect();
@@ -151,9 +154,10 @@ async fn list_instances(State(state): State<AppState>) -> Result<impl IntoRespon
 /// GET /v1/instances/{instance_id}
 async fn get_instance(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path(instance_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     let row = sqlx::query_as::<_, InstanceRow>(
         r#"
@@ -173,7 +177,7 @@ async fn get_instance(
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to get instance");
         ApiError::internal("internal_error", "Failed to get instance")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     match row {
@@ -182,7 +186,7 @@ async fn get_instance(
             "instance_not_found",
             format!("Instance {} not found", instance_id),
         )
-        .with_request_id(request_id.to_string())),
+        .with_request_id(request_id)),
     }
 }
 
@@ -191,10 +195,11 @@ async fn get_instance(
 /// POST /v1/instances/{instance_id}/status
 async fn report_status(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path(instance_id): Path<String>,
     Json(req): Json<ReportStatusRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate status
     let valid_statuses = ["booting", "ready", "draining", "stopped", "failed"];
@@ -203,7 +208,7 @@ async fn report_status(
             "invalid_status",
             format!("Status must be one of: {:?}", valid_statuses),
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     // Get current status if exists
@@ -216,7 +221,7 @@ async fn report_status(
     .map_err(|e| {
         tracing::error!(error = %e, "Failed to get current status");
         ApiError::internal("internal_error", "Failed to process status")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?
     .flatten();
 
@@ -230,7 +235,7 @@ async fn report_status(
     .map_err(|e| {
         tracing::error!(error = %e, "Failed to get instance info");
         ApiError::internal("internal_error", "Failed to process status")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let instance_info = match instance_info {
@@ -240,7 +245,7 @@ async fn report_status(
                 "instance_not_found",
                 format!("Instance {} not found", instance_id),
             )
-            .with_request_id(request_id.to_string()));
+            .with_request_id(request_id.clone()));
         }
     };
 
@@ -251,21 +256,21 @@ async fn report_status(
         .map_err(|e| {
             tracing::error!(error = %e, "Failed to get aggregate sequence");
             ApiError::internal("internal_error", "Failed to process status")
-                .with_request_id(request_id.to_string())
+                .with_request_id(request_id.clone())
         })?
         .unwrap_or(0);
 
     let org_id = instance_info.org_id.parse().map_err(|_| {
         ApiError::internal("internal_error", "Invalid org_id in instances_desired_view")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let app_id = instance_info.app_id.parse().map_err(|_| {
         ApiError::internal("internal_error", "Invalid app_id in instances_desired_view")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let env_id = instance_info.env_id.parse().map_err(|_| {
         ApiError::internal("internal_error", "Invalid env_id in instances_desired_view")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Create the status changed event
@@ -278,7 +283,7 @@ async fn report_status(
         actor_type: ActorType::ServicePrincipal, // Node agent
         actor_id: "node-agent".to_string(),
         org_id: Some(org_id),
-        request_id: request_id.to_string(),
+        request_id: request_id.clone(),
         idempotency_key: None,
         app_id: Some(app_id),
         env_id: Some(env_id),
@@ -298,7 +303,7 @@ async fn report_status(
     event_store.append(event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to record status");
         ApiError::internal("internal_error", "Failed to record status")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     tracing::debug!(

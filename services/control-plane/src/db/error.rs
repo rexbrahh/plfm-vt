@@ -17,6 +17,10 @@ pub enum DbError {
     #[error("migration failed: {0}")]
     Migration(#[source] sqlx::migrate::MigrateError),
 
+    /// Migration directory not found in the current environment.
+    #[error("migration directory not found; tried {tried}. Last error: {last_error}. Run from repo root or services/control-plane.")]
+    MigrationDirNotFound { tried: String, last_error: String },
+
     /// Aggregate sequence conflict (optimistic concurrency).
     #[error("aggregate sequence conflict: expected {expected}, got {actual}")]
     SequenceConflict {
@@ -25,57 +29,19 @@ pub enum DbError {
         actual: i32,
     },
 
-    /// Event not found.
-    #[error("event not found: {0}")]
-    EventNotFound(i64),
-
     /// Projection checkpoint not found.
     #[error("projection not found: {0}")]
     ProjectionNotFound(String),
 
-    /// Idempotency key conflict.
-    #[error("idempotency key reused with different request")]
-    IdempotencyConflict {
-        org_id: String,
-        idempotency_key: String,
+    /// Projection lagged beyond a caller-specified timeout.
+    #[error("projection '{projection_name}' did not reach event_id {expected} (at {actual}) within timeout")]
+    ProjectionTimeout {
+        projection_name: String,
+        expected: i64,
+        actual: i64,
     },
 
     /// Serialization error.
     #[error("serialization error: {0}")]
     Serialization(#[from] serde_json::Error),
-}
-
-impl DbError {
-    /// Check if this is a retryable error.
-    pub fn is_retryable(&self) -> bool {
-        match self {
-            DbError::Connect(_) => true,
-            DbError::Query(e) => is_retryable_sqlx_error(e),
-            _ => false,
-        }
-    }
-}
-
-fn is_retryable_sqlx_error(e: &sqlx::Error) -> bool {
-    match e {
-        sqlx::Error::Io(_) => true,
-        sqlx::Error::PoolTimedOut => true,
-        sqlx::Error::PoolClosed => false,
-        sqlx::Error::Database(db_err) => {
-            // Postgres error codes that are retryable
-            if let Some(code) = db_err.code() {
-                matches!(
-                    code.as_ref(),
-                    "40001" | // serialization_failure
-                    "40P01" | // deadlock_detected
-                    "57P01" | // admin_shutdown
-                    "57P02" | // crash_shutdown
-                    "57P03"   // cannot_connect_now
-                )
-            } else {
-                false
-            }
-        }
-        _ => false,
-    }
 }

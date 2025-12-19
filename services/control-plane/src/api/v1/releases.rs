@@ -6,16 +6,18 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use plfm_events::{ActorType, AggregateType};
-use plfm_id::{AppId, OrgId, ReleaseId, RequestId};
+use plfm_events::AggregateType;
+use plfm_id::{AppId, OrgId, ReleaseId};
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
+use crate::api::idempotency;
+use crate::api::request_context::RequestContext;
 use crate::db::AppendEvent;
 use crate::state::AppState;
 
@@ -26,7 +28,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_release))
         .route("/", get(list_releases))
-        .route("/{release_id}", get(get_release))
+        .route("/:release_id", get(get_release))
 }
 
 // =============================================================================
@@ -34,7 +36,7 @@ pub fn routes() -> Router<AppState> {
 // =============================================================================
 
 /// Request to create a new release.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateReleaseRequest {
     /// OCI image reference (e.g., "registry.example.com/app:v1.0").
     pub image_ref: String,
@@ -104,22 +106,92 @@ pub struct ListReleasesResponse {
 /// POST /v1/orgs/{org_id}/apps/{app_id}/releases
 async fn create_release(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id)): Path<(String, String)>,
     Json(req): Json<CreateReleaseRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+) -> Result<Response, ApiError> {
+    let RequestContext {
+        request_id,
+        idempotency_key,
+        actor_type,
+        actor_id,
+    } = ctx;
+    let endpoint_name = "releases.create";
 
     // Validate org_id format
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Validate app_id format
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
+
+    // Validate required fields
+    if req.image_ref.is_empty() {
+        return Err(
+            ApiError::bad_request("invalid_image_ref", "Image reference cannot be empty")
+                .with_request_id(request_id.clone()),
+        );
+    }
+
+    if req.image_digest.is_empty() {
+        return Err(
+            ApiError::bad_request("invalid_image_digest", "Image digest cannot be empty")
+                .with_request_id(request_id.clone()),
+        );
+    }
+
+    if !req.image_digest.starts_with("sha256:") {
+        return Err(ApiError::bad_request(
+            "invalid_image_digest",
+            "Image digest must start with 'sha256:'",
+        )
+        .with_request_id(request_id.clone()));
+    }
+
+    if req.manifest_hash.is_empty() {
+        return Err(ApiError::bad_request(
+            "invalid_manifest_hash",
+            "Manifest hash cannot be empty",
+        )
+        .with_request_id(request_id.clone()));
+    }
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "app_id": app_id.to_string(),
+                "body": &req
+            });
+            idempotency::request_hash(endpoint_name, &hash_input)
+                .map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
 
     // Validate app exists and belongs to org
     let app_exists = sqlx::query_scalar::<_, bool>(
@@ -130,41 +202,20 @@ async fn create_release(
     .fetch_one(state.db().pool())
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, "Failed to check app existence");
+        tracing::error!(error = %e, request_id = %request_id, "Failed to check app existence");
         ApiError::internal("internal_error", "Failed to verify application")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if !app_exists {
         return Err(ApiError::not_found(
             "app_not_found",
-            format!("Application {} not found in organization {}", app_id, org_id),
+            format!(
+                "Application {} not found in organization {}",
+                app_id, org_id
+            ),
         )
-        .with_request_id(request_id.to_string()));
-    }
-
-    // Validate required fields
-    if req.image_ref.is_empty() {
-        return Err(ApiError::bad_request("invalid_image_ref", "Image reference cannot be empty")
-            .with_request_id(request_id.to_string()));
-    }
-
-    if req.image_digest.is_empty() {
-        return Err(ApiError::bad_request("invalid_image_digest", "Image digest cannot be empty")
-            .with_request_id(request_id.to_string()));
-    }
-
-    if !req.image_digest.starts_with("sha256:") {
-        return Err(ApiError::bad_request(
-            "invalid_image_digest",
-            "Image digest must start with 'sha256:'",
-        )
-        .with_request_id(request_id.to_string()));
-    }
-
-    if req.manifest_hash.is_empty() {
-        return Err(ApiError::bad_request("invalid_manifest_hash", "Manifest hash cannot be empty")
-            .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     let release_id = ReleaseId::new();
@@ -176,12 +227,12 @@ async fn create_release(
         aggregate_seq: 1,
         event_type: "release.created".to_string(),
         event_version: 1,
-        actor_type: ActorType::System, // TODO: Extract from auth context
-        actor_id: "system".to_string(),
-        org_id: Some(org_id.clone()),
-        request_id: request_id.to_string(),
-        idempotency_key: None,
-        app_id: Some(app_id.clone()),
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
         env_id: None,
         correlation_id: None,
         causation_id: None,
@@ -195,26 +246,76 @@ async fn create_release(
 
     // Append the event
     let event_store = state.db().event_store();
-    event_store.append(event).await.map_err(|e| {
+    let event_id = event_store.append(event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to create release");
         ApiError::internal("internal_error", "Failed to create release")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
-    let now = Utc::now();
-    let response = ReleaseResponse {
-        id: release_id.to_string(),
-        org_id: org_id.to_string(),
-        app_id: app_id.to_string(),
-        image_ref: req.image_ref,
-        image_digest: req.image_digest,
-        manifest_schema_version: req.manifest_schema_version,
-        manifest_hash: req.manifest_hash,
-        resource_version: 1,
-        created_at: now,
-    };
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "releases",
+            event_id.value(),
+            std::time::Duration::from_secs(2),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
 
-    Ok((StatusCode::CREATED, Json(response)))
+    let row = sqlx::query_as::<_, ReleaseRow>(
+        r#"
+        SELECT release_id, org_id, app_id, image_ref, index_or_manifest_digest,
+               manifest_schema_version, manifest_hash, resource_version, created_at
+        FROM releases_view
+        WHERE release_id = $1 AND org_id = $2 AND app_id = $3
+        "#,
+    )
+    .bind(release_id.to_string())
+    .bind(org_scope.clone())
+    .bind(app_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load release");
+        ApiError::internal("internal_error", "Failed to load release")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::internal("internal_error", "Release was not materialized")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let response = ReleaseResponse::from(row);
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to create release")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// List releases for an application.
@@ -222,20 +323,21 @@ async fn create_release(
 /// GET /v1/orgs/{org_id}/apps/{app_id}/releases
 async fn list_releases(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate org_id format
     let _org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Validate app_id format
     let _app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Query the releases_view table
@@ -244,18 +346,19 @@ async fn list_releases(
         SELECT release_id, org_id, app_id, image_ref, index_or_manifest_digest,
                manifest_schema_version, manifest_hash, resource_version, created_at
         FROM releases_view
-        WHERE app_id = $1
+        WHERE org_id = $1 AND app_id = $2
         ORDER BY created_at DESC
         LIMIT 100
         "#,
     )
+    .bind(&org_id)
     .bind(&app_id)
     .fetch_all(state.db().pool())
     .await
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to list releases");
         ApiError::internal("internal_error", "Failed to list releases")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let items: Vec<ReleaseResponse> = rows.into_iter().map(ReleaseResponse::from).collect();
@@ -269,24 +372,25 @@ async fn list_releases(
 /// GET /v1/orgs/{org_id}/apps/{app_id}/releases/{release_id}
 async fn get_release(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, release_id)): Path<(String, String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate IDs
     let _org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let _app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let _release_id: ReleaseId = release_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_release_id", "Invalid release ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Query the releases_view table
@@ -295,16 +399,18 @@ async fn get_release(
         SELECT release_id, org_id, app_id, image_ref, index_or_manifest_digest,
                manifest_schema_version, manifest_hash, resource_version, created_at
         FROM releases_view
-        WHERE release_id = $1
+        WHERE org_id = $1 AND app_id = $2 AND release_id = $3
         "#,
     )
+    .bind(&org_id)
+    .bind(&app_id)
     .bind(&release_id)
     .fetch_optional(state.db().pool())
     .await
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, release_id = %release_id, "Failed to get release");
         ApiError::internal("internal_error", "Failed to get release")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     match row {
@@ -313,7 +419,7 @@ async fn get_release(
             "release_not_found",
             format!("Release {} not found", release_id),
         )
-        .with_request_id(request_id.to_string())),
+        .with_request_id(request_id)),
     }
 }
 

@@ -236,12 +236,11 @@ impl InstancesProjection {
         );
 
         // Get node_id from instances_desired_view
-        let node_id: Option<String> = sqlx::query_scalar(
-            "SELECT node_id FROM instances_desired_view WHERE instance_id = $1",
-        )
-        .bind(&payload.instance_id)
-        .fetch_optional(&mut **tx)
-        .await?;
+        let node_id: Option<String> =
+            sqlx::query_scalar("SELECT node_id FROM instances_desired_view WHERE instance_id = $1")
+                .bind(&payload.instance_id)
+                .fetch_optional(&mut **tx)
+                .await?;
 
         let node_id = node_id.unwrap_or_else(|| "unknown".to_string());
 

@@ -56,10 +56,10 @@ impl OrgsCommand {
 struct OrgResponse {
     #[tabled(rename = "ID")]
     id: String,
-    
+
     #[tabled(rename = "Name")]
     name: String,
-    
+
     #[tabled(rename = "Created")]
     created_at: String,
 }
@@ -81,9 +81,9 @@ struct CreateOrgRequest {
 /// List all organizations.
 async fn list_orgs(ctx: CommandContext) -> Result<()> {
     let client = ctx.client()?;
-    
+
     let response: ListOrgsResponse = client.get("/v1/orgs").await?;
-    
+
     print_output(&response.items, ctx.format);
     Ok(())
 }
@@ -91,24 +91,29 @@ async fn list_orgs(ctx: CommandContext) -> Result<()> {
 /// Create a new organization.
 async fn create_org(ctx: CommandContext, args: CreateOrgArgs) -> Result<()> {
     let client = ctx.client()?;
-    
-    let request = CreateOrgRequest { name: args.name.clone() };
+
+    let request = CreateOrgRequest {
+        name: args.name.clone(),
+    };
     let response: OrgResponse = client.post("/v1/orgs", &request).await?;
-    
+
     match ctx.format {
         OutputFormat::Json => print_single(&response, ctx.format),
         OutputFormat::Table => {
-            print_success(&format!("Created organization '{}' ({})", response.name, response.id));
+            print_success(&format!(
+                "Created organization '{}' ({})",
+                response.name, response.id
+            ));
         }
     }
-    
+
     Ok(())
 }
 
 /// Get organization details.
 async fn get_org(ctx: CommandContext, args: GetOrgArgs) -> Result<()> {
     let client = ctx.client()?;
-    
+
     let response: OrgResponse = client
         .get(&format!("/v1/orgs/{}", args.org))
         .await
@@ -118,7 +123,7 @@ async fn get_org(ctx: CommandContext, args: GetOrgArgs) -> Result<()> {
             }
             other => other,
         })?;
-    
+
     print_single(&response, ctx.format);
     Ok(())
 }

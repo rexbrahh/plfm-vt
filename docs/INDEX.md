@@ -206,6 +206,7 @@ Status key:
 | docs/engineering/compatibility-and-versioning.md | draft | TBD | 2025-12-16 | Manifest and WorkloadSpec evolution |
 | docs/engineering/implementation-plan.md | draft | TBD | 2025-12-16 | Milestone plan |
 | docs/engineering/implementing-a-new-resource.md | draft | TBD | 2025-12-16 | Resource implementation checklist |
+| docs/engineering/core-loop-demo.md | draft | TBD | 2025-12-19 | End-to-end core loop demo script |
 
 ## Runtime
 | Path | Status | Owner | Last reviewed | Notes |

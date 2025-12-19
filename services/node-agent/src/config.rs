@@ -29,7 +29,7 @@ impl Config {
         let node_id = std::env::var("GHOST_NODE_ID")
             .ok()
             .and_then(|s| s.parse().ok())
-            .unwrap_or_else(NodeId::new);
+            .unwrap_or_default();
 
         let control_plane_url = std::env::var("GHOST_CONTROL_PLANE_URL")
             .unwrap_or_else(|_| "http://127.0.0.1:8080".to_string());

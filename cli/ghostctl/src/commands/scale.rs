@@ -34,9 +34,9 @@ impl ScaleCommand {
 
         let org_id = ctx.require_org()?;
         let app_id = ctx.require_app()?;
-        let env_id = ctx
-            .resolve_env()
-            .ok_or_else(|| anyhow::anyhow!("No environment specified. Use --env or set a default context."))?;
+        let env_id = ctx.resolve_env().ok_or_else(|| {
+            anyhow::anyhow!("No environment specified. Use --env or set a default context.")
+        })?;
 
         // Parse process specifications
         let mut process_counts = std::collections::HashMap::new();
@@ -65,14 +65,13 @@ impl ScaleCommand {
             process_counts.insert(process_type, count);
         }
 
-        let request = SetScaleRequest { process_counts: process_counts.clone() };
+        let request = SetScaleRequest {
+            process_counts: process_counts.clone(),
+        };
 
         let _response: SetScaleResponse = client
             .post(
-                &format!(
-                    "/v1/orgs/{}/apps/{}/envs/{}/scale",
-                    org_id, app_id, env_id
-                ),
+                &format!("/v1/orgs/{}/apps/{}/envs/{}/scale", org_id, app_id, env_id),
                 &request,
             )
             .await?;

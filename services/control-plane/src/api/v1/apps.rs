@@ -5,16 +5,18 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use plfm_events::{ActorType, AggregateType};
-use plfm_id::{AppId, OrgId, RequestId};
+use plfm_events::AggregateType;
+use plfm_id::{AppId, OrgId};
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
+use crate::api::idempotency;
+use crate::api::request_context::RequestContext;
 use crate::db::AppendEvent;
 use crate::state::AppState;
 
@@ -25,7 +27,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_app))
         .route("/", get(list_apps))
-        .route("/{app_id}", get(get_app))
+        .route("/:app_id", get(get_app))
 }
 
 // =============================================================================
@@ -33,7 +35,7 @@ pub fn routes() -> Router<AppState> {
 // =============================================================================
 
 /// Request to create a new application.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateAppRequest {
     /// Application name (unique within org).
     pub name: String,
@@ -88,42 +90,30 @@ pub struct ListAppsResponse {
 /// POST /v1/orgs/{org_id}/apps
 async fn create_app(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path(org_id): Path<String>,
     Json(req): Json<CreateAppRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+) -> Result<Response, ApiError> {
+    let RequestContext {
+        request_id,
+        idempotency_key,
+        actor_type,
+        actor_id,
+    } = ctx;
+    let endpoint_name = "apps.create";
 
     // Validate org_id format
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
-
-    // Validate org exists
-    let org_exists = sqlx::query_scalar::<_, bool>(
-        "SELECT EXISTS(SELECT 1 FROM orgs_view WHERE org_id = $1)",
-    )
-    .bind(org_id.to_string())
-    .fetch_one(state.db().pool())
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, "Failed to check org existence");
-        ApiError::internal("internal_error", "Failed to verify organization")
-            .with_request_id(request_id.to_string())
-    })?;
-
-    if !org_exists {
-        return Err(ApiError::not_found(
-            "org_not_found",
-            format!("Organization {} not found", org_id),
-        )
-        .with_request_id(request_id.to_string()));
-    }
 
     // Validate name
     if req.name.is_empty() {
-        return Err(ApiError::bad_request("invalid_name", "Application name cannot be empty")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::bad_request("invalid_name", "Application name cannot be empty")
+                .with_request_id(request_id.clone()),
+        );
     }
 
     if req.name.len() > 100 {
@@ -131,7 +121,54 @@ async fn create_app(
             "invalid_name",
             "Application name cannot exceed 100 characters",
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
+    }
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            idempotency::request_hash(endpoint_name, &req).map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
+
+    // Validate org exists
+    let org_exists =
+        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM orgs_view WHERE org_id = $1)")
+            .bind(org_id.to_string())
+            .fetch_one(state.db().pool())
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "Failed to check org existence");
+                ApiError::internal("internal_error", "Failed to verify organization")
+                    .with_request_id(request_id.clone())
+            })?;
+
+    if !org_exists {
+        return Err(ApiError::not_found(
+            "org_not_found",
+            format!("Organization {} not found", org_id),
+        )
+        .with_request_id(request_id.clone()));
     }
 
     // Check for duplicate name within org
@@ -145,15 +182,18 @@ async fn create_app(
     .map_err(|e| {
         tracing::error!(error = %e, "Failed to check app name uniqueness");
         ApiError::internal("internal_error", "Failed to verify application name")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if name_exists {
         return Err(ApiError::conflict(
             "app_name_exists",
-            format!("Application '{}' already exists in this organization", req.name),
+            format!(
+                "Application '{}' already exists in this organization",
+                req.name
+            ),
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     let app_id = AppId::new();
@@ -165,12 +205,12 @@ async fn create_app(
         aggregate_seq: 1,
         event_type: "app.created".to_string(),
         event_version: 1,
-        actor_type: ActorType::System, // TODO: Extract from auth context
-        actor_id: "system".to_string(),
-        org_id: Some(org_id.clone()),
-        request_id: request_id.to_string(),
-        idempotency_key: None,
-        app_id: Some(app_id.clone()),
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
         env_id: None,
         correlation_id: None,
         causation_id: None,
@@ -182,24 +222,69 @@ async fn create_app(
 
     // Append the event
     let event_store = state.db().event_store();
-    event_store.append(event).await.map_err(|e| {
+    let event_id = event_store.append(event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to create app");
         ApiError::internal("internal_error", "Failed to create application")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
-    let now = Utc::now();
-    let response = AppResponse {
-        id: app_id.to_string(),
-        org_id: org_id.to_string(),
-        name: req.name,
-        description: req.description,
-        resource_version: 1,
-        created_at: now,
-        updated_at: now,
-    };
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint("apps", event_id.value(), std::time::Duration::from_secs(2))
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
 
-    Ok((StatusCode::CREATED, Json(response)))
+    let row = sqlx::query_as::<_, AppRow>(
+        r#"
+        SELECT app_id, org_id, name, description, resource_version, created_at, updated_at
+        FROM apps_view
+        WHERE app_id = $1 AND NOT is_deleted
+        "#,
+    )
+    .bind(app_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load app");
+        ApiError::internal("internal_error", "Failed to load application")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::internal("internal_error", "Application was not materialized")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let response = AppResponse::from(row);
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to create application")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// List applications in an organization.
@@ -207,14 +292,15 @@ async fn create_app(
 /// GET /v1/orgs/{org_id}/apps
 async fn list_apps(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path(org_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate org_id format
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Query the apps_view table
@@ -233,7 +319,7 @@ async fn list_apps(
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to list apps");
         ApiError::internal("internal_error", "Failed to list applications")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let items: Vec<AppResponse> = rows.into_iter().map(AppResponse::from).collect();
@@ -247,20 +333,21 @@ async fn list_apps(
 /// GET /v1/orgs/{org_id}/apps/{app_id}
 async fn get_app(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate org_id format
     let _org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Validate app_id format
     let _app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Query the apps_view table
@@ -277,7 +364,7 @@ async fn get_app(
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, app_id = %app_id, "Failed to get app");
         ApiError::internal("internal_error", "Failed to get application")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     match row {
@@ -286,7 +373,7 @@ async fn get_app(
             "app_not_found",
             format!("Application {} not found", app_id),
         )
-        .with_request_id(request_id.to_string())),
+        .with_request_id(request_id.clone())),
     }
 }
 

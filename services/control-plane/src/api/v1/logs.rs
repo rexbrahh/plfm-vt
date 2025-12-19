@@ -21,10 +21,11 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use futures_core::Stream;
-use plfm_id::{AppId, EnvId, OrgId, RequestId};
+use plfm_id::{AppId, EnvId, OrgId};
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
+use crate::api::request_context::RequestContext;
 use crate::state::AppState;
 
 /// Query parameters for log queries.
@@ -59,22 +60,23 @@ pub struct LogsResponse {
 /// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs
 pub async fn query_logs(
     State(_state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Query(query): Query<QueryLogsParams>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if let Some(since) = query.since.as_deref() {
@@ -83,7 +85,7 @@ pub async fn query_logs(
                 "invalid_since",
                 "Invalid 'since' timestamp (expected RFC3339)",
             )
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
         })?;
     }
 
@@ -93,7 +95,7 @@ pub async fn query_logs(
                 "invalid_until",
                 "Invalid 'until' timestamp (expected RFC3339)",
             )
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
         })?;
     }
 
@@ -117,22 +119,23 @@ pub async fn query_logs(
 /// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs/stream
 pub async fn stream_logs(
     State(_state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Query(query): Query<QueryLogsParams>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     tracing::info!(
@@ -162,7 +165,7 @@ pub async fn stream_logs(
             "Failed to serialize log line"
         );
         ApiError::internal("internal_error", "Failed to stream logs")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let stream = OneEventThenPending::new(Event::default().event("log").data(data));

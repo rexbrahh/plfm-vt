@@ -92,8 +92,9 @@ struct CreateDeployRequest {
 
 /// Require an env to be specified.
 fn require_env(ctx: &CommandContext) -> Result<&str> {
-    ctx.resolve_env()
-        .ok_or_else(|| anyhow::anyhow!("No environment specified. Use --env or set a default context."))
+    ctx.resolve_env().ok_or_else(|| {
+        anyhow::anyhow!("No environment specified. Use --env or set a default context.")
+    })
 }
 
 /// List all deploys for the current env.

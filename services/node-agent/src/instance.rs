@@ -103,8 +103,7 @@ impl InstanceManager {
         if plan_version <= last_version {
             debug!(
                 plan_version,
-                last_version,
-                "Plan version not newer, skipping"
+                last_version, "Plan version not newer, skipping"
             );
             return;
         }
@@ -157,8 +156,7 @@ impl InstanceManager {
         match existing {
             Some(existing) => {
                 // Instance exists - check if it needs updating
-                if existing.plan.release_id != plan.release_id
-                    || existing.plan.image != plan.image
+                if existing.plan.release_id != plan.release_id || existing.plan.image != plan.image
                 {
                     info!(
                         instance_id = %instance_id,
@@ -182,9 +180,27 @@ impl InstanceManager {
     /// Start a new instance.
     async fn start_instance(&self, plan: InstancePlan) {
         let instance_id = plan.instance_id.clone();
+        let env_var_count = plan.env_vars.as_object().map(|m| m.len()).unwrap_or(0);
+        let volume_count = plan.volumes.len();
+        let read_only_volume_count = plan.volumes.iter().filter(|v| v.read_only).count();
+        let non_empty_volume_ids = plan
+            .volumes
+            .iter()
+            .filter(|v| !v.volume_id.is_empty())
+            .count();
+        let total_mount_path_chars: usize = plan.volumes.iter().map(|v| v.mount_path.len()).sum();
+
         info!(
             instance_id = %instance_id,
+            app_id = %plan.app_id,
+            env_id = %plan.env_id,
+            deploy_id = %plan.deploy_id,
             image = %plan.image,
+            env_var_count,
+            volume_count,
+            read_only_volume_count,
+            non_empty_volume_ids,
+            total_mount_path_chars,
             "Starting instance"
         );
 
@@ -251,12 +267,6 @@ impl InstanceManager {
     pub async fn get_status_reports(&self) -> Vec<InstanceStatusReport> {
         let instances = self.instances.read().await;
         instances.values().map(|i| i.to_status_report()).collect()
-    }
-
-    /// Get status report for a specific instance.
-    pub async fn get_instance_status(&self, instance_id: &str) -> Option<InstanceStatusReport> {
-        let instances = self.instances.read().await;
-        instances.get(instance_id).map(|i| i.to_status_report())
     }
 
     /// Check and update instance health.

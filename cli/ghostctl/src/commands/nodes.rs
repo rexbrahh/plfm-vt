@@ -71,7 +71,8 @@ fn display_option(opt: &Option<String>) -> String {
 }
 
 fn display_option_i32(opt: &Option<i32>) -> String {
-    opt.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string())
+    opt.map(|v| v.to_string())
+        .unwrap_or_else(|| "-".to_string())
 }
 
 /// List response from API.

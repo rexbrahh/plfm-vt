@@ -57,7 +57,7 @@ impl SchedulerWorker {
     /// Run a single reconciliation pass.
     async fn run_reconciliation(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let stats = self.reconciler.reconcile_all().await?;
-        
+
         if stats.instances_allocated > 0 || stats.instances_drained > 0 {
             info!(
                 groups_processed = stats.groups_processed,
@@ -73,8 +73,6 @@ impl SchedulerWorker {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_scheduler_worker_creation() {
         // Just verify the types work - actual database tests would need integration testing

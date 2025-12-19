@@ -28,9 +28,6 @@ pub enum SchedulerError {
     #[error("no eligible nodes available")]
     NoEligibleNodes,
 
-    #[error("unschedulable: {0}")]
-    Unschedulable(String),
-
     #[error("event store error: {0}")]
     EventStore(String),
 }
@@ -297,6 +294,16 @@ impl SchedulerReconciler {
 
         // Find best node for placement
         let node = self.find_best_node().await?;
+        debug!(
+            node_id = %node.node_id,
+            node_state = %node.state,
+            allocatable_memory_bytes = node.allocatable_memory_bytes,
+            allocatable_cpu_cores = node.allocatable_cpu_cores,
+            used_memory_bytes = node.used_memory_bytes,
+            used_cpu_cores = node.used_cpu_cores,
+            instance_count = node.instance_count,
+            "Selected node for placement"
+        );
 
         // Generate overlay IPv6 (simplified - just use a deterministic address based on instance_id)
         let overlay_ipv6 = generate_overlay_ipv6(&instance_id);
@@ -318,11 +325,11 @@ impl SchedulerReconciler {
             event_version: 1,
             actor_type: ActorType::System,
             actor_id: "scheduler".to_string(),
-            org_id: Some(group.org_id.clone()),
+            org_id: Some(group.org_id),
             request_id: request_id.to_string(),
             idempotency_key: None,
-            app_id: Some(group.app_id.clone()),
-            env_id: Some(group.env_id.clone()),
+            app_id: Some(group.app_id),
+            env_id: Some(group.env_id),
             correlation_id: group.deploy_id.clone(),
             causation_id: None,
             payload: serde_json::json!({
@@ -379,6 +386,8 @@ impl SchedulerReconciler {
             causation_id: None,
             payload: serde_json::json!({
                 "instance_id": instance.instance_id,
+                "node_id": instance.node_id,
+                "release_id": instance.release_id,
                 "old_state": instance.desired_state,
                 "new_state": "draining",
             }),

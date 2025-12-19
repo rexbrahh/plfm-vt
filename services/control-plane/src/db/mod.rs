@@ -16,7 +16,9 @@ mod projections;
 pub use error::DbError;
 pub use event_store::{AppendEvent, EventRow, EventStore};
 #[allow(unused_imports)]
-pub use idempotency::{IdempotencyCheck, IdempotencyRecord, IdempotencyStore};
+pub use idempotency::{
+    IdempotencyCheck, IdempotencyRecord, IdempotencyStore, StoreIdempotencyRecord,
+};
 #[allow(unused_imports)]
 pub use projections::{ProjectionCheckpoint, ProjectionStore};
 
@@ -134,17 +136,30 @@ impl Database {
     /// or as part of deployment. This method uses runtime migration loading.
     pub async fn run_migrations(&self) -> Result<(), DbError> {
         info!("Running database migrations");
-        
-        // Use runtime migration loading instead of compile-time macro
-        // to avoid requiring a database connection during compilation.
-        let migrator = sqlx::migrate::Migrator::new(std::path::Path::new("./migrations"))
-            .await
-            .map_err(DbError::Migration)?;
-        
-        migrator.run(&self.pool).await.map_err(DbError::Migration)?;
-        
-        info!("Database migrations complete");
-        Ok(())
+
+        let candidates = ["./migrations", "services/control-plane/migrations"];
+        let mut last_error: Option<sqlx::migrate::MigrateError> = None;
+
+        for dir in candidates {
+            match sqlx::migrate::Migrator::new(std::path::Path::new(dir)).await {
+                Ok(migrator) => {
+                    info!(migrations_dir = %dir, "Loaded migrations");
+                    migrator.run(&self.pool).await.map_err(DbError::Migration)?;
+                    info!("Database migrations complete");
+                    return Ok(());
+                }
+                Err(e) => {
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        Err(DbError::MigrationDirNotFound {
+            tried: candidates.join(", "),
+            last_error: last_error
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| "unknown error".to_string()),
+        })
     }
 
     /// Get an event store handle.

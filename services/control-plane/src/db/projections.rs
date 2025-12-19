@@ -5,6 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use sqlx::{postgres::PgPool, postgres::PgRow, Row};
+use tokio::time::{sleep, Duration, Instant};
 
 use super::DbError;
 
@@ -69,9 +70,10 @@ impl ProjectionStore {
     ) -> Result<(), DbError> {
         sqlx::query(
             r#"
-            UPDATE projection_checkpoints
-            SET last_applied_event_id = $2, updated_at = now()
-            WHERE projection_name = $1
+            INSERT INTO projection_checkpoints (projection_name, last_applied_event_id, updated_at)
+            VALUES ($1, $2, now())
+            ON CONFLICT (projection_name)
+            DO UPDATE SET last_applied_event_id = EXCLUDED.last_applied_event_id, updated_at = now()
             "#,
         )
         .bind(projection_name)
@@ -93,9 +95,10 @@ impl ProjectionStore {
     ) -> Result<(), DbError> {
         sqlx::query(
             r#"
-            UPDATE projection_checkpoints
-            SET last_applied_event_id = $2, updated_at = now()
-            WHERE projection_name = $1
+            INSERT INTO projection_checkpoints (projection_name, last_applied_event_id, updated_at)
+            VALUES ($1, $2, now())
+            ON CONFLICT (projection_name)
+            DO UPDATE SET last_applied_event_id = EXCLUDED.last_applied_event_id, updated_at = now()
             "#,
         )
         .bind(projection_name)
@@ -148,7 +151,7 @@ impl ProjectionStore {
     pub async fn calculate_lag(&self) -> Result<Vec<(String, i64)>, DbError> {
         let rows = sqlx::query(
             r#"
-            SELECT 
+            SELECT
                 p.projection_name,
                 COALESCE((SELECT MAX(event_id) FROM events), 0) - p.last_applied_event_id as lag
             FROM projection_checkpoints p
@@ -169,6 +172,45 @@ impl ProjectionStore {
             .collect();
 
         Ok(result)
+    }
+
+    /// Wait until a projection checkpoint has reached at least `min_event_id`.
+    pub async fn wait_for_checkpoint(
+        &self,
+        projection_name: &str,
+        min_event_id: i64,
+        timeout: Duration,
+    ) -> Result<(), DbError> {
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            let checkpoint = match self.get_checkpoint(projection_name).await {
+                Ok(cp) => cp,
+                Err(DbError::ProjectionNotFound(_)) => {
+                    // Ensure the checkpoint row exists so other readers can observe progress.
+                    self.update_checkpoint(projection_name, 0).await?;
+                    ProjectionCheckpoint {
+                        projection_name: projection_name.to_string(),
+                        last_applied_event_id: 0,
+                        updated_at: Utc::now(),
+                    }
+                }
+                Err(e) => return Err(e),
+            };
+            if checkpoint.last_applied_event_id >= min_event_id {
+                return Ok(());
+            }
+
+            if Instant::now() >= deadline {
+                return Err(DbError::ProjectionTimeout {
+                    projection_name: projection_name.to_string(),
+                    expected: min_event_id,
+                    actual: checkpoint.last_applied_event_id,
+                });
+            }
+
+            sleep(Duration::from_millis(25)).await;
+        }
     }
 }
 

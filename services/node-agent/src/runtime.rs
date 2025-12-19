@@ -22,9 +22,6 @@ pub struct VmHandle {
 
     /// Instance ID.
     pub instance_id: String,
-
-    /// Process ID (if applicable).
-    pub pid: Option<u32>,
 }
 
 /// VM runtime interface.
@@ -108,7 +105,6 @@ impl Runtime for MockRuntime {
         Ok(VmHandle {
             boot_id,
             instance_id: plan.instance_id.clone(),
-            pid: Some(1000 + self.boot_counter.load(Ordering::SeqCst) as u32),
         })
     }
 

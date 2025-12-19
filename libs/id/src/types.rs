@@ -316,10 +316,6 @@ mod tests {
         ];
 
         let unique: std::collections::HashSet<_> = prefixes.iter().collect();
-        assert_eq!(
-            prefixes.len(),
-            unique.len(),
-            "Duplicate ID prefixes found!"
-        );
+        assert_eq!(prefixes.len(), unique.len(), "Duplicate ID prefixes found!");
     }
 }

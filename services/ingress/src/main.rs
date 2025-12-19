@@ -1,1 +1,3 @@
-fn main() { println!("plfm-ingress"); }
+fn main() {
+    println!("plfm-ingress");
+}

@@ -47,12 +47,6 @@ impl ErrorResponse {
         self.request_id = Some(request_id.into());
         self
     }
-
-    /// Add field-level errors.
-    pub fn with_details(mut self, details: Vec<FieldError>) -> Self {
-        self.details = Some(details);
-        self
-    }
 }
 
 /// API error type that can be converted to a response.
@@ -87,6 +81,13 @@ impl ApiError {
     pub fn conflict(code: impl Into<String>, message: impl Into<String>) -> Self {
         Self {
             status: StatusCode::CONFLICT,
+            response: ErrorResponse::new(code, message),
+        }
+    }
+
+    pub fn gateway_timeout(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::GATEWAY_TIMEOUT,
             response: ErrorResponse::new(code, message),
         }
     }

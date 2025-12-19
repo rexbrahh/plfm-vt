@@ -1,7 +1,7 @@
 //! Event envelope - the common wrapper for all events.
 
 use chrono::{DateTime, Utc};
-use plfm_id::{AggregateSeq, EventId, OrgId, AppId, EnvId, RequestId};
+use plfm_id::{AggregateSeq, AppId, EnvId, EventId, OrgId, RequestId};
 use serde::{Deserialize, Serialize};
 
 /// Actor type for audit logging.
@@ -304,10 +304,7 @@ mod tests {
 
     #[test]
     fn test_actor_type_serialization() {
-        assert_eq!(
-            serde_json::to_string(&ActorType::User).unwrap(),
-            "\"user\""
-        );
+        assert_eq!(serde_json::to_string(&ActorType::User).unwrap(), "\"user\"");
         assert_eq!(
             serde_json::to_string(&ActorType::ServicePrincipal).unwrap(),
             "\"service_principal\""

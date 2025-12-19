@@ -5,19 +5,21 @@
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{delete, get, patch, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
 use plfm_events::{
-    event_types, ActorType, AggregateType, RouteCreatedPayload, RouteDeletedPayload,
-    RouteProtocolHint, RouteProxyProtocol, RouteUpdatedPayload,
+    event_types, AggregateType, RouteCreatedPayload, RouteDeletedPayload, RouteProtocolHint,
+    RouteProxyProtocol, RouteUpdatedPayload,
 };
-use plfm_id::{AppId, EnvId, OrgId, RequestId, RouteId};
+use plfm_id::{AppId, EnvId, OrgId, RouteId};
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
+use crate::api::idempotency;
+use crate::api::request_context::RequestContext;
 use crate::db::{AppendEvent, EventRow};
 use crate::state::AppState;
 
@@ -29,9 +31,9 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_routes))
         .route("/", post(create_route))
-        .route("/{route_id}", get(get_route))
-        .route("/{route_id}", patch(update_route))
-        .route("/{route_id}", delete(delete_route))
+        .route("/:route_id", get(get_route))
+        .route("/:route_id", patch(update_route))
+        .route("/:route_id", delete(delete_route))
 }
 
 // =============================================================================
@@ -67,7 +69,7 @@ pub struct ListRoutesResponse {
     pub next_cursor: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateRouteRequest {
     pub hostname: String,
     pub listen_port: i32,
@@ -82,7 +84,7 @@ pub struct CreateRouteRequest {
     pub ipv4_required: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct UpdateRouteRequest {
     pub expected_version: i32,
     #[serde(default)]
@@ -111,22 +113,23 @@ pub struct DeleteResponse {
 /// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/routes
 async fn list_routes(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Query(query): Query<ListRoutesQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let limit = query.limit.unwrap_or(50).clamp(1, 200);
@@ -174,7 +177,7 @@ async fn list_routes(
             "Failed to list routes"
         );
         ApiError::internal("internal_error", "Failed to list routes")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let items: Vec<RouteResponse> = rows.into_iter().map(RouteResponse::from).collect();
@@ -191,22 +194,29 @@ async fn list_routes(
 /// POST /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/routes
 async fn create_route(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Json(req): Json<CreateRouteRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+) -> Result<Response, ApiError> {
+    let RequestContext {
+        request_id,
+        idempotency_key,
+        actor_type,
+        actor_id,
+    } = ctx;
+    let endpoint_name = "routes.create";
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     validate_hostname(&req.hostname, &request_id)?;
@@ -218,7 +228,7 @@ async fn create_route(
             "invalid_proxy_protocol",
             "backend_expects_proxy_protocol must be true when proxy_protocol is v2",
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     if matches!(req.proxy_protocol, RouteProxyProtocol::Off) && req.backend_expects_proxy_protocol {
@@ -226,7 +236,40 @@ async fn create_route(
             "invalid_proxy_protocol",
             "backend_expects_proxy_protocol must be false when proxy_protocol is off",
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
+    }
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "app_id": app_id.to_string(),
+                "env_id": env_id.to_string(),
+                "body": &req
+            });
+            idempotency::request_hash(endpoint_name, &hash_input)
+                .map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
     }
 
     // Validate env exists (scoped to org/app).
@@ -253,7 +296,7 @@ async fn create_route(
             "Failed to check env existence"
         );
         ApiError::internal("internal_error", "Failed to verify environment")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if !env_exists {
@@ -261,7 +304,7 @@ async fn create_route(
             "env_not_found",
             format!("Environment {} not found", env_id),
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     // Enforce global hostname uniqueness by policy (view + event-log fallback for projection lag).
@@ -295,7 +338,7 @@ async fn create_route(
             "Failed to check hostname uniqueness"
         );
         ApiError::internal("internal_error", "Failed to verify hostname uniqueness")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if hostname_exists {
@@ -303,15 +346,15 @@ async fn create_route(
             "hostname_in_use",
             format!("Hostname '{}' is already in use", req.hostname),
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     let route_id = RouteId::new();
     let payload = RouteCreatedPayload {
-        route_id: route_id.clone(),
-        org_id: org_id.clone(),
-        app_id: app_id.clone(),
-        env_id: env_id.clone(),
+        route_id,
+        org_id,
+        app_id,
+        env_id,
         hostname: req.hostname.clone(),
         listen_port: req.listen_port,
         protocol_hint: req.protocol_hint,
@@ -329,7 +372,7 @@ async fn create_route(
             "Failed to serialize route payload"
         );
         ApiError::internal("internal_error", "Failed to create route")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let event = AppendEvent {
@@ -338,19 +381,19 @@ async fn create_route(
         aggregate_seq: 1,
         event_type: event_types::ROUTE_CREATED.to_string(),
         event_version: 1,
-        actor_type: ActorType::System,
-        actor_id: "system".to_string(),
-        org_id: Some(org_id.clone()),
-        request_id: request_id.to_string(),
-        idempotency_key: None,
-        app_id: Some(app_id.clone()),
-        env_id: Some(env_id.clone()),
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: Some(env_id),
         correlation_id: None,
         causation_id: None,
         payload,
     };
 
-    state.db().event_store().append(event).await.map_err(|e| {
+    let event_id = state.db().event_store().append(event).await.map_err(|e| {
         tracing::error!(
             error = %e,
             request_id = %request_id,
@@ -358,26 +401,89 @@ async fn create_route(
             "Failed to create route"
         );
         ApiError::internal("internal_error", "Failed to create route")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
-    let now = Utc::now();
-    let response = RouteResponse {
-        id: route_id.to_string(),
-        env_id: env_id.to_string(),
-        hostname: req.hostname,
-        listen_port: req.listen_port,
-        protocol_hint: req.protocol_hint,
-        backend_process_type: req.backend_process_type,
-        backend_port: req.backend_port,
-        proxy_protocol: req.proxy_protocol,
-        ipv4_required: req.ipv4_required,
-        created_at: now,
-        updated_at: now,
-        resource_version: 1,
-    };
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "routes",
+            event_id.value(),
+            std::time::Duration::from_secs(2),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
 
-    Ok((StatusCode::OK, Json(response)))
+    let row = sqlx::query_as::<_, RouteRow>(
+        r#"
+        SELECT
+            route_id,
+            env_id,
+            hostname,
+            listen_port,
+            protocol_hint,
+            backend_process_type,
+            backend_port,
+            proxy_protocol,
+            ipv4_required,
+            resource_version,
+            created_at,
+            updated_at
+        FROM routes_view
+        WHERE route_id = $1
+          AND org_id = $2
+          AND app_id = $3
+          AND env_id = $4
+          AND NOT is_deleted
+        "#,
+    )
+    .bind(route_id.to_string())
+    .bind(org_scope.clone())
+    .bind(app_id.to_string())
+    .bind(env_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load route");
+        ApiError::internal("internal_error", "Failed to load route")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::internal("internal_error", "Route was not materialized")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let response = RouteResponse::from(row);
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to create route")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// Get route.
@@ -385,25 +491,26 @@ async fn create_route(
 /// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/routes/{route_id}
 async fn get_route(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id, route_id)): Path<(String, String, String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let route_id: RouteId = route_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_route_id", "Invalid route ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let row = sqlx::query_as::<_, RouteRow>(
@@ -443,7 +550,7 @@ async fn get_route(
             "Failed to get route"
         );
         ApiError::internal("internal_error", "Failed to get route")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if let Some(row) = row {
@@ -454,7 +561,7 @@ async fn get_route(
     let event_store = state.db().event_store();
     let Some(route) = load_route_from_events(&event_store, &route_id, &request_id).await? else {
         return Err(ApiError::not_found("route_not_found", "Route not found")
-            .with_request_id(request_id.to_string()));
+            .with_request_id(request_id.clone()));
     };
 
     if route.is_deleted
@@ -463,7 +570,7 @@ async fn get_route(
         || route.env_id != env_id
     {
         return Err(ApiError::not_found("route_not_found", "Route not found")
-            .with_request_id(request_id.to_string()));
+            .with_request_id(request_id.clone()));
     }
 
     Ok(Json(route.to_response()))
@@ -474,26 +581,33 @@ async fn get_route(
 /// PATCH /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/routes/{route_id}
 async fn update_route(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id, route_id)): Path<(String, String, String, String)>,
     Json(req): Json<UpdateRouteRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+) -> Result<Response, ApiError> {
+    let RequestContext {
+        request_id,
+        idempotency_key,
+        actor_type,
+        actor_id,
+    } = ctx;
+    let endpoint_name = "routes.update";
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let route_id: RouteId = route_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_route_id", "Invalid route ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if req.expected_version < 0 {
@@ -501,7 +615,7 @@ async fn update_route(
             "invalid_expected_version",
             "expected_version must be >= 0",
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     if req.backend_process_type.is_none()
@@ -512,7 +626,7 @@ async fn update_route(
     {
         return Err(
             ApiError::bad_request("invalid_update", "No updatable fields provided")
-                .with_request_id(request_id.to_string()),
+                .with_request_id(request_id.clone()),
         );
     }
 
@@ -520,11 +634,44 @@ async fn update_route(
         validate_port(port, "backend_port", &request_id)?;
     }
 
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "app_id": app_id.to_string(),
+                "env_id": env_id.to_string(),
+                "route_id": route_id.to_string(),
+                "body": &req
+            });
+            idempotency::request_hash(endpoint_name, &hash_input)
+                .map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
+
     let event_store = state.db().event_store();
-    let Some(mut current) = load_route_from_events(&event_store, &route_id, &request_id).await?
-    else {
+    let Some(current) = load_route_from_events(&event_store, &route_id, &request_id).await? else {
         return Err(ApiError::not_found("route_not_found", "Route not found")
-            .with_request_id(request_id.to_string()));
+            .with_request_id(request_id.clone()));
     };
 
     if current.is_deleted
@@ -533,7 +680,7 @@ async fn update_route(
         || current.env_id != env_id
     {
         return Err(ApiError::not_found("route_not_found", "Route not found")
-            .with_request_id(request_id.to_string()));
+            .with_request_id(request_id.clone()));
     }
 
     if current.resource_version != req.expected_version {
@@ -544,7 +691,7 @@ async fn update_route(
                 req.expected_version, current.resource_version
             ),
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     let next_version = current.resource_version + 1;
@@ -558,39 +705,27 @@ async fn update_route(
                 "invalid_proxy_protocol",
                 "backend_expects_proxy_protocol must be true when enabling proxy_protocol v2",
             )
-            .with_request_id(request_id.to_string()));
+            .with_request_id(request_id.clone()));
         }
         if req.backend_expects_proxy_protocol == Some(false) {
             return Err(ApiError::bad_request(
                 "invalid_proxy_protocol",
                 "backend_expects_proxy_protocol cannot be false when proxy_protocol is v2",
             )
-            .with_request_id(request_id.to_string()));
+            .with_request_id(request_id.clone()));
         }
     } else if req.backend_expects_proxy_protocol == Some(true) {
         return Err(ApiError::bad_request(
             "invalid_proxy_protocol",
             "backend_expects_proxy_protocol must be false when proxy_protocol is off",
         )
-        .with_request_id(request_id.to_string()));
-    }
-
-    // Apply updates to the response state.
-    if let Some(backend_process_type) = req.backend_process_type.clone() {
-        current.backend_process_type = backend_process_type;
-    }
-    if let Some(backend_port) = req.backend_port {
-        current.backend_port = backend_port;
-    }
-    current.proxy_protocol = desired_proxy_protocol;
-    if let Some(ipv4_required) = req.ipv4_required {
-        current.ipv4_required = ipv4_required;
+        .with_request_id(request_id.clone()));
     }
 
     let payload = RouteUpdatedPayload {
-        route_id: route_id.clone(),
-        org_id: org_id.clone(),
-        env_id: env_id.clone(),
+        route_id,
+        org_id,
+        env_id,
         backend_process_type: req.backend_process_type.clone(),
         backend_port: req.backend_port,
         proxy_protocol: req.proxy_protocol,
@@ -601,7 +736,7 @@ async fn update_route(
     let payload = serde_json::to_value(&payload).map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to serialize route update payload");
         ApiError::internal("internal_error", "Failed to update route")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let event = AppendEvent {
@@ -610,19 +745,19 @@ async fn update_route(
         aggregate_seq: next_version,
         event_type: event_types::ROUTE_UPDATED.to_string(),
         event_version: 1,
-        actor_type: ActorType::System,
-        actor_id: "system".to_string(),
-        org_id: Some(org_id.clone()),
-        request_id: request_id.to_string(),
-        idempotency_key: None,
-        app_id: Some(app_id.clone()),
-        env_id: Some(env_id.clone()),
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: Some(env_id),
         correlation_id: None,
         causation_id: None,
         payload,
     };
 
-    state.db().event_store().append(event).await.map_err(|e| {
+    let event_id = state.db().event_store().append(event).await.map_err(|e| {
         tracing::error!(
             error = %e,
             request_id = %request_id,
@@ -630,13 +765,89 @@ async fn update_route(
             "Failed to update route"
         );
         ApiError::internal("internal_error", "Failed to update route")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
-    current.resource_version = next_version;
-    current.updated_at = Utc::now();
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "routes",
+            event_id.value(),
+            std::time::Duration::from_secs(2),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
 
-    Ok(Json(current.to_response()))
+    let row = sqlx::query_as::<_, RouteRow>(
+        r#"
+        SELECT
+            route_id,
+            env_id,
+            hostname,
+            listen_port,
+            protocol_hint,
+            backend_process_type,
+            backend_port,
+            proxy_protocol,
+            ipv4_required,
+            resource_version,
+            created_at,
+            updated_at
+        FROM routes_view
+        WHERE route_id = $1
+          AND org_id = $2
+          AND app_id = $3
+          AND env_id = $4
+          AND NOT is_deleted
+        "#,
+    )
+    .bind(route_id.to_string())
+    .bind(org_scope.clone())
+    .bind(app_id.to_string())
+    .bind(env_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load route");
+        ApiError::internal("internal_error", "Failed to load route")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::internal("internal_error", "Route was not materialized")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let response = RouteResponse::from(row);
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to update route")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// Delete route (idempotent for already-deleted routes).
@@ -644,54 +855,122 @@ async fn update_route(
 /// DELETE /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/routes/{route_id}
 async fn delete_route(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id, route_id)): Path<(String, String, String, String)>,
-) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+) -> Result<Response, ApiError> {
+    let RequestContext {
+        request_id,
+        idempotency_key,
+        actor_type,
+        actor_id,
+    } = ctx;
+    let endpoint_name = "routes.delete";
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
     let route_id: RouteId = route_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_route_id", "Invalid route ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "app_id": app_id.to_string(),
+                "env_id": env_id.to_string(),
+                "route_id": route_id.to_string()
+            });
+            idempotency::request_hash(endpoint_name, &hash_input)
+                .map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
 
     let event_store = state.db().event_store();
     let Some(current) = load_route_from_events(&event_store, &route_id, &request_id).await? else {
         return Err(ApiError::not_found("route_not_found", "Route not found")
-            .with_request_id(request_id.to_string()));
+            .with_request_id(request_id.clone()));
     };
 
     if current.org_id != org_id || current.app_id != app_id || current.env_id != env_id {
         return Err(ApiError::not_found("route_not_found", "Route not found")
-            .with_request_id(request_id.to_string()));
+            .with_request_id(request_id.clone()));
     }
 
+    let response = DeleteResponse { ok: true };
     if current.is_deleted {
-        return Ok(Json(DeleteResponse { ok: true }));
+        if let Some((key, hash)) = request_hash {
+            let body = serde_json::to_value(&response).map_err(|e| {
+                tracing::error!(
+                    error = %e,
+                    request_id = %request_id,
+                    "Failed to serialize response"
+                );
+                ApiError::internal("internal_error", "Failed to delete route")
+                    .with_request_id(request_id.clone())
+            })?;
+
+            let _ = idempotency::store(
+                &state,
+                idempotency::StoreIdempotencyParams {
+                    org_scope: &org_scope,
+                    actor_id: &actor_id,
+                    endpoint_name,
+                    idempotency_key: &key,
+                    request_hash: &hash,
+                    status: StatusCode::OK,
+                    body: Some(body),
+                },
+                &request_id,
+            )
+            .await;
+        }
+
+        return Ok((StatusCode::OK, Json(response)).into_response());
     }
 
     let next_version = current.resource_version + 1;
     let payload = RouteDeletedPayload {
-        route_id: route_id.clone(),
-        org_id: org_id.clone(),
-        env_id: env_id.clone(),
+        route_id,
+        org_id,
+        env_id,
         hostname: current.hostname.clone(),
     };
 
     let payload = serde_json::to_value(&payload).map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to serialize route delete payload");
         ApiError::internal("internal_error", "Failed to delete route")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let event = AppendEvent {
@@ -700,19 +979,19 @@ async fn delete_route(
         aggregate_seq: next_version,
         event_type: event_types::ROUTE_DELETED.to_string(),
         event_version: 1,
-        actor_type: ActorType::System,
-        actor_id: "system".to_string(),
-        org_id: Some(org_id.clone()),
-        request_id: request_id.to_string(),
-        idempotency_key: None,
-        app_id: Some(app_id.clone()),
-        env_id: Some(env_id.clone()),
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: Some(env_id),
         correlation_id: None,
         causation_id: None,
         payload,
     };
 
-    state.db().event_store().append(event).await.map_err(|e| {
+    let event_id = state.db().event_store().append(event).await.map_err(|e| {
         tracing::error!(
             error = %e,
             request_id = %request_id,
@@ -720,10 +999,48 @@ async fn delete_route(
             "Failed to delete route"
         );
         ApiError::internal("internal_error", "Failed to delete route")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
-    Ok(Json(DeleteResponse { ok: true }))
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "routes",
+            event_id.value(),
+            std::time::Duration::from_secs(2),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to delete route")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 // =============================================================================
@@ -833,7 +1150,7 @@ impl RouteState {
 async fn load_route_from_events(
     store: &crate::db::EventStore,
     route_id: &RouteId,
-    request_id: &RequestId,
+    request_id: &str,
 ) -> Result<Option<RouteState>, ApiError> {
     let route_id_str = route_id.to_string();
     let rows = store
@@ -856,7 +1173,7 @@ async fn load_route_from_events(
 fn fold_route_events(
     route_id: &RouteId,
     events: &[EventRow],
-    request_id: &RequestId,
+    request_id: &str,
 ) -> Result<Option<RouteState>, ApiError> {
     let mut state: Option<RouteState> = None;
 
@@ -956,7 +1273,7 @@ fn fold_route_events(
     Ok(state)
 }
 
-fn validate_hostname(hostname: &str, request_id: &RequestId) -> Result<(), ApiError> {
+fn validate_hostname(hostname: &str, request_id: &str) -> Result<(), ApiError> {
     if hostname.trim().is_empty() {
         return Err(
             ApiError::bad_request("invalid_hostname", "hostname cannot be empty")
@@ -983,7 +1300,7 @@ fn validate_hostname(hostname: &str, request_id: &RequestId) -> Result<(), ApiEr
     Ok(())
 }
 
-fn validate_port(port: i32, field: &str, request_id: &RequestId) -> Result<(), ApiError> {
+fn validate_port(port: i32, field: &str, request_id: &str) -> Result<(), ApiError> {
     if !(1..=65535).contains(&port) {
         return Err(ApiError::bad_request(
             format!("invalid_{field}"),

@@ -10,7 +10,7 @@
 #
 # macOS Users: If you get linker errors with libiconv, run:
 #   brew install libiconv
-#   export LIBRARY_PATH="$(brew --prefix)/lib:$LIBRARY_PATH"
+#   export LIBRARY_PATH="$(brew --prefix)/opt/libiconv/lib:$LIBRARY_PATH"
 
 services:
   # PostgreSQL database

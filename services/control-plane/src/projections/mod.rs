@@ -40,9 +40,6 @@ pub enum ProjectionError {
 
     #[error("invalid event payload: {0}")]
     InvalidPayload(String),
-
-    #[error("projection handler not found for event type: {0}")]
-    HandlerNotFound(String),
 }
 
 /// Trait for projection handlers.

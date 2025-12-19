@@ -39,11 +39,7 @@ impl ControlPlaneClient {
         let url = format!("{}/v1/nodes/{}/plan", self.base_url, self.node_id);
         debug!(url = %url, "Fetching node plan");
 
-        let response = self
-            .client
-            .get(&url)
-            .send()
-            .await?;
+        let response = self.client.get(&url).send().await?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -74,12 +70,7 @@ impl ControlPlaneClient {
             "Reporting instance status"
         );
 
-        let response = self
-            .client
-            .post(&url)
-            .json(status)
-            .send()
-            .await?;
+        let response = self.client.post(&url).json(status).send().await?;
 
         if !response.status().is_success() {
             let status_code = response.status();

@@ -12,11 +12,12 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use plfm_events::{ActorType, AggregateType, NodeState};
-use plfm_id::{NodeId, RequestId};
+use plfm_id::NodeId;
 use serde::{Deserialize, Serialize};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use crate::api::error::ApiError;
+use crate::api::request_context::RequestContext;
 use crate::db::AppendEvent;
 use crate::state::AppState;
 
@@ -27,9 +28,9 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/enroll", post(enroll_node))
         .route("/", get(list_nodes))
-        .route("/{node_id}", get(get_node))
-        .route("/{node_id}/heartbeat", post(heartbeat))
-        .route("/{node_id}/plan", get(get_plan))
+        .route("/:node_id", get(get_node))
+        .route("/:node_id/heartbeat", post(heartbeat))
+        .route("/:node_id/plan", get(get_plan))
 }
 
 // =============================================================================
@@ -231,15 +232,16 @@ pub struct VolumeMount {
 /// POST /v1/nodes/enroll
 async fn enroll_node(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Json(req): Json<EnrollNodeRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate hostname
     if req.hostname.is_empty() {
         return Err(
             ApiError::bad_request("invalid_hostname", "Hostname cannot be empty")
-                .with_request_id(request_id.to_string()),
+                .with_request_id(request_id.clone()),
         );
     }
 
@@ -248,14 +250,14 @@ async fn enroll_node(
             "invalid_hostname",
             "Hostname cannot exceed 255 characters",
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     // Validate region
     if req.region.is_empty() {
         return Err(
             ApiError::bad_request("invalid_region", "Region cannot be empty")
-                .with_request_id(request_id.to_string()),
+                .with_request_id(request_id.clone()),
         );
     }
 
@@ -265,21 +267,21 @@ async fn enroll_node(
             "invalid_wireguard_key",
             "Invalid WireGuard public key format",
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     // Validate resources
     if req.cpu_cores < 1 {
         return Err(
             ApiError::bad_request("invalid_cpu_cores", "CPU cores must be at least 1")
-                .with_request_id(request_id.to_string()),
+                .with_request_id(request_id.clone()),
         );
     }
 
     if req.memory_bytes < 1024 * 1024 * 512 {
         return Err(
             ApiError::bad_request("invalid_memory", "Memory must be at least 512MB")
-                .with_request_id(request_id.to_string()),
+                .with_request_id(request_id.clone()),
         );
     }
 
@@ -293,7 +295,7 @@ async fn enroll_node(
     .map_err(|e| {
         tracing::error!(error = %e, "Failed to check WireGuard key uniqueness");
         ApiError::internal("internal_error", "Failed to verify node")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if key_exists {
@@ -301,7 +303,7 @@ async fn enroll_node(
             "wireguard_key_exists",
             "A node with this WireGuard key is already enrolled",
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     let node_id = NodeId::new();
@@ -322,7 +324,7 @@ async fn enroll_node(
         actor_type: ActorType::ServicePrincipal, // Node agents are service principals
         actor_id: node_id.to_string(),
         org_id: None,
-        request_id: request_id.to_string(),
+        request_id: request_id.clone(),
         idempotency_key: None,
         app_id: None,
         env_id: None,
@@ -349,7 +351,7 @@ async fn enroll_node(
     event_store.append(event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to enroll node");
         ApiError::internal("internal_error", "Failed to enroll node")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let now = Utc::now();
@@ -382,8 +384,11 @@ async fn enroll_node(
 /// List all nodes.
 ///
 /// GET /v1/nodes
-async fn list_nodes(State(state): State<AppState>) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+async fn list_nodes(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+) -> Result<impl IntoResponse, ApiError> {
+    let request_id = ctx.request_id;
 
     let rows = sqlx::query_as::<_, NodeRow>(
         r#"
@@ -402,7 +407,7 @@ async fn list_nodes(State(state): State<AppState>) -> Result<impl IntoResponse, 
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to list nodes");
         ApiError::internal("internal_error", "Failed to list nodes")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let items: Vec<NodeResponse> = rows.into_iter().map(NodeResponse::from).collect();
@@ -416,14 +421,15 @@ async fn list_nodes(State(state): State<AppState>) -> Result<impl IntoResponse, 
 /// GET /v1/nodes/{node_id}
 async fn get_node(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path(node_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate node_id format
     let _node_id: NodeId = node_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_node_id", "Invalid node ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let row = sqlx::query_as::<_, NodeRow>(
@@ -443,14 +449,14 @@ async fn get_node(
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, node_id = %node_id, "Failed to get node");
         ApiError::internal("internal_error", "Failed to get node")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     match row {
         Some(row) => Ok(Json(NodeResponse::from(row))),
         None => Err(
             ApiError::not_found("node_not_found", format!("Node {} not found", node_id))
-                .with_request_id(request_id.to_string()),
+                .with_request_id(request_id.clone()),
         ),
     }
 }
@@ -460,15 +466,16 @@ async fn get_node(
 /// POST /v1/nodes/{node_id}/heartbeat
 async fn heartbeat(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path(node_id): Path<String>,
     Json(req): Json<HeartbeatRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate node_id format
     let node_id_typed: NodeId = node_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_node_id", "Invalid node ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Check node exists and get current state
@@ -480,7 +487,7 @@ async fn heartbeat(
             .map_err(|e| {
                 tracing::error!(error = %e, "Failed to check node existence");
                 ApiError::internal("internal_error", "Failed to verify node")
-                    .with_request_id(request_id.to_string())
+                    .with_request_id(request_id.clone())
             })?;
 
     let current_state = match current_state {
@@ -490,7 +497,7 @@ async fn heartbeat(
                 "node_not_found",
                 format!("Node {} not found", node_id),
             )
-            .with_request_id(request_id.to_string()));
+            .with_request_id(request_id.clone()));
         }
     };
 
@@ -501,8 +508,14 @@ async fn heartbeat(
         .map_err(|e| {
             tracing::error!(error = %e, "Failed to get aggregate sequence");
             ApiError::internal("internal_error", "Failed to process heartbeat")
-                .with_request_id(request_id.to_string())
+                .with_request_id(request_id.clone())
         })?
+        .unwrap_or(0);
+
+    let instance_statuses_entries = req
+        .instance_statuses
+        .as_object()
+        .map(|entries| entries.len() as i32)
         .unwrap_or(0);
 
     // Emit capacity update event
@@ -515,7 +528,7 @@ async fn heartbeat(
         actor_type: ActorType::ServicePrincipal, // Node agents are service principals
         actor_id: node_id.clone(),
         org_id: None,
-        request_id: request_id.to_string(),
+        request_id: request_id.clone(),
         idempotency_key: None,
         app_id: None,
         env_id: None,
@@ -526,14 +539,9 @@ async fn heartbeat(
             "available_cpu_cores": req.available_cpu_cores,
             "available_memory_bytes": req.available_memory_bytes,
             "instance_count": req.instance_count,
+            "instance_statuses_entries": instance_statuses_entries,
         }),
     };
-
-    event_store.append(capacity_event).await.map_err(|e| {
-        tracing::error!(error = %e, request_id = %request_id, "Failed to record capacity update");
-        ApiError::internal("internal_error", "Failed to process heartbeat")
-            .with_request_id(request_id.to_string())
-    })?;
 
     // If state changed, emit state change event
     let new_state_str = match req.state {
@@ -554,7 +562,7 @@ async fn heartbeat(
             actor_type: ActorType::ServicePrincipal, // Node agents are service principals
             actor_id: node_id.clone(),
             org_id: None,
-            request_id: request_id.to_string(),
+            request_id: request_id.clone(),
             idempotency_key: None,
             app_id: None,
             env_id: None,
@@ -567,10 +575,11 @@ async fn heartbeat(
             }),
         };
 
-        event_store.append(state_event).await.map_err(|e| {
-            tracing::error!(error = %e, request_id = %request_id, "Failed to record state change");
+        let events = vec![capacity_event, state_event];
+        event_store.append_batch(events).await.map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to process heartbeat");
             ApiError::internal("internal_error", "Failed to process heartbeat")
-                .with_request_id(request_id.to_string())
+                .with_request_id(request_id.clone())
         })?;
 
         tracing::info!(
@@ -580,6 +589,12 @@ async fn heartbeat(
             request_id = %request_id,
             "Node state changed"
         );
+    } else {
+        event_store.append_batch(vec![capacity_event]).await.map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to process heartbeat");
+            ApiError::internal("internal_error", "Failed to process heartbeat")
+                .with_request_id(request_id.clone())
+        })?;
     }
 
     Ok(Json(HeartbeatResponse {
@@ -595,14 +610,15 @@ async fn heartbeat(
 /// Returns the list of instances that should be running on this node.
 async fn get_plan(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path(node_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate node_id format
     let _node_id_typed: NodeId = node_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_node_id", "Invalid node ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Check node exists
@@ -614,13 +630,13 @@ async fn get_plan(
             .map_err(|e| {
                 tracing::error!(error = %e, "Failed to check node existence");
                 ApiError::internal("internal_error", "Failed to get plan")
-                    .with_request_id(request_id.to_string())
+                    .with_request_id(request_id.clone())
             })?;
 
     if !node_exists {
         return Err(
             ApiError::not_found("node_not_found", format!("Node {} not found", node_id))
-                .with_request_id(request_id.to_string()),
+                .with_request_id(request_id.clone()),
         );
     }
 
@@ -644,7 +660,7 @@ async fn get_plan(
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, node_id = %node_id, "Failed to get node plan");
         ApiError::internal("internal_error", "Failed to get plan")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Get max event_id as plan version
@@ -652,7 +668,7 @@ async fn get_plan(
     let plan_version = event_store.get_max_event_id().await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to get plan version");
         ApiError::internal("internal_error", "Failed to get plan")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let instance_plans: Vec<InstancePlan> = instances.into_iter().map(InstancePlan::from).collect();

@@ -14,13 +14,13 @@ use crate::state::AppState;
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct HealthResponse {
     /// Service status: "ok" or "degraded".
-    pub status: &'static str,
+    pub status: String,
 
     /// Service name.
-    pub service: &'static str,
+    pub service: String,
 
     /// Service version.
-    pub version: &'static str,
+    pub version: String,
 
     /// Current timestamp (ISO 8601).
     pub timestamp: String,
@@ -46,7 +46,7 @@ pub struct ComponentHealth {
 #[cfg_attr(test, derive(serde::Deserialize))]
 pub struct ComponentStatus {
     /// Status: "ok", "degraded", or "unavailable".
-    pub status: &'static str,
+    pub status: String,
 
     /// Optional message with details.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -67,9 +67,9 @@ pub fn routes() -> Router<AppState> {
 /// It does not check dependencies.
 async fn healthz() -> impl IntoResponse {
     Json(HealthResponse {
-        status: "ok",
-        service: "control-plane",
-        version: env!("CARGO_PKG_VERSION"),
+        status: "ok".to_string(),
+        service: "control-plane".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
         timestamp: Utc::now().to_rfc3339(),
         components: None,
     })
@@ -90,11 +90,11 @@ async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
 
     let components = ComponentHealth {
         database: ComponentStatus {
-            status: if db_ok { "ok" } else { "unavailable" },
+            status: if db_ok { "ok" } else { "unavailable" }.to_string(),
             message: db_message.clone(),
         },
         event_log: ComponentStatus {
-            status: if event_log_ok { "ok" } else { "unavailable" },
+            status: if event_log_ok { "ok" } else { "unavailable" }.to_string(),
             message: if event_log_ok { None } else { db_message },
         },
     };
@@ -102,9 +102,9 @@ async fn readyz(State(state): State<AppState>) -> impl IntoResponse {
     let all_ok = db_ok && event_log_ok;
 
     let response = HealthResponse {
-        status: if all_ok { "ok" } else { "degraded" },
-        service: "control-plane",
-        version: env!("CARGO_PKG_VERSION"),
+        status: if all_ok { "ok" } else { "degraded" }.to_string(),
+        service: "control-plane".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
         timestamp: Utc::now().to_rfc3339(),
         components: Some(components),
     };

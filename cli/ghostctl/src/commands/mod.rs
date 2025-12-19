@@ -145,11 +145,6 @@ impl CommandContext {
         ApiClient::new(&self.config, self.credentials.as_ref())
     }
 
-    /// Get an unauthenticated API client.
-    pub fn client_unauthenticated(&self) -> Result<ApiClient> {
-        ApiClient::unauthenticated(&self.config)
-    }
-
     /// Resolve the current org, preferring flag over context.
     pub fn resolve_org(&self) -> Option<&str> {
         self.org.as_deref().or(self.config.context.org.as_deref())

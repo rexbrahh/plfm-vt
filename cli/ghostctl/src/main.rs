@@ -17,13 +17,13 @@ use commands::Cli;
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    
+
     // Run the command
     if let Err(e) = cli.run().await {
         // Print error in a user-friendly way
         error::print_error(&e);
         std::process::exit(1);
     }
-    
+
     Ok(())
 }

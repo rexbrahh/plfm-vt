@@ -11,7 +11,10 @@ pub enum IdError {
 
     /// The ID is missing the required prefix.
     #[error("ID missing prefix: expected '{expected}', got '{actual}'")]
-    MissingPrefix { expected: &'static str, actual: String },
+    MissingPrefix {
+        expected: &'static str,
+        actual: String,
+    },
 
     /// The ID has an invalid prefix.
     #[error("invalid ID prefix: expected '{expected}', got '{actual}'")]
@@ -41,6 +44,9 @@ impl IdError {
 
     /// Returns true if this error indicates a prefix mismatch.
     pub fn is_prefix_error(&self) -> bool {
-        matches!(self, IdError::MissingPrefix { .. } | IdError::InvalidPrefix { .. })
+        matches!(
+            self,
+            IdError::MissingPrefix { .. } | IdError::InvalidPrefix { .. }
+        )
     }
 }

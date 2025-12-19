@@ -12,7 +12,6 @@ use crate::error::CliError;
 pub struct ApiClient {
     client: reqwest::Client,
     base_url: String,
-    token: Option<String>,
 }
 
 impl ApiClient {
@@ -37,18 +36,7 @@ impl ApiClient {
         Ok(Self {
             client,
             base_url: config.api_url().trim_end_matches('/').to_string(),
-            token: credentials.map(|c| c.token.clone()),
         })
-    }
-
-    /// Create a client without authentication.
-    pub fn unauthenticated(config: &Config) -> Result<Self> {
-        Self::new(config, None)
-    }
-
-    /// Check if the client has authentication.
-    pub fn is_authenticated(&self) -> bool {
-        self.token.is_some()
     }
 
     /// Build a URL for an endpoint.
@@ -61,17 +49,6 @@ impl ApiClient {
         let response = self.client.get(self.url(path)).send().await?;
 
         self.handle_response(response).await
-    }
-
-    /// Make a GET request and return the raw response body.
-    pub async fn get_raw(&self, path: &str) -> Result<reqwest::Response, CliError> {
-        let response = self.client.get(self.url(path)).send().await?;
-
-        if response.status().is_success() {
-            Ok(response)
-        } else {
-            self.handle_error(response).await
-        }
     }
 
     /// Make a GET request to an SSE endpoint and return the raw response body.
@@ -156,7 +133,12 @@ impl ApiClient {
             return Err(CliError::NotAuthenticated);
         }
 
-        Err(CliError::api(status, error_body.code, error_body.message))
+        Err(CliError::api(
+            status,
+            error_body.code,
+            error_body.message,
+            error_body.request_id,
+        ))
     }
 }
 
@@ -176,7 +158,7 @@ mod tests {
     #[test]
     fn test_url_building() {
         let config = Config::default();
-        let client = ApiClient::unauthenticated(&config).unwrap();
+        let client = ApiClient::new(&config, None).unwrap();
         assert!(client.url("/v1/orgs").contains("/v1/orgs"));
     }
 }

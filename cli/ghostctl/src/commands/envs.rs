@@ -56,16 +56,16 @@ impl EnvsCommand {
 struct EnvResponse {
     #[tabled(rename = "ID")]
     id: String,
-    
+
     #[tabled(rename = "App ID")]
     app_id: String,
-    
+
     #[tabled(rename = "Org ID")]
     org_id: String,
-    
+
     #[tabled(rename = "Name")]
     name: String,
-    
+
     #[tabled(rename = "Created")]
     created_at: String,
 }
@@ -88,11 +88,9 @@ struct CreateEnvRequest {
 async fn list_envs(ctx: CommandContext) -> Result<()> {
     let app = ctx.require_app()?;
     let client = ctx.client()?;
-    
-    let response: ListEnvsResponse = client
-        .get(&format!("/v1/apps/{}/envs", app))
-        .await?;
-    
+
+    let response: ListEnvsResponse = client.get(&format!("/v1/apps/{}/envs", app)).await?;
+
     print_output(&response.items, ctx.format);
     Ok(())
 }
@@ -101,15 +99,15 @@ async fn list_envs(ctx: CommandContext) -> Result<()> {
 async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
     let app = ctx.require_app()?;
     let client = ctx.client()?;
-    
+
     let request = CreateEnvRequest {
         name: args.name.clone(),
     };
-    
+
     let response: EnvResponse = client
         .post(&format!("/v1/apps/{}/envs", app), &request)
         .await?;
-    
+
     match ctx.format {
         OutputFormat::Json => print_single(&response, ctx.format),
         OutputFormat::Table => {
@@ -119,7 +117,7 @@ async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
             ));
         }
     }
-    
+
     Ok(())
 }
 
@@ -127,7 +125,7 @@ async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
 async fn get_env(ctx: CommandContext, args: GetEnvArgs) -> Result<()> {
     let app = ctx.require_app()?;
     let client = ctx.client()?;
-    
+
     let response: EnvResponse = client
         .get(&format!("/v1/apps/{}/envs/{}", app, args.env))
         .await
@@ -137,7 +135,7 @@ async fn get_env(ctx: CommandContext, args: GetEnvArgs) -> Result<()> {
             }
             other => other,
         })?;
-    
+
     print_single(&response, ctx.format);
     Ok(())
 }

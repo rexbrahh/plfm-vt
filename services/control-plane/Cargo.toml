@@ -50,3 +50,5 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
+reqwest = { workspace = true }
+testcontainers = { workspace = true }

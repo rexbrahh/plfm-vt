@@ -5,16 +5,18 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use plfm_events::{ActorType, AggregateType};
-use plfm_id::{AppId, EnvId, OrgId, RequestId};
+use plfm_events::AggregateType;
+use plfm_id::{AppId, EnvId, OrgId};
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
+use crate::api::idempotency;
+use crate::api::request_context::RequestContext;
 use crate::db::AppendEvent;
 use crate::state::AppState;
 
@@ -25,7 +27,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_env))
         .route("/", get(list_envs))
-        .route("/{env_id}", get(get_env))
+        .route("/:env_id", get(get_env))
 }
 
 /// Create env scale routes.
@@ -40,7 +42,7 @@ pub fn scale_routes() -> Router<AppState> {
 // =============================================================================
 
 /// Request to create a new environment.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateEnvRequest {
     /// Environment name (unique within app, e.g., "production", "staging").
     pub name: String,
@@ -82,7 +84,7 @@ pub struct ListEnvsResponse {
 }
 
 /// Request to set scale for an environment.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct SetScaleRequest {
     /// Process type to count mapping.
     pub process_counts: std::collections::HashMap<String, i32>,
@@ -104,15 +106,22 @@ pub struct SetScaleResponse {
 /// POST /v1/apps/{app_id}/envs
 async fn create_env(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path(app_id): Path<String>,
     Json(req): Json<CreateEnvRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+) -> Result<Response, ApiError> {
+    let RequestContext {
+        request_id,
+        idempotency_key,
+        actor_type,
+        actor_id,
+    } = ctx;
+    let endpoint_name = "envs.create";
 
     // Validate app_id format
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Get app and verify it exists
@@ -125,24 +134,24 @@ async fn create_env(
     .map_err(|e| {
         tracing::error!(error = %e, "Failed to check app existence");
         ApiError::internal("internal_error", "Failed to verify application")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let app_row = app_row.ok_or_else(|| {
         ApiError::not_found("app_not_found", format!("Application {} not found", app_id))
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let org_id: OrgId = app_row.org_id.parse().map_err(|_| {
         ApiError::internal("internal_error", "Invalid org_id in database")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Validate name
     if req.name.is_empty() {
         return Err(
             ApiError::bad_request("invalid_name", "Environment name cannot be empty")
-                .with_request_id(request_id.to_string()),
+                .with_request_id(request_id.clone()),
         );
     }
 
@@ -151,7 +160,7 @@ async fn create_env(
             "invalid_name",
             "Environment name cannot exceed 50 characters",
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     // Validate name format (lowercase alphanumeric and hyphens)
@@ -164,7 +173,39 @@ async fn create_env(
             "invalid_name",
             "Environment name must contain only lowercase letters, numbers, and hyphens",
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
+    }
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "app_id": app_id.to_string(),
+                "body": &req
+            });
+            idempotency::request_hash(endpoint_name, &hash_input)
+                .map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
     }
 
     // Check for duplicate name within app
@@ -178,7 +219,7 @@ async fn create_env(
     .map_err(|e| {
         tracing::error!(error = %e, "Failed to check env name uniqueness");
         ApiError::internal("internal_error", "Failed to verify environment name")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if name_exists {
@@ -189,7 +230,7 @@ async fn create_env(
                 req.name
             ),
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     let env_id = EnvId::new();
@@ -201,13 +242,13 @@ async fn create_env(
         aggregate_seq: 1,
         event_type: "env.created".to_string(),
         event_version: 1,
-        actor_type: ActorType::System, // TODO: Extract from auth context
-        actor_id: "system".to_string(),
-        org_id: Some(org_id.clone()),
-        request_id: request_id.to_string(),
-        idempotency_key: None,
-        app_id: Some(app_id.clone()),
-        env_id: Some(env_id.clone()),
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: Some(env_id),
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
@@ -217,24 +258,69 @@ async fn create_env(
 
     // Append the event
     let event_store = state.db().event_store();
-    event_store.append(event).await.map_err(|e| {
+    let event_id = event_store.append(event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to create env");
         ApiError::internal("internal_error", "Failed to create environment")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
-    let now = Utc::now();
-    let response = EnvResponse {
-        id: env_id.to_string(),
-        app_id: app_id.to_string(),
-        org_id: org_id.to_string(),
-        name: req.name,
-        resource_version: 1,
-        created_at: now,
-        updated_at: now,
-    };
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint("envs", event_id.value(), std::time::Duration::from_secs(2))
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
 
-    Ok((StatusCode::CREATED, Json(response)))
+    let row = sqlx::query_as::<_, EnvRow>(
+        r#"
+        SELECT env_id, app_id, org_id, name, resource_version, created_at, updated_at
+        FROM envs_view
+        WHERE env_id = $1 AND NOT is_deleted
+        "#,
+    )
+    .bind(env_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load env");
+        ApiError::internal("internal_error", "Failed to load environment")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::internal("internal_error", "Environment was not materialized")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let response = EnvResponse::from(row);
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to create environment")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// List environments in an application.
@@ -242,14 +328,15 @@ async fn create_env(
 /// GET /v1/apps/{app_id}/envs
 async fn list_envs(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path(app_id): Path<String>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate app_id format
     let _app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Query the envs_view table
@@ -268,7 +355,7 @@ async fn list_envs(
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to list envs");
         ApiError::internal("internal_error", "Failed to list environments")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let items: Vec<EnvResponse> = rows.into_iter().map(EnvResponse::from).collect();
@@ -282,26 +369,84 @@ async fn list_envs(
 /// POST /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
 async fn set_scale(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Json(req): Json<SetScaleRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+) -> Result<Response, ApiError> {
+    let RequestContext {
+        request_id,
+        idempotency_key,
+        actor_type,
+        actor_id,
+    } = ctx;
+    let endpoint_name = "envs.set_scale";
 
     // Validate IDs
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
+
+    // Validate process counts
+    for (process_type, count) in &req.process_counts {
+        if process_type.is_empty() {
+            return Err(ApiError::bad_request(
+                "invalid_process_type",
+                "Process type cannot be empty",
+            )
+            .with_request_id(request_id.clone()));
+        }
+        if *count < 0 {
+            return Err(ApiError::bad_request(
+                "invalid_count",
+                format!("Count for '{}' must be non-negative", process_type),
+            )
+            .with_request_id(request_id.clone()));
+        }
+    }
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "app_id": app_id.to_string(),
+                "env_id": env_id.to_string(),
+                "body": &req
+            });
+            idempotency::request_hash(endpoint_name, &hash_input)
+                .map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
 
     // Verify env exists
     let env_exists = sqlx::query_scalar::<_, bool>(
@@ -313,7 +458,7 @@ async fn set_scale(
     .map_err(|e| {
         tracing::error!(error = %e, "Failed to check env existence");
         ApiError::internal("internal_error", "Failed to verify environment")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if !env_exists {
@@ -321,25 +466,7 @@ async fn set_scale(
             "env_not_found",
             format!("Environment {} not found", env_id),
         )
-        .with_request_id(request_id.to_string()));
-    }
-
-    // Validate process counts
-    for (process_type, count) in &req.process_counts {
-        if process_type.is_empty() {
-            return Err(ApiError::bad_request(
-                "invalid_process_type",
-                "Process type cannot be empty",
-            )
-            .with_request_id(request_id.to_string()));
-        }
-        if *count < 0 {
-            return Err(ApiError::bad_request(
-                "invalid_count",
-                format!("Count for '{}' must be non-negative", process_type),
-            )
-            .with_request_id(request_id.to_string()));
-        }
+        .with_request_id(request_id.clone()));
     }
 
     let event_store = state.db().event_store();
@@ -349,18 +476,19 @@ async fn set_scale(
         .map_err(|e| {
             tracing::error!(error = %e, "Failed to get aggregate sequence");
             ApiError::internal("internal_error", "Failed to set scale")
-                .with_request_id(request_id.to_string())
+                .with_request_id(request_id.clone())
         })?
         .unwrap_or(0);
 
     // Convert process_counts map to scales array format expected by projection
-    let scales: Vec<serde_json::Value> = req
-        .process_counts
-        .iter()
+    let mut process_counts: Vec<_> = req.process_counts.iter().collect();
+    process_counts.sort_by(|(a, _), (b, _)| a.cmp(b));
+    let scales: Vec<serde_json::Value> = process_counts
+        .into_iter()
         .map(|(process_type, count)| {
             serde_json::json!({
                 "process_type": process_type,
-                "desired": count
+                "desired": *count
             })
         })
         .collect();
@@ -372,13 +500,13 @@ async fn set_scale(
         aggregate_seq: current_seq + 1,
         event_type: "env.scale_set".to_string(),
         event_version: 1,
-        actor_type: ActorType::System, // TODO: Extract from auth context
-        actor_id: "system".to_string(),
-        org_id: Some(org_id.clone()),
-        request_id: request_id.to_string(),
-        idempotency_key: None,
-        app_id: Some(app_id.clone()),
-        env_id: Some(env_id.clone()),
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: Some(env_id),
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
@@ -390,19 +518,59 @@ async fn set_scale(
     };
 
     // Append the event
-    event_store.append(event).await.map_err(|e| {
+    let event_id = event_store.append(event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to set scale");
         ApiError::internal("internal_error", "Failed to set scale")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     tracing::info!(
         env_id = %env_id,
-        process_counts = ?req.process_counts,
+        scale_entries = scales.len(),
         "Scale set for environment"
     );
 
-    Ok((StatusCode::OK, Json(SetScaleResponse { success: true })))
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "env_config",
+            event_id.value(),
+            std::time::Duration::from_secs(2),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
+
+    let response = SetScaleResponse { success: true };
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to set scale")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// Get a single environment by ID.
@@ -410,20 +578,21 @@ async fn set_scale(
 /// GET /v1/apps/{app_id}/envs/{env_id}
 async fn get_env(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((app_id, env_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate app_id format
     let _app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Validate env_id format
     let _env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Query the envs_view table
@@ -440,7 +609,7 @@ async fn get_env(
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, env_id = %env_id, "Failed to get env");
         ApiError::internal("internal_error", "Failed to get environment")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     match row {
@@ -449,7 +618,7 @@ async fn get_env(
             "env_not_found",
             format!("Environment {} not found", env_id),
         )
-        .with_request_id(request_id.to_string())),
+        .with_request_id(request_id)),
     }
 }
 

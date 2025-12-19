@@ -125,6 +125,14 @@ impl ProjectionWorker {
 
             // Process each event
             for event in events {
+                if self.registry.handler_for(&event.event_type).is_none() {
+                    warn!(
+                        event_id = event.event_id,
+                        event_type = %event.event_type,
+                        "No projection handler registered for event type"
+                    );
+                }
+
                 // Skip events that all projections have already processed
                 let projections_needing_event: Vec<_> = self
                     .registry
@@ -132,7 +140,8 @@ impl ProjectionWorker {
                     .iter()
                     .filter(|h| {
                         let checkpoint = checkpoints.get(h.name()).copied().unwrap_or(0);
-                        checkpoint < event.event_id && h.event_types().contains(&event.event_type.as_str())
+                        checkpoint < event.event_id
+                            && h.event_types().contains(&event.event_type.as_str())
                     })
                     .collect();
 
@@ -215,7 +224,10 @@ impl ProjectionWorker {
                 }
                 Err(crate::db::DbError::ProjectionNotFound(_)) => {
                     // Projection checkpoint doesn't exist, start from 0
-                    warn!(projection = name, "Projection checkpoint not found, starting from 0");
+                    warn!(
+                        projection = name,
+                        "Projection checkpoint not found, starting from 0"
+                    );
                     checkpoints.insert(name.to_string(), 0);
                 }
                 Err(e) => {

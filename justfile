@@ -32,7 +32,7 @@ build: build-cli build-services build-web
 # Build the CLI
 build-cli:
     @echo "Building ghostctl CLI..."
-    @echo "[placeholder] cargo build --release -p ghostctl"
+    scripts/dev/with-macos-libiconv.sh cargo build --release -p ghostctl
 
 # Build service images
 build-services: build-control-plane build-node-agent build-ingress
@@ -41,17 +41,17 @@ build-services: build-control-plane build-node-agent build-ingress
 # Build control-plane service
 build-control-plane:
     @echo "Building control-plane..."
-    @echo "[placeholder] docker build -t ghcr.io/plfm-vt/control-plane:dev services/control-plane"
+    scripts/dev/with-macos-libiconv.sh cargo build --release -p plfm-control-plane
 
 # Build node-agent service
 build-node-agent:
     @echo "Building node-agent..."
-    @echo "[placeholder] docker build -t ghcr.io/plfm-vt/node-agent:dev services/node-agent"
+    scripts/dev/with-macos-libiconv.sh cargo build --release -p plfm-node-agent
 
 # Build ingress service
 build-ingress:
     @echo "Building ingress..."
-    @echo "[placeholder] docker build -t ghcr.io/plfm-vt/ingress:dev services/ingress"
+    scripts/dev/with-macos-libiconv.sh cargo build --release -p plfm-ingress
 
 # Build OCI images for all services
 build-images: build-services
@@ -59,7 +59,11 @@ build-images: build-services
 # Build frontend assets (console + web terminal)
 build-web:
     @echo "Building frontend..."
-    @echo "[placeholder] cd frontend && npm run build"
+    @if [ -f "frontend/package.json" ]; then \
+        (cd frontend && npm run build); \
+    else \
+        echo "No frontend package.json found; skipping."; \
+    fi
 
 # =============================================================================
 # Format, Lint, Test
@@ -68,23 +72,35 @@ build-web:
 # Format all code
 fmt:
     @echo "Formatting code..."
-    @echo "[placeholder] cargo fmt --all"
-    @echo "[placeholder] gofmt -w ."
-    @echo "[placeholder] prettier --write 'frontend/**/*.{ts,tsx,js,json,css}'"
+    cargo fmt --all
+    @if [ -f "go.mod" ]; then gofmt -w .; else echo "No go.mod; skipping gofmt."; fi
+    @if [ -f "frontend/package.json" ]; then \
+        npx prettier --write 'frontend/**/*.{ts,tsx,js,json,css}'; \
+    else \
+        echo "No frontend package.json; skipping prettier."; \
+    fi
 
 # Check formatting without modifying
 fmt-check:
     @echo "Checking formatting..."
-    @echo "[placeholder] cargo fmt --all --check"
-    @echo "[placeholder] gofmt -l . | grep -q . && exit 1 || true"
-    @echo "[placeholder] prettier --check 'frontend/**/*.{ts,tsx,js,json,css}'"
+    cargo fmt --all --check
+    @if [ -f "go.mod" ]; then \
+        test -z "$$(gofmt -l .)"; \
+    else \
+        echo "No go.mod; skipping gofmt check."; \
+    fi
+    @if [ -f "frontend/package.json" ]; then \
+        npx prettier --check 'frontend/**/*.{ts,tsx,js,json,css}'; \
+    else \
+        echo "No frontend package.json; skipping prettier check."; \
+    fi
 
 # Run all linters
 lint:
     @echo "Running linters..."
-    @echo "[placeholder] cargo clippy --all-targets --all-features -- -D warnings"
-    @echo "[placeholder] staticcheck ./..."
-    @echo "[placeholder] eslint frontend/"
+    scripts/dev/with-macos-libiconv.sh cargo clippy --workspace --all-targets --all-features -- -D warnings
+    @if [ -f "go.mod" ]; then staticcheck ./...; else echo "No go.mod; skipping staticcheck."; fi
+    @if [ -f "frontend/package.json" ]; then (cd frontend && npm run lint); else echo "No frontend package.json; skipping eslint."; fi
 
 # Run all tests
 test: test-unit test-integration
@@ -93,15 +109,15 @@ test: test-unit test-integration
 # Run unit tests only
 test-unit:
     @echo "Running unit tests..."
-    @echo "[placeholder] cargo test --lib"
-    @echo "[placeholder] go test ./... -short"
-    @echo "[placeholder] cd frontend && npm test"
+    scripts/dev/with-macos-libiconv.sh cargo test --workspace --lib
+    @if [ -f "go.mod" ]; then go test ./... -short; else echo "No go.mod; skipping go test."; fi
+    @if [ -f "frontend/package.json" ]; then (cd frontend && npm test); else echo "No frontend package.json; skipping frontend tests."; fi
 
 # Run integration tests
 test-integration:
     @echo "Running integration tests..."
-    @echo "[placeholder] cargo test --test '*'"
-    @echo "[placeholder] go test ./test/integration/..."
+    scripts/dev/with-macos-libiconv.sh cargo test --workspace --tests
+    @if [ -f "go.mod" ]; then go test ./test/integration/...; else echo "No go.mod; skipping go integration tests."; fi
 
 # Run end-to-end tests (requires dev stack)
 test-e2e:
@@ -159,7 +175,7 @@ dev-status:
 
 # Run control plane in dev mode (requires dev-up first)
 dev-control-plane:
-    DATABASE_URL=postgres://plfm:plfm_dev@localhost:5432/plfm GHOST_DEV=1 RUST_LOG=debug,sqlx=warn cargo run -p plfm-control-plane
+    DATABASE_URL=postgres://plfm:plfm_dev@localhost:5432/plfm GHOST_DEV=1 RUST_LOG=debug,sqlx=warn scripts/dev/with-macos-libiconv.sh cargo run -p plfm-control-plane
 
 # Run node agent in dev mode (requires control plane running)
 dev-node-agent:
@@ -189,12 +205,25 @@ web-build: build-web
 # Validate OpenAPI spec
 validate-openapi:
     @echo "Validating OpenAPI spec..."
-    @echo "[placeholder] npx @redocly/cli lint api/openapi/openapi.yaml"
+    @if command -v redocly >/dev/null 2>&1; then \
+        redocly lint api/openapi/openapi.yaml --skip-rule=no-empty-servers; \
+    else \
+        echo "redocly not installed; run: npm i -g @redocly/cli"; \
+        exit 1; \
+    fi
 
 # Validate JSON schemas
 validate-schemas:
     @echo "Validating JSON schemas..."
-    @echo "[placeholder] ajv compile -s 'api/schemas/*.json'"
+    @if command -v ajv >/dev/null 2>&1; then \
+        for schema in api/schemas/*.json; do \
+            echo "Validating $schema"; \
+            ajv compile -s "$schema" --spec=draft2020 -c ajv-formats; \
+        done; \
+    else \
+        echo "ajv not installed; run: npm i -g ajv-cli ajv-formats"; \
+        exit 1; \
+    fi
 
 # Validate all API contracts
 validate-api: validate-openapi validate-schemas

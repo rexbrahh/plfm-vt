@@ -55,8 +55,3 @@ pub fn print_success(message: &str) {
 pub fn print_info(message: &str) {
     println!("{} {}", "Info:".blue().bold(), message);
 }
-
-/// Print a warning message.
-pub fn print_warning(message: &str) {
-    println!("{} {}", "Warning:".yellow().bold(), message);
-}

@@ -51,10 +51,7 @@ impl ProjectionHandler for EnvConfigProjection {
     }
 
     fn event_types(&self) -> &'static [&'static str] {
-        &[
-            "env.desired_release_set",
-            "env.scale_set",
-        ]
+        &["env.desired_release_set", "env.scale_set"]
     }
 
     #[instrument(skip(self, tx, event), fields(event_id = event.event_id, event_type = %event.event_type))]

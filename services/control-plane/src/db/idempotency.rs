@@ -4,7 +4,6 @@
 //! If a command is retried with the same idempotency key, we return the stored response.
 //! If the key is reused with a different request, we return 409 Conflict.
 
-use chrono::{DateTime, Utc};
 use sqlx::{postgres::PgPool, postgres::PgRow, Row};
 
 use super::DbError;
@@ -12,27 +11,17 @@ use super::DbError;
 /// An idempotency record.
 #[derive(Debug, Clone)]
 pub struct IdempotencyRecord {
-    pub org_id: String,
-    pub actor_id: String,
-    pub endpoint_name: String,
-    pub idempotency_key: String,
     pub request_hash: String,
     pub response_status_code: i32,
     pub response_body: Option<serde_json::Value>,
-    pub created_at: DateTime<Utc>,
 }
 
 impl<'r> sqlx::FromRow<'r, PgRow> for IdempotencyRecord {
     fn from_row(row: &'r PgRow) -> Result<Self, sqlx::Error> {
         Ok(Self {
-            org_id: row.try_get("org_id")?,
-            actor_id: row.try_get("actor_id")?,
-            endpoint_name: row.try_get("endpoint_name")?,
-            idempotency_key: row.try_get("idempotency_key")?,
             request_hash: row.try_get("request_hash")?,
             response_status_code: row.try_get("response_status_code")?,
             response_body: row.try_get("response_body")?,
-            created_at: row.try_get("created_at")?,
         })
     }
 }
@@ -52,6 +41,18 @@ pub enum IdempotencyCheck {
 #[derive(Clone)]
 pub struct IdempotencyStore {
     pool: PgPool,
+}
+
+/// Input for storing an idempotency record.
+#[derive(Debug)]
+pub struct StoreIdempotencyRecord {
+    pub org_id: String,
+    pub actor_id: String,
+    pub endpoint_name: String,
+    pub idempotency_key: String,
+    pub request_hash: String,
+    pub response_status_code: i32,
+    pub response_body: Option<serde_json::Value>,
 }
 
 impl IdempotencyStore {
@@ -76,19 +77,14 @@ impl IdempotencyStore {
     ) -> Result<IdempotencyCheck, DbError> {
         let record = sqlx::query_as::<_, IdempotencyRecord>(
             r#"
-            SELECT 
-                org_id,
-                actor_id,
-                endpoint_name,
-                idempotency_key,
+            SELECT
                 request_hash,
                 response_status_code,
-                response_body,
-                created_at
+                response_body
             FROM idempotency_records
-            WHERE org_id = $1 
-              AND actor_id = $2 
-              AND endpoint_name = $3 
+            WHERE org_id = $1
+              AND actor_id = $2
+              AND endpoint_name = $3
               AND idempotency_key = $4
             "#,
         )
@@ -115,16 +111,7 @@ impl IdempotencyStore {
     /// Store a new idempotency record.
     ///
     /// This should be called after successfully processing a request.
-    pub async fn store(
-        &self,
-        org_id: &str,
-        actor_id: &str,
-        endpoint_name: &str,
-        idempotency_key: &str,
-        request_hash: &str,
-        response_status_code: i32,
-        response_body: Option<serde_json::Value>,
-    ) -> Result<(), DbError> {
+    pub async fn store(&self, record: StoreIdempotencyRecord) -> Result<(), DbError> {
         sqlx::query(
             r#"
             INSERT INTO idempotency_records (
@@ -137,17 +124,17 @@ impl IdempotencyStore {
                 response_body
             )
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            ON CONFLICT (org_id, actor_id, endpoint_name, idempotency_key) 
+            ON CONFLICT (org_id, actor_id, endpoint_name, idempotency_key)
             DO NOTHING
             "#,
         )
-        .bind(org_id)
-        .bind(actor_id)
-        .bind(endpoint_name)
-        .bind(idempotency_key)
-        .bind(request_hash)
-        .bind(response_status_code)
-        .bind(response_body)
+        .bind(record.org_id)
+        .bind(record.actor_id)
+        .bind(record.endpoint_name)
+        .bind(record.idempotency_key)
+        .bind(record.request_hash)
+        .bind(record.response_status_code)
+        .bind(record.response_body)
         .execute(&self.pool)
         .await
         .map_err(DbError::Query)?;

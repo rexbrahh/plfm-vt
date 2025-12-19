@@ -60,17 +60,17 @@ impl AppsCommand {
 struct AppResponse {
     #[tabled(rename = "ID")]
     id: String,
-    
+
     #[tabled(rename = "Org ID")]
     org_id: String,
-    
+
     #[tabled(rename = "Name")]
     name: String,
-    
+
     #[tabled(rename = "Description", display_with = "display_option")]
     #[serde(default)]
     description: Option<String>,
-    
+
     #[tabled(rename = "Created")]
     created_at: String,
 }
@@ -99,11 +99,9 @@ struct CreateAppRequest {
 async fn list_apps(ctx: CommandContext) -> Result<()> {
     let org = ctx.require_org()?;
     let client = ctx.client()?;
-    
-    let response: ListAppsResponse = client
-        .get(&format!("/v1/orgs/{}/apps", org))
-        .await?;
-    
+
+    let response: ListAppsResponse = client.get(&format!("/v1/orgs/{}/apps", org)).await?;
+
     print_output(&response.items, ctx.format);
     Ok(())
 }
@@ -112,16 +110,16 @@ async fn list_apps(ctx: CommandContext) -> Result<()> {
 async fn create_app(ctx: CommandContext, args: CreateAppArgs) -> Result<()> {
     let org = ctx.require_org()?;
     let client = ctx.client()?;
-    
+
     let request = CreateAppRequest {
         name: args.name.clone(),
         description: args.description,
     };
-    
+
     let response: AppResponse = client
         .post(&format!("/v1/orgs/{}/apps", org), &request)
         .await?;
-    
+
     match ctx.format {
         OutputFormat::Json => print_single(&response, ctx.format),
         OutputFormat::Table => {
@@ -131,7 +129,7 @@ async fn create_app(ctx: CommandContext, args: CreateAppArgs) -> Result<()> {
             ));
         }
     }
-    
+
     Ok(())
 }
 
@@ -139,7 +137,7 @@ async fn create_app(ctx: CommandContext, args: CreateAppArgs) -> Result<()> {
 async fn get_app(ctx: CommandContext, args: GetAppArgs) -> Result<()> {
     let org = ctx.require_org()?;
     let client = ctx.client()?;
-    
+
     let response: AppResponse = client
         .get(&format!("/v1/orgs/{}/apps/{}", org, args.app))
         .await
@@ -149,7 +147,7 @@ async fn get_app(ctx: CommandContext, args: GetAppArgs) -> Result<()> {
             }
             other => other,
         })?;
-    
+
     print_single(&response, ctx.format);
     Ok(())
 }

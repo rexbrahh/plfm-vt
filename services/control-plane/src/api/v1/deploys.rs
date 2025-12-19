@@ -6,16 +6,18 @@
 use axum::{
     extract::{Path, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use plfm_events::{ActorType, AggregateType, DeployStatus};
-use plfm_id::{AppId, DeployId, EnvId, OrgId, ReleaseId, RequestId};
+use plfm_events::{AggregateType, DeployStatus};
+use plfm_id::{AppId, DeployId, EnvId, OrgId, ReleaseId};
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
+use crate::api::idempotency;
+use crate::api::request_context::RequestContext;
 use crate::db::AppendEvent;
 use crate::state::AppState;
 
@@ -26,7 +28,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_deploy))
         .route("/", get(list_deploys))
-        .route("/{deploy_id}", get(get_deploy))
+        .route("/:deploy_id", get(get_deploy))
 }
 
 // =============================================================================
@@ -34,7 +36,7 @@ pub fn routes() -> Router<AppState> {
 // =============================================================================
 
 /// Request to create a new deploy.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub struct CreateDeployRequest {
     /// Release ID to deploy.
     pub release_id: String,
@@ -108,31 +110,71 @@ pub struct ListDeploysResponse {
 /// POST /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/deploys
 async fn create_deploy(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
     Json(req): Json<CreateDeployRequest>,
-) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+) -> Result<Response, ApiError> {
+    let RequestContext {
+        request_id,
+        idempotency_key,
+        actor_type,
+        actor_id,
+    } = ctx;
+    let endpoint_name = "deploys.create";
 
     // Validate IDs
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let release_id: ReleaseId = req.release_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_release_id", "Invalid release ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "app_id": app_id.to_string(),
+                "env_id": env_id.to_string(),
+                "body": &req
+            });
+            idempotency::request_hash(endpoint_name, &hash_input)
+                .map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
 
     // Validate env exists and belongs to app
     let env_exists = sqlx::query_scalar::<_, bool>(
@@ -143,9 +185,9 @@ async fn create_deploy(
     .fetch_one(state.db().pool())
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, "Failed to check env existence");
+        tracing::error!(error = %e, request_id = %request_id, "Failed to check env existence");
         ApiError::internal("internal_error", "Failed to verify environment")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if !env_exists {
@@ -153,7 +195,7 @@ async fn create_deploy(
             "env_not_found",
             format!("Environment {} not found in application {}", env_id, app_id),
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     // Validate release exists and belongs to app
@@ -165,9 +207,9 @@ async fn create_deploy(
     .fetch_one(state.db().pool())
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, "Failed to check release existence");
+        tracing::error!(error = %e, request_id = %request_id, "Failed to check release existence");
         ApiError::internal("internal_error", "Failed to verify release")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     if !release_exists {
@@ -175,11 +217,15 @@ async fn create_deploy(
             "release_not_found",
             format!("Release {} not found in application {}", release_id, app_id),
         )
-        .with_request_id(request_id.to_string()));
+        .with_request_id(request_id.clone()));
     }
 
     let deploy_id = DeployId::new();
-    let kind = if req.is_rollback { "rollback" } else { "deploy" };
+    let kind = if req.is_rollback {
+        "rollback"
+    } else {
+        "deploy"
+    };
     let process_types = req.process_types.unwrap_or_else(|| vec!["web".to_string()]);
 
     // Create the event
@@ -189,13 +235,13 @@ async fn create_deploy(
         aggregate_seq: 1,
         event_type: "deploy.created".to_string(),
         event_version: 1,
-        actor_type: ActorType::System, // TODO: Extract from auth context
-        actor_id: "system".to_string(),
-        org_id: Some(org_id.clone()),
-        request_id: request_id.to_string(),
-        idempotency_key: None,
-        app_id: Some(app_id.clone()),
-        env_id: Some(env_id.clone()),
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: Some(env_id),
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
@@ -208,29 +254,77 @@ async fn create_deploy(
 
     // Append the event
     let event_store = state.db().event_store();
-    event_store.append(event).await.map_err(|e| {
+    let event_id = event_store.append(event).await.map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to create deploy");
         ApiError::internal("internal_error", "Failed to create deploy")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
-    let now = Utc::now();
-    let response = DeployResponse {
-        id: deploy_id.to_string(),
-        org_id: org_id.to_string(),
-        app_id: app_id.to_string(),
-        env_id: env_id.to_string(),
-        kind: kind.to_string(),
-        release_id: release_id.to_string(),
-        process_types,
-        status: "queued".to_string(),
-        message: None,
-        resource_version: 1,
-        created_at: now,
-        updated_at: now,
-    };
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "deploys",
+            event_id.value(),
+            std::time::Duration::from_secs(2),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
 
-    Ok((StatusCode::CREATED, Json(response)))
+    let row = sqlx::query_as::<_, DeployRow>(
+        r#"
+        SELECT deploy_id, org_id, app_id, env_id, kind, release_id, process_types,
+               status, message, resource_version, created_at, updated_at
+        FROM deploys_view
+        WHERE deploy_id = $1 AND org_id = $2 AND app_id = $3 AND env_id = $4
+        "#,
+    )
+    .bind(deploy_id.to_string())
+    .bind(&org_scope)
+    .bind(app_id.to_string())
+    .bind(env_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load deploy");
+        ApiError::internal("internal_error", "Failed to load deploy")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::internal("internal_error", "Deploy was not materialized")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let response = DeployResponse::from(row);
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to create deploy")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 /// List deploys for an environment.
@@ -238,24 +332,25 @@ async fn create_deploy(
 /// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/deploys
 async fn list_deploys(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id)): Path<(String, String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate IDs
     let _org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let _app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let _env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Query the deploys_view table
@@ -264,18 +359,20 @@ async fn list_deploys(
         SELECT deploy_id, org_id, app_id, env_id, kind, release_id, process_types,
                status, message, resource_version, created_at, updated_at
         FROM deploys_view
-        WHERE env_id = $1
+        WHERE org_id = $1 AND app_id = $2 AND env_id = $3
         ORDER BY created_at DESC
         LIMIT 100
         "#,
     )
+    .bind(&org_id)
+    .bind(&app_id)
     .bind(&env_id)
     .fetch_all(state.db().pool())
     .await
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to list deploys");
         ApiError::internal("internal_error", "Failed to list deploys")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let items: Vec<DeployResponse> = rows.into_iter().map(DeployResponse::from).collect();
@@ -289,29 +386,30 @@ async fn list_deploys(
 /// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/deploys/{deploy_id}
 async fn get_deploy(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path((org_id, app_id, env_id, deploy_id)): Path<(String, String, String, String)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     // Validate IDs
     let _org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let _app_id: AppId = app_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_app_id", "Invalid application ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let _env_id: EnvId = env_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let _deploy_id: DeployId = deploy_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_deploy_id", "Invalid deploy ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     // Query the deploys_view table
@@ -320,16 +418,19 @@ async fn get_deploy(
         SELECT deploy_id, org_id, app_id, env_id, kind, release_id, process_types,
                status, message, resource_version, created_at, updated_at
         FROM deploys_view
-        WHERE deploy_id = $1
+        WHERE org_id = $1 AND app_id = $2 AND env_id = $3 AND deploy_id = $4
         "#,
     )
+    .bind(&org_id)
+    .bind(&app_id)
+    .bind(&env_id)
     .bind(&deploy_id)
     .fetch_optional(state.db().pool())
     .await
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, deploy_id = %deploy_id, "Failed to get deploy");
         ApiError::internal("internal_error", "Failed to get deploy")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     match row {
@@ -338,7 +439,7 @@ async fn get_deploy(
             "deploy_not_found",
             format!("Deploy {} not found", deploy_id),
         )
-        .with_request_id(request_id.to_string())),
+        .with_request_id(request_id)),
     }
 }
 
@@ -384,9 +485,9 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for DeployRow {
 
 impl From<DeployRow> for DeployResponse {
     fn from(row: DeployRow) -> Self {
-        let process_types: Vec<String> = serde_json::from_value(row.process_types)
-            .unwrap_or_else(|_| vec!["web".to_string()]);
-        
+        let process_types: Vec<String> =
+            serde_json::from_value(row.process_types).unwrap_or_else(|_| vec!["web".to_string()]);
+
         Self {
             id: row.deploy_id,
             org_id: row.org_id,
@@ -416,7 +517,10 @@ mod tests {
         }"#;
         let req: CreateDeployRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.release_id, "rel_123");
-        assert_eq!(req.process_types, Some(vec!["web".to_string(), "worker".to_string()]));
+        assert_eq!(
+            req.process_types,
+            Some(vec!["web".to_string(), "worker".to_string()])
+        );
         assert!(!req.is_rollback);
     }
 

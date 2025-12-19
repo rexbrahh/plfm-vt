@@ -54,28 +54,16 @@ impl Config {
     /// Load config from disk, or return default.
     pub fn load() -> Result<Self> {
         let path = config_dir()?.join(CONFIG_FILE);
-        
+
         if !path.exists() {
             return Ok(Self::default());
         }
 
         let contents = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read config from {:?}", path))?;
-        
+
         serde_json::from_str(&contents)
             .with_context(|| format!("Failed to parse config from {:?}", path))
-    }
-
-    /// Save config to disk.
-    pub fn save(&self) -> Result<()> {
-        let dir = config_dir()?;
-        fs::create_dir_all(&dir)?;
-        
-        let path = dir.join(CONFIG_FILE);
-        let contents = serde_json::to_string_pretty(self)?;
-        
-        fs::write(&path, contents)
-            .with_context(|| format!("Failed to write config to {:?}", path))
     }
 
     /// Get the API URL.
@@ -133,17 +121,17 @@ impl Credentials {
     /// Load credentials from disk.
     pub fn load() -> Result<Option<Self>> {
         let path = config_dir()?.join(CREDENTIALS_FILE);
-        
+
         if !path.exists() {
             return Ok(None);
         }
 
         let contents = fs::read_to_string(&path)
             .with_context(|| format!("Failed to read credentials from {:?}", path))?;
-        
+
         let creds: Self = serde_json::from_str(&contents)
             .with_context(|| format!("Failed to parse credentials from {:?}", path))?;
-        
+
         Ok(Some(creds))
     }
 
@@ -151,10 +139,10 @@ impl Credentials {
     pub fn save(&self) -> Result<()> {
         let dir = config_dir()?;
         fs::create_dir_all(&dir)?;
-        
+
         let path = dir.join(CREDENTIALS_FILE);
         let contents = serde_json::to_string_pretty(self)?;
-        
+
         // Set restrictive permissions on Unix
         #[cfg(unix)]
         {
@@ -167,25 +155,27 @@ impl Credentials {
                 .open(&path)?;
             use std::io::Write;
             file.write_all(contents.as_bytes())?;
-            return Ok(());
         }
-        
+
         #[cfg(not(unix))]
         {
             fs::write(&path, contents)
                 .with_context(|| format!("Failed to write credentials to {:?}", path))
+                .map(|_| ())?;
         }
+
+        Ok(())
     }
 
     /// Delete credentials from disk.
     pub fn delete() -> Result<()> {
         let path = config_dir()?.join(CREDENTIALS_FILE);
-        
+
         if path.exists() {
             fs::remove_file(&path)
                 .with_context(|| format!("Failed to delete credentials at {:?}", path))?;
         }
-        
+
         Ok(())
     }
 

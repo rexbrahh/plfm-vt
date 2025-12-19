@@ -108,8 +108,7 @@ impl Reconciler {
         if plan.plan_version <= last_version {
             debug!(
                 plan_version = plan.plan_version,
-                last_version,
-                "Plan version not newer, skipping"
+                last_version, "Plan version not newer, skipping"
             );
             return Ok(());
         }

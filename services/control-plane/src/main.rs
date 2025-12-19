@@ -5,34 +5,29 @@
 //! reconciliation of desired vs current state.
 
 use anyhow::Result;
+use plfm_control_plane::{
+    api, config,
+    db::Database,
+    projections::{worker::WorkerConfig, ProjectionWorker},
+    scheduler::SchedulerWorker,
+    state::AppState,
+};
 use tokio::sync::watch;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-mod api;
-mod config;
-mod db;
-mod projections;
-mod scheduler;
-mod state;
-
-use db::Database;
-use projections::{ProjectionWorker, worker::WorkerConfig};
-use scheduler::SchedulerWorker;
-use state::AppState;
-
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
+    // Load configuration
+    let config = config::Config::from_env()?;
+
+    // Initialize tracing (prefer RUST_LOG, fallback to GHOST_LOG_LEVEL)
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| config.log_level.clone().into()))
         .with(tracing_subscriber::fmt::layer().json())
         .init();
 
     info!("Starting plfm-vt control plane");
-
-    // Load configuration
-    let config = config::Config::from_env()?;
     info!(listen_addr = %config.listen_addr, "Configuration loaded");
 
     // Connect to database
@@ -129,11 +124,11 @@ async fn main() -> Result<()> {
     // Wait for workers to finish
     info!("Waiting for workers to shut down...");
     let shutdown_timeout = std::time::Duration::from_secs(10);
-    
+
     if let Err(e) = tokio::time::timeout(shutdown_timeout, projection_handle).await {
         warn!(error = %e, "Projection worker did not shut down in time");
     }
-    
+
     if let Err(e) = tokio::time::timeout(shutdown_timeout, scheduler_handle).await {
         warn!(error = %e, "Scheduler worker did not shut down in time");
     }

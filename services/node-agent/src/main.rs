@@ -31,16 +31,16 @@ use runtime::MockRuntime;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize tracing
+    // Load configuration
+    let config = config::Config::from_env()?;
+
+    // Initialize tracing (prefer RUST_LOG, fallback to GHOST_LOG_LEVEL)
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| config.log_level.clone().into()))
         .with(tracing_subscriber::fmt::layer().json())
         .init();
 
     info!("Starting plfm-vt node agent");
-
-    // Load configuration
-    let config = config::Config::from_env()?;
     info!(
         node_id = %config.node_id,
         control_plane_url = %config.control_plane_url,
@@ -62,9 +62,7 @@ async fn main() -> Result<()> {
         let config = config.clone();
         let instance_manager = Arc::clone(&instance_manager);
         let shutdown_rx = shutdown_rx.clone();
-        async move {
-            heartbeat::run_heartbeat_loop(config, instance_manager, shutdown_rx).await
-        }
+        async move { heartbeat::run_heartbeat_loop(config, instance_manager, shutdown_rx).await }
     });
 
     // Start the reconciliation loop

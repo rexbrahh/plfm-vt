@@ -9,10 +9,10 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use plfm_id::OrgId;
-use plfm_id::RequestId;
 use serde::{Deserialize, Serialize};
 
 use crate::api::error::ApiError;
+use crate::api::request_context::RequestContext;
 use crate::state::AppState;
 
 /// Query parameters for listing events.
@@ -36,6 +36,8 @@ pub struct EventResponse {
     pub event_id: i64,
     pub occurred_at: DateTime<Utc>,
     pub event_type: String,
+    pub event_version: i32,
+    pub actor_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub aggregate_type: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -44,6 +46,13 @@ pub struct EventResponse {
     pub aggregate_seq: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub actor_id: Option<String>,
+    pub request_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub idempotency_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub correlation_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub causation_id: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub payload: Option<serde_json::Value>,
 }
@@ -60,67 +69,64 @@ pub struct EventsResponse {
 /// GET /v1/orgs/{org_id}/events
 pub async fn list_events(
     State(state): State<AppState>,
+    ctx: RequestContext,
     Path(org_id): Path<String>,
     Query(query): Query<ListEventsQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let request_id = RequestId::new();
+    let request_id = ctx.request_id;
 
     let org_id: OrgId = org_id.parse().map_err(|_| {
         ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
-            .with_request_id(request_id.to_string())
+            .with_request_id(request_id.clone())
     })?;
 
     let after_event_id = query.after_event_id.unwrap_or(0).max(0);
-    let limit = query.limit.unwrap_or(50).clamp(1, 200) as i64;
+    let limit: i32 = query.limit.unwrap_or(50).clamp(1, 200) as i32;
 
-    let rows = sqlx::query_as::<_, crate::db::EventRow>(
-        r#"
-        SELECT
-            event_id,
-            occurred_at,
-            aggregate_type,
-            aggregate_id,
-            aggregate_seq,
-            event_type,
-            event_version,
-            actor_type,
-            actor_id,
-            org_id,
-            request_id,
-            idempotency_key,
-            app_id,
-            env_id,
-            correlation_id,
-            causation_id,
-            payload
-        FROM events
-        WHERE org_id = $1
-          AND event_id > $2
-          AND ($3::TEXT IS NULL OR event_type = $3)
-          AND ($4::TEXT IS NULL OR app_id = $4)
-          AND ($5::TEXT IS NULL OR env_id = $5)
-        ORDER BY event_id ASC
-        LIMIT $6
-        "#,
-    )
-    .bind(org_id.to_string())
-    .bind(after_event_id)
-    .bind(query.event_type.as_deref())
-    .bind(query.app_id.as_deref())
-    .bind(query.env_id.as_deref())
-    .bind(limit)
-    .fetch_all(state.db().pool())
-    .await
-    .map_err(|e| {
-        tracing::error!(
-            error = %e,
-            request_id = %request_id,
-            org_id = %org_id,
-            "Failed to query events"
-        );
-        ApiError::internal("internal_error", "Failed to query events")
-            .with_request_id(request_id.to_string())
-    })?;
+    let event_store = state.db().event_store();
+    let org_id_str = org_id.to_string();
+    let mut rows = if let Some(event_type) = query.event_type.as_deref() {
+        let fetch_limit = limit.saturating_mul(10).clamp(1, 2000);
+        event_store
+            .query_by_type_after_cursor(event_type, after_event_id, fetch_limit)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    error = %e,
+                    request_id = %request_id,
+                    org_id = %org_id,
+                    event_type = %event_type,
+                    "Failed to query events"
+                );
+                ApiError::internal("internal_error", "Failed to query events")
+                    .with_request_id(request_id.clone())
+            })?
+            .into_iter()
+            .filter(|row| row.org_id.as_deref() == Some(org_id_str.as_str()))
+            .take(limit as usize)
+            .collect::<Vec<_>>()
+    } else {
+        event_store
+            .query_by_org_after_cursor(&org_id, after_event_id, limit)
+            .await
+            .map_err(|e| {
+                tracing::error!(
+                    error = %e,
+                    request_id = %request_id,
+                    org_id = %org_id,
+                    "Failed to query events"
+                );
+                ApiError::internal("internal_error", "Failed to query events")
+                    .with_request_id(request_id.clone())
+            })?
+    };
+
+    if let Some(app_id) = query.app_id.as_deref() {
+        rows.retain(|row| row.app_id.as_deref() == Some(app_id));
+    }
+    if let Some(env_id) = query.env_id.as_deref() {
+        rows.retain(|row| row.env_id.as_deref() == Some(env_id));
+    }
 
     let mut items = Vec::with_capacity(rows.len());
     for row in rows {
@@ -128,10 +134,16 @@ pub async fn list_events(
             event_id: row.event_id,
             occurred_at: row.occurred_at,
             event_type: row.event_type,
+            event_version: row.event_version,
+            actor_type: row.actor_type,
             aggregate_type: Some(row.aggregate_type),
             aggregate_id: Some(row.aggregate_id),
             aggregate_seq: Some(row.aggregate_seq),
             actor_id: Some(row.actor_id),
+            request_id: row.request_id,
+            idempotency_key: row.idempotency_key,
+            correlation_id: row.correlation_id,
+            causation_id: row.causation_id,
             payload: Some(row.payload),
         });
     }

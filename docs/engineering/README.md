@@ -82,4 +82,5 @@ If the change is architectural, add or update an ADR.
 ## Quick links
 
 - Implementing a new resource end-to-end: implementing-a-new-resource.md
+- Core loop demo (request-id/idempotency/RYW): core-loop-demo.md
 - Staff handoff and 4-week execution plan: staff-handoff.md

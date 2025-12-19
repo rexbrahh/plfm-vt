@@ -82,17 +82,20 @@ async fn status(ctx: CommandContext) -> Result<()> {
     match ctx.credentials {
         Some(creds) => {
             println!("{} Authenticated", "Status:".green().bold());
-            
+
             if let Some(email) = &creds.email {
                 println!("  Email: {}", email);
             }
-            
+
             if let Some(user_id) = &creds.user_id {
                 println!("  User ID: {}", user_id);
             }
-            
+
             if creds.is_expired() {
-                println!("  {} Token has expired. Run `vt auth login`.", "Warning:".yellow());
+                println!(
+                    "  {} Token has expired. Run `vt auth login`.",
+                    "Warning:".yellow()
+                );
             } else if let Some(expires_at) = creds.expires_at {
                 println!("  Expires: {}", expires_at);
             }
@@ -102,7 +105,7 @@ async fn status(ctx: CommandContext) -> Result<()> {
             println!("\nRun {} to log in.", "vt auth login".cyan());
         }
     }
-    
+
     Ok(())
 }
 
@@ -122,6 +125,6 @@ async fn whoami(ctx: CommandContext) -> Result<()> {
             println!("Not logged in");
         }
     }
-    
+
     Ok(())
 }
