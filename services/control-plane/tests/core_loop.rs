@@ -245,6 +245,132 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     assert_eq!(secrets_get_2["bundle_id"], bundle_id);
     assert_eq!(secrets_get_2["current_version_id"], version_id);
 
+    // Volumes: create, attach, snapshot, restore.
+    let create_volume_url = format!("{base_url}/v1/orgs/{org_id}/volumes");
+    let idem_volume = format!("itest-vol-{}-key", unique_suffix());
+    let resp_volume_create = client
+        .post(&create_volume_url)
+        .header("Authorization", auth_header)
+        .header("Idempotency-Key", &idem_volume)
+        .json(&serde_json::json!({
+            "name": "itest-data",
+            "size_bytes": 1073741824,
+            "filesystem": "ext4",
+            "backup_enabled": true
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_volume_create.status().is_success());
+    let volume: serde_json::Value = resp_volume_create.json().await.unwrap();
+    let volume_id = volume["id"]
+        .as_str()
+        .expect("missing volume id")
+        .to_string();
+
+    let get_volume_url = format!("{base_url}/v1/orgs/{org_id}/volumes/{volume_id}");
+    let resp_volume_get = client
+        .get(&get_volume_url)
+        .header("Authorization", auth_header)
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_volume_get.status().is_success());
+    let volume_get: serde_json::Value = resp_volume_get.json().await.unwrap();
+    assert_eq!(
+        volume_get["id"].as_str().expect("missing volume id"),
+        volume_id.as_str()
+    );
+    let volume_attachments = volume_get["attachments"]
+        .as_array()
+        .expect("missing attachments");
+    assert!(volume_attachments.is_empty());
+
+    let attach_url =
+        format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/volume-attachments");
+    let idem_attach = format!("itest-attach-{}-key", unique_suffix());
+    let resp_attach = client
+        .post(&attach_url)
+        .header("Authorization", auth_header)
+        .header("Idempotency-Key", &idem_attach)
+        .json(&serde_json::json!({
+            "volume_id": &volume_id,
+            "process_type": "web",
+            "mount_path": "/data",
+            "read_only": false
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_attach.status().is_success());
+    let attachment: serde_json::Value = resp_attach.json().await.unwrap();
+    let attachment_id = attachment["id"].clone();
+
+    let resp_volume_get_2 = client
+        .get(&get_volume_url)
+        .header("Authorization", auth_header)
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_volume_get_2.status().is_success());
+    let volume_get_2: serde_json::Value = resp_volume_get_2.json().await.unwrap();
+    let attachments = volume_get_2["attachments"]
+        .as_array()
+        .expect("missing attachments");
+    assert_eq!(attachments.len(), 1);
+    assert_eq!(attachments[0]["id"], attachment_id);
+
+    let snapshot_url = format!("{base_url}/v1/orgs/{org_id}/volumes/{volume_id}/snapshots");
+    let idem_snapshot = format!("itest-snap-{}-key", unique_suffix());
+    let resp_snapshot = client
+        .post(&snapshot_url)
+        .header("Authorization", auth_header)
+        .header("Idempotency-Key", &idem_snapshot)
+        .json(&serde_json::json!({ "note": "itest" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_snapshot.status().is_success());
+    let snapshot: serde_json::Value = resp_snapshot.json().await.unwrap();
+    let snapshot_id = snapshot["id"]
+        .as_str()
+        .expect("missing snapshot id")
+        .to_string();
+
+    let list_snapshots_url =
+        format!("{base_url}/v1/orgs/{org_id}/volumes/{volume_id}/snapshots?limit=200");
+    let resp_snapshots_list = client
+        .get(&list_snapshots_url)
+        .header("Authorization", auth_header)
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_snapshots_list.status().is_success());
+    let snapshots_list: serde_json::Value = resp_snapshots_list.json().await.unwrap();
+    let items = snapshots_list["items"]
+        .as_array()
+        .expect("missing snapshot items");
+    assert!(!items.is_empty());
+
+    let restore_url = format!("{base_url}/v1/orgs/{org_id}/volumes/{volume_id}/restore");
+    let idem_restore = format!("itest-restore-{}-key", unique_suffix());
+    let resp_restore = client
+        .post(&restore_url)
+        .header("Authorization", auth_header)
+        .header("Idempotency-Key", &idem_restore)
+        .json(
+            &serde_json::json!({ "snapshot_id": snapshot_id, "new_volume_name": "itest-restored" }),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_restore.status().is_success());
+    let restored: serde_json::Value = resp_restore.json().await.unwrap();
+    assert_ne!(
+        restored["id"].as_str().expect("missing restored volume id"),
+        volume_id.as_str()
+    );
+
     // Create a release.
     let create_release_url = format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}/releases");
     let idem_release = format!("itest-release-{}-key", unique_suffix());

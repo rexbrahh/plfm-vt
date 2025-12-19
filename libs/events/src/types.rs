@@ -459,28 +459,38 @@ pub struct SecretBundleVersionSetPayload {
 pub struct VolumeCreatedPayload {
     pub volume_id: VolumeId,
     pub org_id: OrgId,
-    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
     pub size_bytes: i64,
     pub filesystem: String,
+    pub backup_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeDeletedPayload {
     pub volume_id: VolumeId,
+    pub org_id: OrgId,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeAttachmentCreatedPayload {
     pub attachment_id: VolumeAttachmentId,
+    pub org_id: OrgId,
     pub volume_id: VolumeId,
+    pub app_id: AppId,
     pub env_id: EnvId,
     pub process_type: String,
     pub mount_path: String,
+    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolumeAttachmentDeletedPayload {
     pub attachment_id: VolumeAttachmentId,
+    pub org_id: OrgId,
+    pub volume_id: VolumeId,
+    pub env_id: EnvId,
+    pub process_type: String,
 }
 
 // -----------------------------------------------------------------------------
@@ -490,16 +500,23 @@ pub struct VolumeAttachmentDeletedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotCreatedPayload {
     pub snapshot_id: SnapshotId,
+    pub org_id: OrgId,
     pub volume_id: VolumeId,
+    pub status: JobStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SnapshotStatusChangedPayload {
     pub snapshot_id: SnapshotId,
-    pub old_status: JobStatus,
-    pub new_status: JobStatus,
+    pub org_id: OrgId,
+    pub volume_id: VolumeId,
+    pub status: JobStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub failure_reason: Option<String>,
+    pub size_bytes: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed_reason: Option<String>,
 }
 
 // -----------------------------------------------------------------------------
@@ -508,18 +525,24 @@ pub struct SnapshotStatusChangedPayload {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestoreJobCreatedPayload {
-    pub job_id: RestoreJobId,
+    pub restore_id: RestoreJobId,
+    pub org_id: OrgId,
     pub snapshot_id: SnapshotId,
-    pub target_volume_id: VolumeId,
+    pub source_volume_id: VolumeId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub new_volume_name: Option<String>,
+    pub status: JobStatus,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RestoreJobStatusChangedPayload {
-    pub job_id: RestoreJobId,
-    pub old_status: JobStatus,
-    pub new_status: JobStatus,
+    pub restore_id: RestoreJobId,
+    pub org_id: OrgId,
+    pub status: JobStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub failure_reason: Option<String>,
+    pub new_volume_id: Option<VolumeId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed_reason: Option<String>,
 }
 
 // -----------------------------------------------------------------------------

@@ -14,6 +14,7 @@ mod releases;
 mod routes;
 mod scale;
 mod secrets;
+mod volumes;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -97,6 +98,9 @@ enum Commands {
     /// Manage environment secrets.
     Secrets(secrets::SecretsCommand),
 
+    /// Manage volumes, attachments, and snapshots.
+    Volumes(volumes::VolumesCommand),
+
     /// Show CLI version.
     Version,
 }
@@ -138,6 +142,7 @@ impl Cli {
             Commands::Events(cmd) => cmd.run(ctx).await,
             Commands::Routes(cmd) => cmd.run(ctx).await,
             Commands::Secrets(cmd) => cmd.run(ctx).await,
+            Commands::Volumes(cmd) => cmd.run(ctx).await,
             Commands::Version => {
                 println!("vt {}", env!("CARGO_PKG_VERSION"));
                 Ok(())

@@ -19,8 +19,12 @@ mod nodes;
 mod orgs;
 mod projects;
 mod releases;
+mod restore_jobs;
 mod routes;
 mod secret_bundles;
+mod snapshots;
+mod volume_attachments;
+mod volumes;
 pub mod worker;
 
 pub use worker::ProjectionWorker;
@@ -88,6 +92,10 @@ impl ProjectionRegistry {
                 Box::new(env_config::EnvConfigProjection),
                 Box::new(routes::RoutesProjection),
                 Box::new(secret_bundles::SecretBundlesProjection),
+                Box::new(volumes::VolumesProjection),
+                Box::new(volume_attachments::VolumeAttachmentsProjection),
+                Box::new(snapshots::SnapshotsProjection),
+                Box::new(restore_jobs::RestoreJobsProjection),
             ],
         }
     }

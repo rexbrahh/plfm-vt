@@ -16,6 +16,8 @@ mod projects;
 mod releases;
 mod routes;
 mod secrets;
+mod volume_attachments;
+mod volumes;
 
 use axum::Router;
 
@@ -65,6 +67,11 @@ pub fn routes() -> Router<AppState> {
             "/orgs/:org_id/apps/:app_id/envs/:env_id/routes",
             routes::routes(),
         )
+        // Volume attachments are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/volume-attachments
+        .nest(
+            "/orgs/:org_id/apps/:app_id/envs/:env_id/volume-attachments",
+            volume_attachments::routes(),
+        )
         // Secrets are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/secrets
         .nest(
             "/orgs/:org_id/apps/:app_id/envs/:env_id/secrets",
@@ -79,6 +86,8 @@ pub fn routes() -> Router<AppState> {
         .nest("/nodes", nodes::routes())
         // Instances are VM instances: /v1/instances
         .nest("/instances", instances::routes())
+        // Volumes are org-scoped resources: /v1/orgs/{org_id}/volumes
+        .nest("/orgs/:org_id/volumes", volumes::routes())
         // Development/debug endpoints: /v1/_debug/*
         .nest("/_debug", debug::routes())
 }
