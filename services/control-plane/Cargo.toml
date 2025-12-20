@@ -14,6 +14,7 @@ path = "src/main.rs"
 [dependencies]
 plfm-id = { workspace = true }
 plfm-events = { workspace = true }
+plfm-secrets-format = { workspace = true }
 
 # Async runtime
 tokio = { workspace = true }
@@ -23,6 +24,7 @@ axum = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
 futures-core = { workspace = true }
+futures-util = { workspace = true }
 
 # Serialization
 serde = { workspace = true }
@@ -48,10 +50,12 @@ tracing-subscriber = { workspace = true }
 # Crypto
 sha2 = { workspace = true }
 uuid = { workspace = true }
+aes-gcm = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+base64 = { workspace = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
 reqwest = { workspace = true }
 testcontainers = { workspace = true }
-rand = { workspace = true }
-base64 = { workspace = true }

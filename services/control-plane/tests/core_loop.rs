@@ -40,6 +40,70 @@ async fn wait_for_postgres(database_url: &str) {
     }
 }
 
+async fn issue_device_token(
+    client: &reqwest::Client,
+    base_url: &str,
+    db: &Database,
+    email: &str,
+) -> String {
+    let resp = client
+        .post(format!("{base_url}/v1/auth/device/start"))
+        .json(&serde_json::json!({ "device_name": "itest" }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_success());
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let device_code = body["device_code"].as_str().expect("missing device_code");
+    let user_code = body["user_code"].as_str().expect("missing user_code");
+
+    let subject_id = format!("usr_{}", unique_suffix());
+    let scopes = serde_json::json!([
+        "orgs:admin",
+        "apps:write",
+        "envs:write",
+        "releases:write",
+        "deploys:write",
+        "routes:write",
+        "volumes:write",
+        "secrets:write",
+        "logs:read"
+    ]);
+
+    sqlx::query(
+        r#"
+        UPDATE device_codes
+        SET status = 'approved',
+            approved_subject_type = 'user',
+            approved_subject_id = $1,
+            approved_subject_email = $2,
+            approved_scopes = $3,
+            approved_at = now()
+        WHERE user_code = $4
+        "#,
+    )
+    .bind(&subject_id)
+    .bind(email)
+    .bind(scopes)
+    .bind(user_code)
+    .execute(db.pool())
+    .await
+    .unwrap();
+
+    let resp = client
+        .post(format!("{base_url}/v1/auth/device/token"))
+        .json(&serde_json::json!({ "device_code": device_code }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp.status().is_success());
+    let tokens: serde_json::Value = resp.json().await.unwrap();
+    tokens["access_token"]
+        .as_str()
+        .expect("missing access_token")
+        .to_string()
+}
+
 fn header_str(headers: &reqwest::header::HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)
@@ -49,6 +113,11 @@ fn header_str(headers: &reqwest::header::HeaderMap, name: &str) -> Option<String
 
 #[tokio::test]
 async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
+    std::env::set_var(
+        "PLFM_SECRETS_MASTER_KEY",
+        "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
+    );
+
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -90,7 +159,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         let _ = projection_worker.run(shutdown_rx).await;
     });
 
-    let state = AppState::new(db);
+    let state = AppState::new(db.clone());
     let app = api::create_router(state);
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -101,8 +170,9 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         axum::serve(listener, app).await.unwrap();
     });
 
-    let auth_header = "Bearer user:itest@example.com";
     let client = reqwest::Client::new();
+    let access_token = issue_device_token(&client, &base_url, &db, "itest@example.com").await;
+    let auth_header = format!("Bearer {}", access_token);
 
     let idem_key = format!("itest-org-{}-key", unique_suffix());
     let org_name = format!("itest-org-{}", unique_suffix());
@@ -110,7 +180,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
 
     let resp1 = client
         .post(&create_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_key)
         .json(&serde_json::json!({ "name": org_name }))
         .send()
@@ -126,7 +196,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
 
     let resp2 = client
         .post(&create_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_key)
         .json(&serde_json::json!({ "name": org_name }))
         .send()
@@ -144,7 +214,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let get_url = format!("{base_url}/v1/orgs/{org_id}");
     let resp_get = client
         .get(&get_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .send()
         .await
         .unwrap();
@@ -163,7 +233,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let idem_app = format!("itest-app-{}-key", unique_suffix());
     let resp_app = client
         .post(&create_app_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_app)
         .json(&serde_json::json!({
             "name": app_name,
@@ -183,7 +253,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let idem_env = format!("itest-env-{}-key", unique_suffix());
     let resp_env = client
         .post(&create_env_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_env)
         .json(&serde_json::json!({ "name": "prod" }))
         .send()
@@ -199,7 +269,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let secrets_url = format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/secrets");
     let resp_secrets_get = client
         .get(&secrets_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .send()
         .await
         .unwrap();
@@ -213,7 +283,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
 
     let resp_secrets_put_1 = client
         .put(&secrets_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_secrets)
         .json(&secrets_body)
         .send()
@@ -226,7 +296,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
 
     let resp_secrets_put_2 = client
         .put(&secrets_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_secrets)
         .json(&secrets_body)
         .send()
@@ -239,7 +309,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
 
     let resp_secrets_get_2 = client
         .get(&secrets_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .send()
         .await
         .unwrap();
@@ -253,7 +323,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let idem_volume = format!("itest-vol-{}-key", unique_suffix());
     let resp_volume_create = client
         .post(&create_volume_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_volume)
         .json(&serde_json::json!({
             "name": "itest-data",
@@ -274,7 +344,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let get_volume_url = format!("{base_url}/v1/orgs/{org_id}/volumes/{volume_id}");
     let resp_volume_get = client
         .get(&get_volume_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .send()
         .await
         .unwrap();
@@ -294,7 +364,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let idem_attach = format!("itest-attach-{}-key", unique_suffix());
     let resp_attach = client
         .post(&attach_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_attach)
         .json(&serde_json::json!({
             "volume_id": &volume_id,
@@ -311,7 +381,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
 
     let resp_volume_get_2 = client
         .get(&get_volume_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .send()
         .await
         .unwrap();
@@ -327,7 +397,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let idem_snapshot = format!("itest-snap-{}-key", unique_suffix());
     let resp_snapshot = client
         .post(&snapshot_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_snapshot)
         .json(&serde_json::json!({ "note": "itest" }))
         .send()
@@ -344,7 +414,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         format!("{base_url}/v1/orgs/{org_id}/volumes/{volume_id}/snapshots?limit=200");
     let resp_snapshots_list = client
         .get(&list_snapshots_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .send()
         .await
         .unwrap();
@@ -359,7 +429,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let idem_restore = format!("itest-restore-{}-key", unique_suffix());
     let resp_restore = client
         .post(&restore_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_restore)
         .json(
             &serde_json::json!({ "snapshot_id": snapshot_id, "new_volume_name": "itest-restored" }),
@@ -379,7 +449,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let idem_release = format!("itest-release-{}-key", unique_suffix());
     let resp_release = client
         .post(&create_release_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_release)
         .json(&serde_json::json!({
             "image_ref": format!("example.com/{app_name}:demo"),
@@ -402,7 +472,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let idem_deploy = format!("itest-deploy-{}-key", unique_suffix());
     let resp_deploy = client
         .post(&create_deploy_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_deploy)
         .json(&serde_json::json!({ "release_id": release_id }))
         .send()
@@ -474,7 +544,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     // Run scheduler once and wait for the first instance to materialize.
     let reconciler = SchedulerReconciler::new(scheduler_pool.clone());
     reconciler.reconcile_all().await.unwrap();
-    let first = wait_for_instances(&client, &instances_url, auth_header, 1).await;
+    let first = wait_for_instances(&client, &instances_url, &auth_header, 1).await;
     assert_eq!(
         first["items"]
             .as_array()
@@ -508,7 +578,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     loop {
         let resp = client
             .get(&get_instance_url)
-            .header("Authorization", auth_header)
+            .header("Authorization", &auth_header)
             .send()
             .await
             .unwrap();
@@ -535,7 +605,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
 
     let resp_exec_1 = client
         .post(&exec_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_exec)
         .json(&exec_body)
         .send()
@@ -550,7 +620,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
 
     let resp_exec_2 = client
         .post(&exec_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_exec)
         .json(&exec_body)
         .send()
@@ -583,7 +653,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let scale_url = format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale");
     let resp_scale_get = client
         .get(&scale_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .send()
         .await
         .unwrap();
@@ -594,7 +664,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let idem_scale = format!("itest-scale-{}-key", unique_suffix());
     let resp_scale_put = client
         .put(&scale_url)
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", &idem_scale)
         .json(&serde_json::json!({
             "expected_version": current_version,
@@ -622,15 +692,15 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         1
     );
 
-    // Reconcile again and wait for the second instance.
+    // Reconcile again; volume-backed processes are clamped to a single replica in v1.
     reconciler.reconcile_all().await.unwrap();
-    let second = wait_for_instances(&client, &instances_url, auth_header, 2).await;
+    let second = wait_for_instances(&client, &instances_url, &auth_header, 1).await;
     assert_eq!(
         second["items"]
             .as_array()
             .expect("missing items array")
             .len(),
-        2
+        1
     );
 
     let _ = shutdown_tx.send(true);

@@ -8,6 +8,8 @@ use plfm_id::RequestId;
 use sha2::{Digest, Sha256};
 
 use crate::api::error::ApiError;
+use crate::api::tokens;
+use crate::state::AppState;
 
 pub const IDEMPOTENCY_KEY_HEADER: &str = "Idempotency-Key";
 pub const AUTHORIZATION_HEADER: &str = "Authorization";
@@ -19,6 +21,7 @@ pub struct RequestContext {
     pub actor_type: ActorType,
     pub actor_id: String,
     pub actor_email: Option<String>,
+    pub scopes: Vec<String>,
 }
 
 fn header_string(headers: &HeaderMap, name: &str) -> Option<String> {
@@ -28,10 +31,17 @@ fn header_string(headers: &HeaderMap, name: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-fn actor_from_authorization_header(
+fn dev_mode_enabled() -> bool {
+    std::env::var("GHOST_DEV")
+        .map(|v| v == "1" || v.to_lowercase() == "true")
+        .unwrap_or(false)
+}
+
+async fn actor_from_authorization_header(
+    state: &AppState,
     headers: &HeaderMap,
     request_id: &str,
-) -> Result<Option<(ActorType, String, Option<String>)>, ApiError> {
+) -> Result<Option<(ActorType, String, Option<String>, Vec<String>)>, ApiError> {
     let Some(auth_value) = header_string(headers, AUTHORIZATION_HEADER) else {
         return Ok(None);
     };
@@ -54,59 +64,72 @@ fn actor_from_authorization_header(
         .with_request_id(request_id.to_string()));
     }
 
-    // v1 dev stub:
-    // - `user:<email>` tokens are treated as a user identity with an email.
-    // - `sp:<id>` tokens are treated as a service principal identity.
-    // - other tokens are treated as opaque and mapped to a stable hashed actor id.
-    if let Some(email) = token.strip_prefix("user:") {
-        let email = email.trim();
-        if email.is_empty() || email.len() > 320 || !email.contains('@') {
-            return Err(ApiError::unauthorized(
-                "invalid_token",
-                "user token must be in the form 'user:<email>'",
-            )
-            .with_request_id(request_id.to_string()));
+    // Dev-only fallback tokens for local workflows and tests.
+    if dev_mode_enabled() {
+        if let Some(email) = token.strip_prefix("user:") {
+            let email = email.trim();
+            if email.is_empty() || email.len() > 320 || !email.contains('@') {
+                return Err(ApiError::unauthorized(
+                    "invalid_token",
+                    "user token must be in the form 'user:<email>'",
+                )
+                .with_request_id(request_id.to_string()));
+            }
+
+            // Important: never persist or log bearer tokens. Derive a stable, non-secret actor id.
+            let digest = Sha256::digest(email.as_bytes());
+            let hex = format!("{:x}", digest);
+            let short = hex.get(..32).unwrap_or(&hex);
+
+            return Ok(Some((
+                ActorType::User,
+                format!("usr_{short}"),
+                Some(email.to_string()),
+                Vec::new(),
+            )));
         }
 
-        // Important: never persist or log bearer tokens. Derive a stable, non-secret actor id.
-        let digest = Sha256::digest(email.as_bytes());
-        let hex = format!("{:x}", digest);
-        let short = hex.get(..32).unwrap_or(&hex);
+        if let Some(sp_id) = token.strip_prefix("sp:") {
+            let sp_id = sp_id.trim();
+            if sp_id.is_empty() {
+                return Err(ApiError::unauthorized(
+                    "invalid_token",
+                    "service principal token must be in the form 'sp:<id>'",
+                )
+                .with_request_id(request_id.to_string()));
+            }
 
-        return Ok(Some((
-            ActorType::User,
-            format!("usr_{short}"),
-            Some(email.to_string()),
-        )));
-    }
-
-    if let Some(sp_id) = token.strip_prefix("sp:") {
-        let sp_id = sp_id.trim();
-        if sp_id.is_empty() {
-            return Err(ApiError::unauthorized(
-                "invalid_token",
-                "service principal token must be in the form 'sp:<id>'",
-            )
-            .with_request_id(request_id.to_string()));
+            return Ok(Some((
+                ActorType::ServicePrincipal,
+                sp_id.to_string(),
+                None,
+                Vec::new(),
+            )));
         }
-
-        return Ok(Some((ActorType::ServicePrincipal, sp_id.to_string(), None)));
     }
 
-    let digest = Sha256::digest(token.as_bytes());
-    let hex = format!("{:x}", digest);
-    let short = hex.get(..32).unwrap_or(&hex);
+    // Validate access token against DB.
+    let validated = tokens::validate_access_token(state.db().pool(), token, request_id).await?;
+    let actor_type = match validated.subject_type {
+        tokens::SubjectType::User => ActorType::User,
+        tokens::SubjectType::ServicePrincipal => ActorType::ServicePrincipal,
+    };
 
-    Ok(Some((ActorType::User, format!("usr_{short}"), None)))
+    Ok(Some((
+        actor_type,
+        validated.subject_id,
+        validated.subject_email,
+        validated.scopes,
+    )))
 }
 
-impl<S> FromRequestParts<S> for RequestContext
-where
-    S: Send + Sync,
-{
+impl FromRequestParts<AppState> for RequestContext {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let request_id = header_string(&parts.headers, "x-request-id")
             .unwrap_or_else(|| RequestId::new().to_string());
 
@@ -121,11 +144,13 @@ where
             }
         }
 
-        let (actor_type, actor_id, actor_email) = actor_from_authorization_header(
+        let (actor_type, actor_id, actor_email, scopes) = actor_from_authorization_header(
+            state,
             &parts.headers,
             &request_id,
-        )?
-        .unwrap_or((ActorType::System, "system".to_string(), None));
+        )
+        .await?
+        .unwrap_or((ActorType::System, "system".to_string(), None, Vec::new()));
 
         Ok(Self {
             request_id,
@@ -133,6 +158,7 @@ where
             actor_type,
             actor_id,
             actor_email,
+            scopes,
         })
     }
 }

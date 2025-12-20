@@ -124,6 +124,68 @@ impl NodeApiTestHarness {
         }
     }
 
+    async fn issue_user_token(&self, email: &str) -> String {
+        let resp = self
+            .client
+            .post(format!("{}/v1/auth/device/start", self.base_url))
+            .json(&serde_json::json!({ "device_name": "itest-node-agent" }))
+            .send()
+            .await
+            .unwrap();
+        assert!(resp.status().is_success());
+
+        let body: serde_json::Value = resp.json().await.unwrap();
+        let device_code = body["device_code"].as_str().expect("missing device_code");
+        let user_code = body["user_code"].as_str().expect("missing user_code");
+
+        let subject_id = format!("usr_{}", unique_suffix());
+        let scopes = serde_json::json!([
+            "orgs:admin",
+            "apps:write",
+            "envs:write",
+            "releases:write",
+            "deploys:write",
+            "routes:write",
+            "volumes:write",
+            "secrets:write",
+            "logs:read"
+        ]);
+
+        sqlx::query(
+            r#"
+            UPDATE device_codes
+            SET status = 'approved',
+                approved_subject_type = 'user',
+                approved_subject_id = $1,
+                approved_subject_email = $2,
+                approved_scopes = $3,
+                approved_at = now()
+            WHERE user_code = $4
+            "#,
+        )
+        .bind(&subject_id)
+        .bind(email)
+        .bind(scopes)
+        .bind(user_code)
+        .execute(&self.scheduler_pool)
+        .await
+        .unwrap();
+
+        let resp = self
+            .client
+            .post(format!("{}/v1/auth/device/token", self.base_url))
+            .json(&serde_json::json!({ "device_code": device_code }))
+            .send()
+            .await
+            .unwrap();
+        assert!(resp.status().is_success());
+        let tokens: serde_json::Value = resp.json().await.unwrap();
+        tokens["access_token"]
+            .as_str()
+            .expect("missing access_token")
+            .to_string()
+    }
+
     /// Create a valid node enrollment payload.
     fn enroll_payload(&self, hostname: &str) -> serde_json::Value {
         serde_json::json!({
@@ -299,14 +361,15 @@ async fn test_node_plan_with_scheduled_instance() {
     let harness = NodeApiTestHarness::new().await;
 
     // Create org, app, env, release, deploy flow
-    let auth_header = "Bearer user:test@example.com";
+    let access_token = harness.issue_user_token("test@example.com").await;
+    let auth_header = format!("Bearer {}", access_token);
     let org_name = format!("org-{}", unique_suffix());
 
     // Create org
     let resp = harness
         .client
         .post(format!("{}/v1/orgs", harness.base_url))
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", format!("org-{}", unique_suffix()))
         .json(&serde_json::json!({ "name": org_name }))
         .send()
@@ -322,7 +385,7 @@ async fn test_node_plan_with_scheduled_instance() {
     let resp = harness
         .client
         .post(format!("{}/v1/orgs/{}/apps", harness.base_url, org_id))
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", format!("app-{}", unique_suffix()))
         .json(&serde_json::json!({ "name": "myapp", "description": "test app" }))
         .send()
@@ -341,7 +404,7 @@ async fn test_node_plan_with_scheduled_instance() {
             "{}/v1/orgs/{}/apps/{}/envs",
             harness.base_url, org_id, app_id
         ))
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", format!("env-{}", unique_suffix()))
         .json(&serde_json::json!({ "name": "production" }))
         .send()
@@ -360,7 +423,7 @@ async fn test_node_plan_with_scheduled_instance() {
             "{}/v1/orgs/{}/apps/{}/releases",
             harness.base_url, org_id, app_id
         ))
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", format!("rel-{}", unique_suffix()))
         .json(&serde_json::json!({
             "image_ref": "ghcr.io/example/app:v1",
@@ -384,7 +447,7 @@ async fn test_node_plan_with_scheduled_instance() {
             "{}/v1/orgs/{}/apps/{}/envs/{}/deploys",
             harness.base_url, org_id, app_id, env_id
         ))
-        .header("Authorization", auth_header)
+        .header("Authorization", &auth_header)
         .header("Idempotency-Key", format!("dep-{}", unique_suffix()))
         .json(&serde_json::json!({ "release_id": release_id }))
         .send()

@@ -106,6 +106,13 @@ impl ApiError {
         }
     }
 
+    pub fn too_many_requests(code: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            status: StatusCode::TOO_MANY_REQUESTS,
+            response: ErrorResponse::new(code, message),
+        }
+    }
+
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.response = self.response.with_request_id(request_id);
         self
