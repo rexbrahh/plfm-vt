@@ -48,7 +48,6 @@ pub struct GroupDesiredState {
     pub desired_replicas: i32,
     pub spec_hash: String,
     pub secrets_version_id: Option<String>,
-    pub volume_hash: String,
 }
 
 /// Current instance state.
@@ -68,8 +67,8 @@ pub struct NodeCapacity {
     pub state: String,
     pub allocatable_memory_bytes: i64,
     pub allocatable_cpu_cores: i32,
-    pub used_memory_bytes: i64,
-    pub used_cpu_cores: i32,
+    pub available_memory_bytes: i64,
+    pub available_cpu_cores: i32,
     pub instance_count: i32,
 }
 
@@ -181,7 +180,6 @@ impl SchedulerReconciler {
                 desired_replicas,
                 spec_hash,
                 secrets_version_id: row.secrets_version_id,
-                volume_hash,
             });
         }
 
@@ -323,24 +321,30 @@ impl SchedulerReconciler {
         let request_id = RequestId::new();
         let instance_id = InstanceId::new();
 
+        // Get release info for resources
+        let release_info = self.get_release_info(&group.release_id).await?;
+        let required_cpu_cores = release_info.cpu.max(1.0).ceil() as i32;
+        let required_memory_bytes = release_info.memory_bytes;
+
         // Find best node for placement
-        let node = self.find_best_node().await?;
+        let node = self
+            .find_best_node(required_memory_bytes, required_cpu_cores)
+            .await?;
         debug!(
             node_id = %node.node_id,
             node_state = %node.state,
             allocatable_memory_bytes = node.allocatable_memory_bytes,
             allocatable_cpu_cores = node.allocatable_cpu_cores,
-            used_memory_bytes = node.used_memory_bytes,
-            used_cpu_cores = node.used_cpu_cores,
+            available_memory_bytes = node.available_memory_bytes,
+            available_cpu_cores = node.available_cpu_cores,
             instance_count = node.instance_count,
+            required_memory_bytes,
+            required_cpu_cores,
             "Selected node for placement"
         );
 
         // Allocate overlay IPv6 via IPAM
         let overlay_ipv6 = self.allocate_instance_ipv6(&instance_id).await?;
-
-        // Get release info for resources
-        let release_info = self.get_release_info(&group.release_id).await?;
 
         let resources_snapshot = serde_json::json!({
             "cpu": release_info.cpu,
@@ -434,7 +438,11 @@ impl SchedulerReconciler {
     }
 
     /// Find the best node for placement.
-    async fn find_best_node(&self) -> SchedulerResult<NodeCapacity> {
+    async fn find_best_node(
+        &self,
+        required_memory_bytes: i64,
+        required_cpu_cores: i32,
+    ) -> SchedulerResult<NodeCapacity> {
         // Get all active nodes with their capacity
         let nodes = sqlx::query_as::<_, NodeCapacityRow>(
             r#"
@@ -443,11 +451,13 @@ impl SchedulerReconciler {
                 n.state,
                 COALESCE((n.allocatable->>'memory_bytes')::BIGINT, 0) as allocatable_memory_bytes,
                 COALESCE((n.allocatable->>'cpu_cores')::INT, 0) as allocatable_cpu_cores,
-                COALESCE((n.allocatable->>'available_memory_bytes')::BIGINT, 0) as used_memory_bytes,
-                COALESCE((n.allocatable->>'available_cpu_cores')::INT, 0) as used_cpu_cores,
+                COALESCE((n.allocatable->>'available_memory_bytes')::BIGINT, 0) as available_memory_bytes,
+                COALESCE((n.allocatable->>'available_cpu_cores')::INT, 0) as available_cpu_cores,
                 COALESCE((n.allocatable->>'instance_count')::INT, 0) as instance_count
             FROM nodes_view n
             WHERE n.state = 'active'
+              AND COALESCE((n.allocatable->>'available_memory_bytes')::BIGINT, 0) >= $1
+              AND COALESCE((n.allocatable->>'available_cpu_cores')::INT, 0) >= $2
             ORDER BY
                 -- Prefer nodes with more available resources
                 COALESCE((n.allocatable->>'available_memory_bytes')::BIGINT, 0) DESC,
@@ -457,6 +467,8 @@ impl SchedulerReconciler {
             LIMIT 1
             "#,
         )
+        .bind(required_memory_bytes)
+        .bind(required_cpu_cores)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -466,8 +478,8 @@ impl SchedulerReconciler {
                 state: row.state,
                 allocatable_memory_bytes: row.allocatable_memory_bytes,
                 allocatable_cpu_cores: row.allocatable_cpu_cores,
-                used_memory_bytes: row.used_memory_bytes,
-                used_cpu_cores: row.used_cpu_cores,
+                available_memory_bytes: row.available_memory_bytes,
+                available_cpu_cores: row.available_cpu_cores,
                 instance_count: row.instance_count,
             }),
             None => Err(SchedulerError::NoEligibleNodes),
@@ -720,8 +732,8 @@ struct NodeCapacityRow {
     state: String,
     allocatable_memory_bytes: i64,
     allocatable_cpu_cores: i32,
-    used_memory_bytes: i64,
-    used_cpu_cores: i32,
+    available_memory_bytes: i64,
+    available_cpu_cores: i32,
     instance_count: i32,
 }
 
@@ -733,8 +745,8 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for NodeCapacityRow {
             state: row.try_get("state")?,
             allocatable_memory_bytes: row.try_get("allocatable_memory_bytes")?,
             allocatable_cpu_cores: row.try_get("allocatable_cpu_cores")?,
-            used_memory_bytes: row.try_get("used_memory_bytes")?,
-            used_cpu_cores: row.try_get("used_cpu_cores")?,
+            available_memory_bytes: row.try_get("available_memory_bytes")?,
+            available_cpu_cores: row.try_get("available_cpu_cores")?,
             instance_count: row.try_get("instance_count")?,
         })
     }
