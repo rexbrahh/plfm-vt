@@ -543,7 +543,10 @@ mod tests {
     #[test]
     fn test_desired_instance_state() {
         assert_ne!(DesiredInstanceState::Running, DesiredInstanceState::Stopped);
-        assert_eq!(DesiredInstanceState::Draining, DesiredInstanceState::Draining);
+        assert_eq!(
+            DesiredInstanceState::Draining,
+            DesiredInstanceState::Draining
+        );
     }
 
     #[test]

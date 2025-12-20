@@ -21,16 +21,16 @@
 //! - `NodeSupervisor`: Root supervisor that manages all child actors
 
 mod framework;
-mod instance;
 mod image;
+mod instance;
 mod stream;
 mod supervisor;
 
 pub use framework::{
-    Actor, ActorContext, ActorError, ActorHandle, ActorRef, BackoffPolicy, Message,
-    RestartPolicy, Supervisor,
+    Actor, ActorContext, ActorError, ActorHandle, ActorRef, BackoffPolicy, Message, RestartPolicy,
+    Supervisor,
 };
+pub use image::{ImageMessage, ImagePullActor};
 pub use instance::{InstanceActor, InstanceActorState, InstanceMessage};
-pub use image::{ImagePullActor, ImageMessage};
 pub use stream::{ControlPlaneStreamActor, StreamMessage};
 pub use supervisor::NodeSupervisor;

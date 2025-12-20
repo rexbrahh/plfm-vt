@@ -43,7 +43,11 @@ pub trait Actor: Send + 'static {
     /// Handle a single message.
     ///
     /// Returns `Ok(true)` to continue, `Ok(false)` to stop, or `Err` on failure.
-    async fn handle(&mut self, msg: Self::Message, ctx: &mut ActorContext) -> Result<bool, ActorError>;
+    async fn handle(
+        &mut self,
+        msg: Self::Message,
+        ctx: &mut ActorContext,
+    ) -> Result<bool, ActorError>;
 
     /// Called when the actor starts (or restarts).
     async fn on_start(&mut self, _ctx: &mut ActorContext) -> Result<(), ActorError> {
