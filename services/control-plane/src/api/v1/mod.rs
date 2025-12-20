@@ -83,6 +83,11 @@ pub fn routes() -> Router<AppState> {
             "/orgs/:org_id/apps/:app_id/envs/:env_id/scale",
             envs::scale_routes(),
         )
+        // Status is nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/status
+        .nest(
+            "/orgs/:org_id/apps/:app_id/envs/:env_id/status",
+            envs::status_routes(),
+        )
         // Nodes are infrastructure resources: /v1/nodes
         .nest("/nodes", nodes::routes())
         // Instances are VM instances: /v1/instances

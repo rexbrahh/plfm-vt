@@ -31,6 +31,13 @@ pub fn routes() -> Router<AppState> {
         .route("/:env_id", get(get_env))
 }
 
+/// Create env status routes.
+///
+/// Status is nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/status
+pub fn status_routes() -> Router<AppState> {
+    Router::new().route("/", get(get_status))
+}
+
 /// Create env scale routes.
 ///
 /// Scale is nested under orgs/apps/envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
@@ -115,6 +122,88 @@ pub struct ScaleState {
 pub struct ScaleUpdateRequest {
     pub processes: Vec<ProcessScale>,
     pub expected_version: i32,
+}
+
+/// Response for environment status (desired vs current state).
+#[derive(Debug, Serialize)]
+pub struct EnvStatusResponse {
+    /// Environment ID.
+    pub env_id: String,
+
+    /// Environment name.
+    pub env_name: String,
+
+    /// App ID.
+    pub app_id: String,
+
+    /// App name.
+    pub app_name: String,
+
+    /// Current live release ID (most recently completed deploy).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_release_id: Option<String>,
+
+    /// Desired release ID (target of latest deploy).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub desired_release_id: Option<String>,
+
+    /// Whether current matches desired.
+    pub release_synced: bool,
+
+    /// Instance counts.
+    pub instances: InstanceCounts,
+
+    /// Route/endpoint summary.
+    pub routes: Vec<RouteStatus>,
+
+    /// Last reconciliation timestamp (most recent instance status update).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_reconcile_at: Option<DateTime<Utc>>,
+
+    /// Last error (if any).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+
+    /// Overall status (healthy, degraded, failed).
+    pub status: String,
+}
+
+/// Instance count summary.
+#[derive(Debug, Serialize)]
+pub struct InstanceCounts {
+    /// Desired instance count (sum of all process types).
+    pub desired: i32,
+
+    /// Ready instances.
+    pub ready: i32,
+
+    /// Booting instances.
+    pub booting: i32,
+
+    /// Draining instances.
+    pub draining: i32,
+
+    /// Failed instances.
+    pub failed: i32,
+}
+
+/// Route/endpoint status.
+#[derive(Debug, Serialize)]
+pub struct RouteStatus {
+    /// Route ID.
+    pub id: String,
+
+    /// Hostname.
+    pub hostname: String,
+
+    /// Target port.
+    pub target_port: i32,
+
+    /// Status (active, pending, error).
+    pub status: String,
+
+    /// Backend count (number of ready instances for this route's process type).
+    pub backend_count: i32,
 }
 
 // =============================================================================
@@ -831,6 +920,279 @@ async fn get_env(
     }
 }
 
+/// Get environment status (desired vs current state).
+///
+/// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/status
+async fn get_status(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    Path((org_id, app_id, env_id)): Path<(String, String, String)>,
+) -> Result<impl IntoResponse, ApiError> {
+    let request_id = ctx.request_id.clone();
+
+    // Validate IDs
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let app_id: AppId = app_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_app_id", "Invalid application ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let env_id: EnvId = env_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let _role = authz::require_org_member(&state, &org_id, &ctx).await?;
+
+    // 1. Get env and app info
+    let env_app_info = sqlx::query_as::<_, EnvAppInfoRow>(
+        r#"
+        SELECT e.env_id, e.name as env_name, e.app_id, a.name as app_name
+        FROM envs_view e
+        JOIN apps_view a ON e.app_id = a.app_id AND NOT a.is_deleted
+        WHERE e.env_id = $1 AND e.org_id = $2 AND e.app_id = $3 AND NOT e.is_deleted
+        "#,
+    )
+    .bind(env_id.to_string())
+    .bind(org_id.to_string())
+    .bind(app_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            env_id = %env_id,
+            "Failed to get env/app info"
+        );
+        ApiError::internal("internal_error", "Failed to get environment status")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::not_found("env_not_found", format!("Environment {} not found", env_id))
+            .with_request_id(request_id.clone())
+    })?;
+
+    // 2. Get desired release (from env_desired_releases_view, pick any process type)
+    let desired_release: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT release_id
+        FROM env_desired_releases_view
+        WHERE env_id = $1
+        LIMIT 1
+        "#,
+    )
+    .bind(env_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to get desired release");
+        ApiError::internal("internal_error", "Failed to get environment status")
+            .with_request_id(request_id.clone())
+    })?;
+
+    // 3. Get current release (from most recent completed deploy)
+    let current_release: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT release_id
+        FROM deploys_view
+        WHERE env_id = $1 AND status = 'completed'
+        ORDER BY updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(env_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to get current release");
+        ApiError::internal("internal_error", "Failed to get environment status")
+            .with_request_id(request_id.clone())
+    })?;
+
+    // 4. Get desired instance count (sum from env_scale_view)
+    let desired_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COALESCE(SUM(desired_replicas), 0)
+        FROM env_scale_view
+        WHERE env_id = $1
+        "#,
+    )
+    .bind(env_id.to_string())
+    .fetch_one(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to get desired count");
+        ApiError::internal("internal_error", "Failed to get environment status")
+            .with_request_id(request_id.clone())
+    })?;
+
+    // 5. Get instance counts by status (join desired + status views)
+    let status_counts = sqlx::query_as::<_, InstanceStatusCountRow>(
+        r#"
+        SELECT
+            COALESCE(s.status, d.desired_state) as status,
+            COUNT(*) as count
+        FROM instances_desired_view d
+        LEFT JOIN instances_status_view s ON d.instance_id = s.instance_id
+        WHERE d.env_id = $1
+        GROUP BY COALESCE(s.status, d.desired_state)
+        "#,
+    )
+    .bind(env_id.to_string())
+    .fetch_all(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to get instance counts");
+        ApiError::internal("internal_error", "Failed to get environment status")
+            .with_request_id(request_id.clone())
+    })?;
+
+    // Parse instance counts
+    let mut ready = 0i32;
+    let mut booting = 0i32;
+    let mut draining = 0i32;
+    let mut failed = 0i32;
+
+    for row in status_counts {
+        let count = row.count as i32;
+        match row.status.as_str() {
+            "running" => ready += count,
+            "booting" | "starting" | "pending" => booting += count,
+            "draining" | "stopping" => draining += count,
+            "failed" | "crashed" | "error" => failed += count,
+            _ => {} // Other statuses ignored
+        }
+    }
+
+    // 6. Get routes with backend counts
+    let route_rows = sqlx::query_as::<_, RouteInfoRow>(
+        r#"
+        SELECT
+            r.route_id,
+            r.hostname,
+            r.backend_port,
+            r.backend_process_type,
+            (
+                SELECT COUNT(*)
+                FROM instances_desired_view d
+                LEFT JOIN instances_status_view s ON d.instance_id = s.instance_id
+                WHERE d.env_id = r.env_id
+                  AND d.process_type = r.backend_process_type
+                  AND COALESCE(s.status, d.desired_state) = 'running'
+            ) as backend_count
+        FROM routes_view r
+        WHERE r.env_id = $1 AND NOT r.is_deleted
+        ORDER BY r.hostname
+        "#,
+    )
+    .bind(env_id.to_string())
+    .fetch_all(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to get routes");
+        ApiError::internal("internal_error", "Failed to get environment status")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let routes: Vec<RouteStatus> = route_rows
+        .into_iter()
+        .map(|r| {
+            let status = if r.backend_count > 0 {
+                "active"
+            } else {
+                "pending"
+            };
+            RouteStatus {
+                id: r.route_id,
+                hostname: r.hostname,
+                target_port: r.backend_port,
+                status: status.to_string(),
+                backend_count: r.backend_count as i32,
+            }
+        })
+        .collect();
+
+    // 7. Get last reconcile time (most recent instance status update)
+    let last_reconcile: Option<DateTime<Utc>> = sqlx::query_scalar(
+        r#"
+        SELECT MAX(s.updated_at)
+        FROM instances_status_view s
+        WHERE s.env_id = $1
+        "#,
+    )
+    .bind(env_id.to_string())
+    .fetch_one(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to get last reconcile");
+        ApiError::internal("internal_error", "Failed to get environment status")
+            .with_request_id(request_id.clone())
+    })?;
+
+    // 8. Get last error (from most recent failed deploy or instance)
+    let last_error: Option<String> = sqlx::query_scalar(
+        r#"
+        SELECT failed_reason
+        FROM deploys_view
+        WHERE env_id = $1 AND status = 'failed' AND failed_reason IS NOT NULL
+        ORDER BY updated_at DESC
+        LIMIT 1
+        "#,
+    )
+    .bind(env_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to get last error");
+        ApiError::internal("internal_error", "Failed to get environment status")
+            .with_request_id(request_id.clone())
+    })?;
+
+    // Calculate release_synced
+    let release_synced = match (&current_release, &desired_release) {
+        (Some(c), Some(d)) => c == d,
+        (None, None) => true,
+        _ => false,
+    };
+
+    // Determine overall status
+    let overall_status = if failed > 0 {
+        "failed"
+    } else if ready < desired_count as i32 || !release_synced {
+        "degraded"
+    } else {
+        "healthy"
+    };
+
+    let response = EnvStatusResponse {
+        env_id: env_app_info.env_id,
+        env_name: env_app_info.env_name,
+        app_id: env_app_info.app_id,
+        app_name: env_app_info.app_name,
+        current_release_id: current_release,
+        desired_release_id: desired_release,
+        release_synced,
+        instances: InstanceCounts {
+            desired: desired_count as i32,
+            ready,
+            booting,
+            draining,
+            failed,
+        },
+        routes,
+        last_reconcile_at: last_reconcile,
+        last_error,
+        status: overall_status.to_string(),
+    };
+
+    Ok(Json(response))
+}
+
 // =============================================================================
 // Database Row Types
 // =============================================================================
@@ -911,6 +1273,65 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for ScaleRow {
     }
 }
 
+/// Row for env + app info join.
+struct EnvAppInfoRow {
+    env_id: String,
+    env_name: String,
+    app_id: String,
+    app_name: String,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for EnvAppInfoRow {
+    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            env_id: row.try_get("env_id")?,
+            env_name: row.try_get("env_name")?,
+            app_id: row.try_get("app_id")?,
+            app_name: row.try_get("app_name")?,
+        })
+    }
+}
+
+/// Row for instance status counts.
+struct InstanceStatusCountRow {
+    status: String,
+    count: i64,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for InstanceStatusCountRow {
+    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            status: row.try_get("status")?,
+            count: row.try_get("count")?,
+        })
+    }
+}
+
+/// Row for route info with backend count.
+struct RouteInfoRow {
+    route_id: String,
+    hostname: String,
+    backend_port: i32,
+    #[allow(dead_code)]
+    backend_process_type: String,
+    backend_count: i64,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for RouteInfoRow {
+    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            route_id: row.try_get("route_id")?,
+            hostname: row.try_get("hostname")?,
+            backend_port: row.try_get("backend_port")?,
+            backend_process_type: row.try_get("backend_process_type")?,
+            backend_count: row.try_get("backend_count")?,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -938,5 +1359,75 @@ mod tests {
         assert!(json.contains("\"id\":\"env_123\""));
         assert!(json.contains("\"app_id\":\"app_456\""));
         assert!(json.contains("\"name\":\"staging\""));
+    }
+
+    #[test]
+    fn test_env_status_response_serialization() {
+        let response = EnvStatusResponse {
+            env_id: "env_123".to_string(),
+            env_name: "production".to_string(),
+            app_id: "app_456".to_string(),
+            app_name: "myapp".to_string(),
+            current_release_id: Some("rel_abc".to_string()),
+            desired_release_id: Some("rel_abc".to_string()),
+            release_synced: true,
+            instances: InstanceCounts {
+                desired: 3,
+                ready: 3,
+                booting: 0,
+                draining: 0,
+                failed: 0,
+            },
+            routes: vec![RouteStatus {
+                id: "route_123".to_string(),
+                hostname: "myapp.example.com".to_string(),
+                target_port: 8080,
+                status: "active".to_string(),
+                backend_count: 3,
+            }],
+            last_reconcile_at: Some(Utc::now()),
+            last_error: None,
+            status: "healthy".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"env_id\":\"env_123\""));
+        assert!(json.contains("\"app_name\":\"myapp\""));
+        assert!(json.contains("\"release_synced\":true"));
+        assert!(json.contains("\"status\":\"healthy\""));
+        assert!(json.contains("\"desired\":3"));
+        assert!(json.contains("\"ready\":3"));
+        assert!(json.contains("\"hostname\":\"myapp.example.com\""));
+        // last_error should be omitted when None
+        assert!(!json.contains("\"last_error\""));
+    }
+
+    #[test]
+    fn test_env_status_degraded_when_not_synced() {
+        // When desired != ready, status should be degraded
+        let response = EnvStatusResponse {
+            env_id: "env_123".to_string(),
+            env_name: "production".to_string(),
+            app_id: "app_456".to_string(),
+            app_name: "myapp".to_string(),
+            current_release_id: Some("rel_old".to_string()),
+            desired_release_id: Some("rel_new".to_string()),
+            release_synced: false,
+            instances: InstanceCounts {
+                desired: 3,
+                ready: 2,
+                booting: 1,
+                draining: 0,
+                failed: 0,
+            },
+            routes: vec![],
+            last_reconcile_at: None,
+            last_error: None,
+            status: "degraded".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"release_synced\":false"));
+        assert!(json.contains("\"status\":\"degraded\""));
     }
 }
