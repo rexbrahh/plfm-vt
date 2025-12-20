@@ -30,6 +30,7 @@ pub mod firecracker;
 mod heartbeat;
 pub mod image;
 mod instance;
+pub mod network;
 mod reconciler;
 mod runtime;
 pub mod state;

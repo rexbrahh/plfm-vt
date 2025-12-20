@@ -18,10 +18,11 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use crate::client::InstancePlan;
+use crate::network::{TapConfig, TapDevice};
 use crate::runtime::{Runtime, VmHandle};
 
 use super::api::FirecrackerClient;
-use super::config::{BootSource, MachineConfig};
+use super::config::{BootSource, MachineConfig, NetworkInterface};
 use super::jailer::SandboxManager;
 
 /// Default timeout for Firecracker API operations.
@@ -69,15 +70,20 @@ impl Default for FirecrackerRuntimeConfig {
 /// State of a running Firecracker instance.
 struct InstanceState {
     /// Instance ID.
+    #[allow(dead_code)]
     instance_id: String,
     /// Boot ID.
+    #[allow(dead_code)]
     boot_id: String,
     /// Firecracker process handle.
     process: Child,
     /// API client for this instance.
     client: FirecrackerClient,
     /// Socket path.
+    #[allow(dead_code)]
     socket_path: PathBuf,
+    /// TAP device for networking.
+    tap_device: Option<TapDevice>,
     /// Sandbox manager (if using jailer).
     sandbox: Option<SandboxManager>,
 }
@@ -221,6 +227,7 @@ impl Runtime for FirecrackerRuntime {
             process,
             client,
             socket_path,
+            tap_device: None, // TAP device created separately when networking is configured
             sandbox: None,
         };
 
@@ -260,6 +267,13 @@ impl Runtime for FirecrackerRuntime {
         let mut process = state.process;
         if let Err(e) = process.kill().await {
             warn!(instance_id = %instance_id, error = %e, "Failed to kill process");
+        }
+
+        // Clean up TAP device if present
+        if let Some(tap) = state.tap_device {
+            if let Err(e) = tap.cleanup() {
+                warn!(instance_id = %instance_id, error = %e, "Failed to cleanup TAP device");
+            }
         }
 
         // Clean up sandbox if present
