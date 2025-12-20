@@ -8,6 +8,7 @@ mod env_instances;
 mod envs;
 mod events;
 mod exec;
+mod exec_sessions;
 mod instances;
 mod logs;
 mod members;
@@ -43,6 +44,7 @@ pub fn routes() -> Router<AppState> {
             "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs/stream",
             axum::routing::get(logs::stream_logs),
         )
+        .nest("/exec-sessions", exec_sessions::routes())
         .route(
             "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/rollbacks",
             axum::routing::post(deploys::create_rollback),

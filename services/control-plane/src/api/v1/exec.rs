@@ -19,8 +19,12 @@ use crate::api::authz;
 use crate::api::error::ApiError;
 use crate::api::idempotency;
 use crate::api::request_context::RequestContext;
+use crate::api::tokens;
 use crate::db::AppendEvent;
 use crate::state::AppState;
+
+const MAX_SESSIONS_PER_ENV: i64 = 10;
+const MAX_SESSIONS_PER_INSTANCE: i64 = 2;
 
 /// Exec routes.
 ///
@@ -187,6 +191,8 @@ async fn create_exec_grant(
     let session_token = format!("exec_tok_{}", Uuid::new_v4());
     let connect_url = format!("/v1/exec-sessions/{}/connect", exec_session_id);
 
+    enforce_exec_concurrency_limits(&state, &env_id, &instance_id, &request_id).await?;
+
     let payload = ExecSessionGrantedPayload {
         exec_session_id,
         org_id,
@@ -237,13 +243,15 @@ async fn create_exec_grant(
             .with_request_id(request_id.clone())
     })?;
 
+    store_exec_token(&state, &exec_session_id, &session_token, expires_at, &request_id).await?;
+
     state
         .db()
         .projection_store()
         .wait_for_checkpoint(
             "exec_sessions",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -283,6 +291,104 @@ async fn create_exec_grant(
     }
 
     Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+async fn enforce_exec_concurrency_limits(
+    state: &AppState,
+    env_id: &EnvId,
+    instance_id: &InstanceId,
+    request_id: &str,
+) -> Result<(), ApiError> {
+    let env_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM exec_sessions_view
+        WHERE env_id = $1
+          AND status IN ('granted', 'connected')
+          AND expires_at > now()
+        "#,
+    )
+    .bind(env_id.to_string())
+    .fetch_one(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to check exec env limits");
+        ApiError::internal("internal_error", "Failed to create exec grant")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    if env_count >= MAX_SESSIONS_PER_ENV {
+        return Err(ApiError::too_many_requests(
+            "exec_rate_limited",
+            "Too many exec sessions for this environment",
+        )
+        .with_request_id(request_id.to_string()));
+    }
+
+    let instance_count: i64 = sqlx::query_scalar(
+        r#"
+        SELECT COUNT(*)
+        FROM exec_sessions_view
+        WHERE instance_id = $1
+          AND status IN ('granted', 'connected')
+          AND expires_at > now()
+        "#,
+    )
+    .bind(instance_id.to_string())
+    .fetch_one(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            "Failed to check exec instance limits"
+        );
+        ApiError::internal("internal_error", "Failed to create exec grant")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    if instance_count >= MAX_SESSIONS_PER_INSTANCE {
+        return Err(ApiError::too_many_requests(
+            "exec_rate_limited",
+            "Too many exec sessions for this instance",
+        )
+        .with_request_id(request_id.to_string()));
+    }
+
+    Ok(())
+}
+
+async fn store_exec_token(
+    state: &AppState,
+    exec_session_id: &ExecSessionId,
+    token: &str,
+    expires_at: chrono::DateTime<Utc>,
+    request_id: &str,
+) -> Result<(), ApiError> {
+    let token_hash = tokens::hash_token(token);
+    sqlx::query(
+        r#"
+        INSERT INTO exec_session_tokens (exec_session_id, token_hash, expires_at)
+        VALUES ($1, $2, $3)
+        "#,
+    )
+    .bind(exec_session_id.to_string())
+    .bind(token_hash)
+    .bind(expires_at)
+    .execute(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            exec_session_id = %exec_session_id,
+            "Failed to store exec session token"
+        );
+        ApiError::internal("internal_error", "Failed to create exec grant")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    Ok(())
 }
 
 fn validate_exec_command(command: &[String], request_id: &str) -> Result<(), ApiError> {
