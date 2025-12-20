@@ -117,6 +117,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         "PLFM_SECRETS_MASTER_KEY",
         "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=",
     );
+    std::env::set_var("PLFM_PROJECTION_WAIT_TIMEOUT_SECS", "15");
 
     let _ = tracing_subscriber::fmt()
         .with_env_filter(
