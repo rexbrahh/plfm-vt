@@ -168,12 +168,21 @@ impl ProjectionWorker {
                     match handler.apply(&mut tx, &event).await {
                         Ok(()) => {
                             // Update checkpoint
-                            ProjectionStore::update_checkpoint_in_tx(
+                            if let Err(err) = ProjectionStore::update_checkpoint_in_tx(
                                 &mut tx,
                                 handler.name(),
                                 event.event_id,
                             )
-                            .await?;
+                            .await
+                            {
+                                error!(
+                                    error = %err,
+                                    event_id = event.event_id,
+                                    projection = handler.name(),
+                                    "Failed to update projection checkpoint"
+                                );
+                                return Err(ProjectionError::Database(err));
+                            }
 
                             checkpoints.insert(handler.name().to_string(), event.event_id);
                         }
