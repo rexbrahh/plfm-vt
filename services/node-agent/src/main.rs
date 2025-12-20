@@ -26,6 +26,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 
 mod client;
 mod config;
+pub mod exec;
 pub mod firecracker;
 mod heartbeat;
 pub mod image;
