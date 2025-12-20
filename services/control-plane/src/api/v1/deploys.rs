@@ -295,7 +295,7 @@ async fn create_deploy(
         .wait_for_checkpoint(
             "deploys",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -513,7 +513,7 @@ pub async fn create_rollback(
         .wait_for_checkpoint(
             "deploys",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {

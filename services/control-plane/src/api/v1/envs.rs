@@ -472,7 +472,7 @@ async fn create_env(
     state
         .db()
         .projection_store()
-        .wait_for_checkpoint("envs", event_id.value(), std::time::Duration::from_secs(2))
+        .wait_for_checkpoint("envs", event_id.value(), crate::api::projection_wait_timeout())
         .await
         .map_err(|e| {
             tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
@@ -814,7 +814,7 @@ async fn update_scale(
         .wait_for_checkpoint(
             "env_config",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {

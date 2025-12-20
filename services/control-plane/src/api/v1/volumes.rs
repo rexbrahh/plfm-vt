@@ -343,7 +343,7 @@ async fn create_volume(
         .wait_for_checkpoint(
             "volumes",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -590,7 +590,7 @@ async fn delete_volume(
         .wait_for_checkpoint(
             "volumes",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -735,7 +735,7 @@ async fn create_snapshot(
         .wait_for_checkpoint(
             "snapshots",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -1120,7 +1120,7 @@ async fn restore_volume(
         .wait_for_checkpoint(
             "volumes",
             volume_event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {

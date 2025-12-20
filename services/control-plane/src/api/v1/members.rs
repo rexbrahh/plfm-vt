@@ -260,7 +260,7 @@ async fn create_member(
         .wait_for_checkpoint(
             "members",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -477,7 +477,7 @@ async fn update_member(
         .wait_for_checkpoint(
             "members",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -684,7 +684,7 @@ async fn delete_member(
         .wait_for_checkpoint(
             "members",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {

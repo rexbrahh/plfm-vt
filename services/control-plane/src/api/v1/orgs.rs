@@ -219,7 +219,7 @@ async fn create_org(
         .wait_for_checkpoint(
             "orgs",
             org_event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -234,7 +234,7 @@ async fn create_org(
         .wait_for_checkpoint(
             "members",
             member_event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {

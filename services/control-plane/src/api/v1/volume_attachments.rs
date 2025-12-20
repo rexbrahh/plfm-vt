@@ -279,7 +279,7 @@ async fn create_attachment(
         .wait_for_checkpoint(
             "volume_attachments",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -461,7 +461,7 @@ async fn delete_attachment(
         .wait_for_checkpoint(
             "volume_attachments",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {

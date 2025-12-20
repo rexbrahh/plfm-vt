@@ -414,7 +414,7 @@ async fn create_route(
         .wait_for_checkpoint(
             "routes",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -781,7 +781,7 @@ async fn update_route(
         .wait_for_checkpoint(
             "routes",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -1016,7 +1016,7 @@ async fn delete_route(
         .wait_for_checkpoint(
             "routes",
             event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {

@@ -5,7 +5,10 @@ pub mod error;
 mod health;
 pub mod idempotency;
 pub mod request_context;
+pub mod tokens;
 mod v1;
+
+use std::time::Duration;
 
 use axum::{
     http::{header, Method},
@@ -21,6 +24,15 @@ use tower_http::{
 };
 
 use crate::state::AppState;
+
+pub fn projection_wait_timeout() -> Duration {
+    std::env::var("PLFM_PROJECTION_WAIT_TIMEOUT_SECS")
+        .or_else(|_| std::env::var("GHOST_PROJECTION_WAIT_TIMEOUT_SECS"))
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_secs)
+        .unwrap_or_else(|| Duration::from_secs(5))
+}
 
 #[derive(Clone, Copy)]
 struct MakePlfmRequestId;
