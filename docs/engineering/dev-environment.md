@@ -29,7 +29,7 @@ Required:
 
 Recommended (project standard):
 - Nix (for pinned toolchain and reproducibility)
-- Rust, Go, and Node.js toolchains if you are not using Nix
+- Rust and Node.js toolchains if you are not using Nix
 
 ## One command setup (recommended)
 

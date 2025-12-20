@@ -32,7 +32,6 @@ Platform-critical:
 
 - Microbenchmarks:
   - Rust: criterion
-  - Go: `go test -bench`
 - Load generation:
   - k6, vegeta, wrk
 - Profiling:

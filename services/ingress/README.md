@@ -26,14 +26,20 @@ The ingress service handles external traffic routing into the platform.
 
 ```
 services/ingress/
-├── cmd/           # Main entrypoint
-├── config/        # Default and example configuration
-├── internal/      # Private implementation
-│   ├── router/    # SNI-based routing logic
-│   ├── health/    # Backend health checking
-│   ├── proxy/     # Proxy protocol v2 handling
-│   └── sync/      # Control plane state synchronization
-└── pkg/           # Public packages (minimal)
+├── Cargo.toml        # Crate manifest
+├── README.md
+├── config/           # Default and example configuration
+│   └── example.toml
+├── src/
+│   ├── main.rs       # Binary entrypoint
+│   ├── lib.rs        # Library root
+│   ├── config.rs     # Configuration loading
+│   ├── sync.rs       # Control plane state synchronization
+│   └── proxy/        # Proxy and routing implementation
+│       ├── mod.rs
+│       ├── router.rs # SNI-based routing logic
+│       └── health.rs # Backend health checking
+└── tests/            # Integration tests
 ```
 
 ## Running Locally

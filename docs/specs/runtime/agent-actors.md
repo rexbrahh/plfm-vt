@@ -9,7 +9,7 @@ Last reviewed: 2025-12-19
 Define the actor message schemas, lifecycle events, and operational contracts for node agent actors.
 
 This spec complements:
-- `docs/architecture/07-actors-and-supervision.md` (supervision tree design)
+- `docs/architecture/10-actors-and-supervision.md` (supervision tree design)
 - `docs/specs/state/event-types.md` (control-plane event log payloads)
 - `docs/specs/manifest/workload-spec.md` (WorkloadSpec contract)
 
@@ -29,7 +29,7 @@ This spec defines:
 
 This spec does not define:
 - control plane actor messages (future spec)
-- exact Rust/Go type definitions (implementation detail)
+- exact Rust type definitions (implementation detail)
 - network protocol for control plane stream (see API specs)
 
 ## InstanceActor

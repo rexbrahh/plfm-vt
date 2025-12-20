@@ -88,7 +88,7 @@ Total target size: **< 20 MiB compressed**
 
 ### Build Inputs
 
-1. Guest init source code (Rust or Go, static binary)
+1. Guest init source code (Rust, static binary)
 2. Kernel config and source
 3. Busybox config (minimal applets)
 4. Build metadata (version, timestamp, git SHA)

@@ -78,16 +78,35 @@ Recommended monorepo layout:
 
 ## Service structure conventions
 
-Each folder in services/* must contain:
+The platform is implemented in Rust. Each folder in services/* must contain:
 - README.md
   - What this component does
   - Interfaces it owns and consumes
   - How to run locally
   - How to test it
-- cmd/ or main/ entrypoint
-- config/ default config and example config
-- internal/ implementation (avoid leaking internal packages)
-- pkg/ public packages intended for reuse (keep minimal)
+- Cargo.toml — crate manifest
+- src/ — Rust source code
+  - main.rs — binary entrypoint
+  - lib.rs — library root (if applicable)
+- config/ — default config and example config
+- tests/ — integration tests (optional, can use `src/` tests)
+
+Example structure:
+```
+services/control-plane/
+├── Cargo.toml
+├── README.md
+├── config/
+│   └── example.toml
+├── src/
+│   ├── main.rs
+│   ├── api/
+│   ├── db/
+│   ├── projections/
+│   └── scheduler/
+└── tests/
+    └── core_loop.rs
+```
 
 ## Interface ownership rules
 

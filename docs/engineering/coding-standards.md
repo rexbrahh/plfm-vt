@@ -28,7 +28,7 @@ These standards exist to keep the platform safe, debuggable, and consistent acro
 ## Code style
 
 Formatting:
-- Use language standard formatters (rustfmt, gofmt, prettier).
+- Use language standard formatters (rustfmt for Rust, prettier for frontend).
 - CI must enforce formatter output.
 
 Linting:

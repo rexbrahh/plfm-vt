@@ -28,16 +28,27 @@ The node agent runs on each bare-metal host and manages workload lifecycle.
 
 ```
 services/node-agent/
-├── cmd/           # Main entrypoint
-├── config/        # Default and example configuration
-├── internal/      # Private implementation
-│   ├── vm/        # Firecracker lifecycle management
-│   ├── image/     # OCI image fetching and caching
-│   ├── secrets/   # Secret bundle decryption and materialization
-│   ├── volume/    # Volume attach/mount/backup
-│   ├── network/   # Tap device and overlay setup
-│   └── exec/      # Exec session proxying
-└── pkg/           # Public packages (minimal)
+├── Cargo.toml        # Crate manifest
+├── README.md
+├── config/           # Default and example configuration
+│   └── example.toml
+├── src/
+│   ├── main.rs       # Binary entrypoint
+│   ├── lib.rs        # Library root
+│   ├── config.rs     # Configuration loading
+│   ├── runtime.rs    # Runtime trait and selection
+│   ├── vsock.rs      # Guest communication protocol
+│   ├── exec.rs       # Exec session handling
+│   ├── actors/       # Actor-based reconciliation
+│   │   ├── mod.rs
+│   │   ├── supervisor.rs
+│   │   ├── instance.rs
+│   │   └── image_pull.rs
+│   ├── firecracker/  # Firecracker runtime implementation
+│   ├── image/        # OCI image fetching and caching
+│   ├── network/      # Tap device and overlay setup
+│   └── state/        # Local state persistence
+└── tests/            # Integration tests
 ```
 
 ## Running Locally

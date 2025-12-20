@@ -27,15 +27,26 @@ The control plane is the central coordination service for the plfm-vt platform.
 
 ```
 services/control-plane/
-├── cmd/           # Main entrypoint
-├── config/        # Default and example configuration
-├── internal/      # Private implementation
-│   ├── api/       # HTTP handlers
-│   ├── auth/      # Authentication middleware
-│   ├── scheduler/ # Workload placement logic
-│   ├── reconcile/ # State reconciliation
-│   └── store/     # Database access
-└── pkg/           # Public packages (minimal)
+├── Cargo.toml        # Crate manifest
+├── README.md
+├── config/           # Default and example configuration
+│   └── example.toml
+├── migrations/       # SQL migrations
+├── src/
+│   ├── main.rs       # Binary entrypoint
+│   ├── lib.rs        # Library root
+│   ├── config.rs     # Configuration loading
+│   ├── state.rs      # Application state
+│   ├── api/          # HTTP handlers
+│   │   └── v1/       # v1 API endpoints
+│   ├── db/           # Database access
+│   │   ├── event_store.rs
+│   │   ├── idempotency.rs
+│   │   └── projections.rs
+│   ├── projections/  # Materialized view workers
+│   └── scheduler/    # Workload placement logic
+└── tests/            # Integration tests
+    └── core_loop.rs
 ```
 
 ## Running Locally

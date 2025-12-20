@@ -1,4 +1,4 @@
-# docs/architecture/07-actors-and-supervision.md
+# docs/architecture/10-actors-and-supervision.md
 
 Status: draft  
 Owner: TBD  
@@ -205,36 +205,32 @@ For `ApplyDesired` messages, the mailbox should dedupe by keeping only the lates
 
 ## Implementation guidance
 
-### Go (control plane)
+### Rust (all components)
 
-A "good enough" actor runtime for v1:
-- bounded mailbox: `chan Msg` with capacity
-- single goroutine per actor
-- supervisor that restarts with backoff
-- all side effects behind interfaces for testability
-
-Key invariant: **no shared mutable state outside the actor loop**.
-
-```go
-type Actor interface {
-    Receive(ctx context.Context, msg Msg) error
-}
-
-type Supervisor struct {
-    children map[string]*child
-    restart  RestartPolicy
-}
-```
-
-### Rust (node agent)
-
-The same structure maps to:
+The platform is implemented in Rust. The actor pattern maps to:
 - `tokio::spawn` per actor
-- `mpsc::channel` for mailbox
-- supervisor task that monitors child handles
+- `mpsc::channel` for mailbox (bounded)
+- supervisor task that monitors child handles via `JoinHandle`
 - `select!` for multiplexing tick + mailbox
 
 Key invariant: **no `Arc<Mutex<_>>` for actor state**. State lives in the actor task only.
+
+```rust
+// Actor trait pattern
+#[async_trait]
+pub trait Actor: Send + 'static {
+    type Msg: Send;
+    async fn handle(&mut self, msg: Self::Msg) -> Result<(), ActorError>;
+}
+
+// Supervisor manages child actors
+pub struct Supervisor {
+    children: HashMap<String, JoinHandle<()>>,
+    restart_policy: RestartPolicy,
+}
+```
+
+For control plane reconcilers, the same pattern applies with `tokio` tasks and bounded channels. The control plane actors emit events to the event log and consume from materialized views.
 
 ## Relationship to existing specs
 
