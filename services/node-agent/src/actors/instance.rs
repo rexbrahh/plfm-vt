@@ -32,7 +32,7 @@ pub enum InstanceMessage {
     /// Apply new desired state.
     ApplyDesired {
         spec_revision: u64,
-        spec: InstancePlan,
+        spec: Box<InstancePlan>,
         desired_state: DesiredInstanceState,
     },
 
@@ -454,7 +454,7 @@ impl<R: Runtime + Send + Sync + 'static> Actor for InstanceActor<R> {
                 spec,
                 desired_state,
             } => {
-                self.handle_apply_desired(spec_revision, spec, desired_state)
+                self.handle_apply_desired(spec_revision, *spec, desired_state)
                     .await?;
             }
 

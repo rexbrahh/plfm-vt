@@ -158,7 +158,7 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
             // Actor exists, send updated spec
             let msg = InstanceMessage::ApplyDesired {
                 spec_revision: revision,
-                spec: plan.clone(),
+                spec: Box::new(plan.clone()),
                 desired_state: DesiredInstanceState::Running,
             };
 
@@ -191,7 +191,7 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
         // Send initial spec
         let msg = InstanceMessage::ApplyDesired {
             spec_revision: revision,
-            spec: plan,
+            spec: Box::new(plan),
             desired_state: DesiredInstanceState::Running,
         };
 

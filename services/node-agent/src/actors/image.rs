@@ -268,7 +268,7 @@ impl ImagePullActor {
             let root_disk_path = format!(
                 "{}/rootdisks/{}.ext4",
                 self.image_dir,
-                expected_digest.replace(':', "_").replace('/', "_")
+                expected_digest.replace([':', '/'], "_")
             );
             let size_bytes = 512 * 1024 * 1024; // Fake 512MB
 
