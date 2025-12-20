@@ -61,9 +61,8 @@ pub async fn perform_handshake(port: u32) -> Result<GuestConfig> {
 
     // Connect to host agent
     let addr = VsockAddr::new(HOST_CID, port);
-    let mut stream = VsockStream::connect(&addr).map_err(|e| {
-        InitError::HandshakeFailed(format!("failed to connect to host: {}", e))
-    })?;
+    let mut stream = VsockStream::connect(&addr)
+        .map_err(|e| InitError::HandshakeFailed(format!("failed to connect to host: {}", e)))?;
 
     info!("connected to host agent");
 
@@ -113,9 +112,8 @@ fn receive_config(stream: &mut VsockStream) -> Result<GuestConfig> {
         return Err(InitError::HandshakeFailed("host closed connection".to_string()).into());
     }
 
-    let msg: ConfigMessage = serde_json::from_str(&line).map_err(|e| {
-        InitError::ConfigParseFailed(format!("invalid config JSON: {}", e))
-    })?;
+    let msg: ConfigMessage = serde_json::from_str(&line)
+        .map_err(|e| InitError::ConfigParseFailed(format!("invalid config JSON: {}", e)))?;
 
     if msg.msg_type != "config" {
         return Err(InitError::ConfigParseFailed(format!(

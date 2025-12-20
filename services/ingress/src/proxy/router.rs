@@ -82,17 +82,11 @@ impl Route {
 #[derive(Debug, Clone)]
 pub enum RoutingDecision {
     /// Route found, proceed with connection.
-    Matched {
-        route: Route,
-    },
+    Matched { route: Route },
     /// No matching route found.
-    NoMatch {
-        reason: String,
-    },
+    NoMatch { reason: String },
     /// Routing is ambiguous (multiple routes, no SNI).
-    Ambiguous {
-        reason: String,
-    },
+    Ambiguous { reason: String },
 }
 
 /// Key for route lookup (port + optional hostname).
@@ -131,7 +125,11 @@ impl RouteSnapshot {
             by_id.insert(route.id.clone(), route);
         }
 
-        Self { by_key, by_port, by_id }
+        Self {
+            by_key,
+            by_port,
+            by_id,
+        }
     }
 
     /// Create a new snapshot with a route added/updated.
@@ -154,18 +152,24 @@ impl RouteSnapshot {
 
         by_id.insert(route.id.clone(), route);
 
-        Self { by_key, by_port, by_id }
+        Self {
+            by_key,
+            by_port,
+            by_id,
+        }
     }
 
     /// Create a new snapshot with a route removed.
     fn without(&self, route_id: &str) -> Self {
         let route = match self.by_id.get(route_id) {
             Some(r) => r.clone(),
-            None => return Self {
-                by_key: self.by_key.clone(),
-                by_port: self.by_port.clone(),
-                by_id: self.by_id.clone(),
-            },
+            None => {
+                return Self {
+                    by_key: self.by_key.clone(),
+                    by_port: self.by_port.clone(),
+                    by_id: self.by_id.clone(),
+                }
+            }
         };
 
         let mut by_key = self.by_key.clone();
@@ -187,7 +191,11 @@ impl RouteSnapshot {
             }
         }
 
-        Self { by_key, by_port, by_id }
+        Self {
+            by_key,
+            by_port,
+            by_id,
+        }
     }
 }
 
@@ -217,14 +225,11 @@ impl RouteTable {
     pub async fn update(&self, routes: Vec<Route>) {
         let route_count = routes.len();
         let new_snapshot = Arc::new(RouteSnapshot::from_routes(routes));
-        
+
         // Atomic swap - readers get consistent snapshots
         self.snapshot.store(new_snapshot);
 
-        info!(
-            route_count = route_count,
-            "Route table updated atomically"
-        );
+        info!(route_count = route_count, "Route table updated atomically");
     }
 
     /// Add or update a single route atomically.
@@ -255,11 +260,7 @@ impl RouteTable {
     /// # Arguments
     /// * `listener_addr` - The address the connection arrived on
     /// * `sni` - Optional SNI hostname extracted from TLS ClientHello
-    pub async fn route(
-        &self,
-        listener_addr: SocketAddr,
-        sni: Option<&str>,
-    ) -> RoutingDecision {
+    pub async fn route(&self, listener_addr: SocketAddr, sni: Option<&str>) -> RoutingDecision {
         let port = listener_addr.port();
         let snapshot = self.snapshot.load();
 
@@ -278,7 +279,9 @@ impl RouteTable {
                     port = port,
                     "Route matched by SNI"
                 );
-                return RoutingDecision::Matched { route: route.clone() };
+                return RoutingDecision::Matched {
+                    route: route.clone(),
+                };
             }
 
             // No match for this hostname
@@ -289,16 +292,12 @@ impl RouteTable {
 
         // No SNI - check if routing is unambiguous
         match snapshot.by_port.get(&port) {
-            None => {
-                RoutingDecision::NoMatch {
-                    reason: format!("No routes bound to port {}", port),
-                }
-            }
-            Some(routes) if routes.is_empty() => {
-                RoutingDecision::NoMatch {
-                    reason: format!("No routes bound to port {}", port),
-                }
-            }
+            None => RoutingDecision::NoMatch {
+                reason: format!("No routes bound to port {}", port),
+            },
+            Some(routes) if routes.is_empty() => RoutingDecision::NoMatch {
+                reason: format!("No routes bound to port {}", port),
+            },
             Some(routes) if routes.len() == 1 => {
                 let route = &routes[0];
                 // Check if fallback is allowed
@@ -321,7 +320,9 @@ impl RouteTable {
                     port = port,
                     "Route matched (unambiguous, no SNI)"
                 );
-                RoutingDecision::Matched { route: route.clone() }
+                RoutingDecision::Matched {
+                    route: route.clone(),
+                }
             }
             Some(routes) => {
                 // Multiple routes, ambiguous without SNI

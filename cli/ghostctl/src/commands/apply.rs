@@ -151,10 +151,7 @@ async fn wait_for_deploy(
 
         // Print status updates (only in table mode, and only when status changes)
         if matches!(format, OutputFormat::Table) && response.status != last_status {
-            print_info(&format!(
-                "Deploy {} status: {}",
-                deploy_id, response.status
-            ));
+            print_info(&format!("Deploy {} status: {}", deploy_id, response.status));
             last_status = response.status.clone();
         }
 

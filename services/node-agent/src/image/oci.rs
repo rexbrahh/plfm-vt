@@ -64,8 +64,8 @@ impl Default for OciConfig {
         Self {
             registry_url: "https://registry-1.docker.io".to_string(),
             auth_token: None,
-            layer_timeout: Duration::from_secs(300),      // 5 minutes
-            total_timeout: Duration::from_secs(1800),     // 30 minutes
+            layer_timeout: Duration::from_secs(300), // 5 minutes
+            total_timeout: Duration::from_secs(1800), // 30 minutes
             max_compressed_size: 10 * 1024 * 1024 * 1024, // 10 GiB
             blob_dir: PathBuf::from("/var/lib/plfm-agent/oci/blobs"),
         }
@@ -81,9 +81,7 @@ pub struct OciClient {
 impl OciClient {
     /// Create a new OCI client.
     pub fn new(config: OciConfig) -> Result<Self, OciError> {
-        let client = Client::builder()
-            .timeout(config.total_timeout)
-            .build()?;
+        let client = Client::builder().timeout(config.total_timeout).build()?;
 
         Ok(Self { config, client })
     }
@@ -126,23 +124,13 @@ impl OciClient {
             }
             StatusCode::NOT_FOUND => Err(OciError::NotFound(digest.to_string())),
             StatusCode::UNAUTHORIZED => Err(OciError::AuthRequired),
-            _status => Err(OciError::Http(
-                response.error_for_status().unwrap_err(),
-            )),
+            _status => Err(OciError::Http(response.error_for_status().unwrap_err())),
         }
     }
 
     /// Pull a blob by digest to a file.
-    pub async fn pull_blob(
-        &self,
-        repo: &str,
-        digest: &str,
-        dest: &Path,
-    ) -> Result<u64, OciError> {
-        let url = format!(
-            "{}/v2/{}/blobs/{}",
-            self.config.registry_url, repo, digest
-        );
+    pub async fn pull_blob(&self, repo: &str, digest: &str, dest: &Path) -> Result<u64, OciError> {
+        let url = format!("{}/v2/{}/blobs/{}", self.config.registry_url, repo, digest);
 
         debug!(url = %url, dest = %dest.display(), "Pulling blob");
 
@@ -209,9 +197,7 @@ impl OciClient {
             }
             StatusCode::NOT_FOUND => Err(OciError::NotFound(digest.to_string())),
             StatusCode::UNAUTHORIZED => Err(OciError::AuthRequired),
-            _ => Err(OciError::Http(
-                response.error_for_status().unwrap_err(),
-            )),
+            _ => Err(OciError::Http(response.error_for_status().unwrap_err())),
         }
     }
 

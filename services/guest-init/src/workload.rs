@@ -42,7 +42,11 @@ pub async fn run(config: &WorkloadConfig) -> Result<i32> {
     cmd.args(args)
         .current_dir(&config.cwd)
         .envs(&config.env)
-        .stdin(if config.stdin { Stdio::inherit() } else { Stdio::null() })
+        .stdin(if config.stdin {
+            Stdio::inherit()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
 
@@ -70,9 +74,9 @@ pub async fn run(config: &WorkloadConfig) -> Result<i32> {
     }
 
     // Spawn the process
-    let mut child = cmd.spawn().map_err(|e| {
-        InitError::WorkloadStartFailed(format!("spawn failed: {}", e))
-    })?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| InitError::WorkloadStartFailed(format!("spawn failed: {}", e)))?;
 
     let child_pid = child.id().expect("child should have pid");
     info!(pid = child_pid, "workload started");

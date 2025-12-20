@@ -20,14 +20,7 @@ use crate::config::MountConfig;
 use crate::error::InitError;
 
 /// Reserved paths that cannot be mount targets.
-const RESERVED_PATHS: &[&str] = &[
-    "/proc",
-    "/sys",
-    "/dev",
-    "/run/secrets",
-    "/tmp",
-    "/run",
-];
+const RESERVED_PATHS: &[&str] = &["/proc", "/sys", "/dev", "/run/secrets", "/tmp", "/run"];
 
 /// Mount flags for read-only.
 #[cfg(target_os = "linux")]
@@ -37,7 +30,9 @@ const MS_RDONLY: libc::c_ulong = 1;
 pub fn mount_volume(config: &MountConfig) -> Result<()> {
     // Validate mount point is not reserved
     for reserved in RESERVED_PATHS {
-        if config.mountpoint == *reserved || config.mountpoint.starts_with(&format!("{}/", reserved)) {
+        if config.mountpoint == *reserved
+            || config.mountpoint.starts_with(&format!("{}/", reserved))
+        {
             return Err(InitError::MountFailed {
                 name: config.name.clone(),
                 detail: format!("mountpoint '{}' is reserved", config.mountpoint),
@@ -60,10 +55,13 @@ pub fn mount_volume(config: &MountConfig) -> Result<()> {
 /// Mount a block device volume using libc.
 #[cfg(target_os = "linux")]
 fn mount_block_volume(config: &MountConfig) -> Result<()> {
-    let device = config.device.as_ref().ok_or_else(|| InitError::MountFailed {
-        name: config.name.clone(),
-        detail: "device path required for volume mount".to_string(),
-    })?;
+    let device = config
+        .device
+        .as_ref()
+        .ok_or_else(|| InitError::MountFailed {
+            name: config.name.clone(),
+            detail: "device path required for volume mount".to_string(),
+        })?;
 
     let mountpoint = Path::new(&config.mountpoint);
 

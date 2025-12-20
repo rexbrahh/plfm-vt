@@ -86,7 +86,13 @@ impl FirecrackerClient {
         struct Action {
             action_type: &'static str,
         }
-        self.put("/actions", &Action { action_type: "InstanceStart" }).await
+        self.put(
+            "/actions",
+            &Action {
+                action_type: "InstanceStart",
+            },
+        )
+        .await
     }
 
     /// Send CtrlAltDel to the guest (graceful shutdown).
@@ -95,7 +101,13 @@ impl FirecrackerClient {
         struct Action {
             action_type: &'static str,
         }
-        self.put("/actions", &Action { action_type: "SendCtrlAltDel" }).await
+        self.put(
+            "/actions",
+            &Action {
+                action_type: "SendCtrlAltDel",
+            },
+        )
+        .await
     }
 
     /// Pause the microVM.

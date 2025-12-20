@@ -98,11 +98,10 @@ impl ExitMessage {
 /// Run the exec service on the specified vsock port.
 pub async fn run_exec_service(port: u32) -> Result<()> {
     let addr = VsockAddr::new(GUEST_CID, port);
-    
+
     // Note: vsock crate uses blocking I/O, so we spawn blocking tasks
-    let listener = VsockListener::bind(&addr).map_err(|e| {
-        anyhow::anyhow!("failed to bind exec service on port {}: {}", port, e)
-    })?;
+    let listener = VsockListener::bind(&addr)
+        .map_err(|e| anyhow::anyhow!("failed to bind exec service on port {}: {}", port, e))?;
 
     info!(port = port, "exec service listening");
 
@@ -110,7 +109,7 @@ pub async fn run_exec_service(port: u32) -> Result<()> {
         match listener.accept() {
             Ok((stream, peer)) => {
                 info!(peer_cid = peer.cid(), "exec connection accepted");
-                
+
                 // Handle connection in a blocking task
                 tokio::task::spawn_blocking(move || {
                     if let Err(e) = handle_exec_connection(stream) {
@@ -130,7 +129,7 @@ fn handle_exec_connection(mut stream: VsockStream) -> Result<()> {
     // Read the exec request (first line is JSON)
     let mut buf = vec![0u8; 4096];
     let n = stream.read(&mut buf)?;
-    
+
     if n == 0 {
         return Ok(());
     }
@@ -138,9 +137,9 @@ fn handle_exec_connection(mut stream: VsockStream) -> Result<()> {
     // Find newline delimiter
     let request_end = buf[..n].iter().position(|&b| b == b'\n').unwrap_or(n);
     let request_json = std::str::from_utf8(&buf[..request_end])?;
-    
-    let request: ExecRequest = serde_json::from_str(request_json)
-        .context("invalid exec request JSON")?;
+
+    let request: ExecRequest =
+        serde_json::from_str(request_json).context("invalid exec request JSON")?;
 
     debug!(
         command = ?request.command,
@@ -176,7 +175,7 @@ fn execute_with_pty(stream: &mut VsockStream, request: &ExecRequest) -> Result<i
 
     // Open PTY
     let OpenptyResult { master, slave } = openpty(Some(&winsize), None)?;
-    
+
     // Get the raw FDs before we move slave into the closure
     let slave_fd = slave.as_raw_fd();
     let master_fd = master.as_raw_fd();
@@ -217,7 +216,7 @@ fn execute_with_pty(stream: &mut VsockStream, request: &ExecRequest) -> Result<i
     let mut master_file = unsafe { std::fs::File::from_raw_fd(master_fd) };
     // Prevent master OwnedFd from closing the fd since we transferred it
     std::mem::forget(master);
-    
+
     // Simple polling loop (in production, use proper async or epoll)
     let mut buf = [0u8; 4096];
     loop {
@@ -254,7 +253,11 @@ fn execute_with_pipes(stream: &mut VsockStream, request: &ExecRequest) -> Result
     let mut child = Command::new(program)
         .args(&args[1..])
         .envs(&request.env)
-        .stdin(if request.stdin { Stdio::piped() } else { Stdio::null() })
+        .stdin(if request.stdin {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;

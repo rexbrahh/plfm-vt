@@ -222,7 +222,11 @@ impl ConfigDeliveryService {
         let addr = VsockAddr::new(VMADDR_CID_HOST, CONFIG_PORT);
 
         let listener = VsockListener::bind(&addr).map_err(|e| {
-            anyhow!("Failed to bind vsock listener on port {}: {}", CONFIG_PORT, e)
+            anyhow!(
+                "Failed to bind vsock listener on port {}: {}",
+                CONFIG_PORT,
+                e
+            )
         })?;
 
         info!(port = CONFIG_PORT, "Config delivery service listening");
@@ -251,11 +255,14 @@ impl ConfigDeliveryService {
 /// Handle a single guest-init connection.
 fn handle_connection(mut stream: VsockStream, config_store: Arc<ConfigStore>) -> Result<()> {
     // Read hello message
-    let hello = read_message::<HelloMessage>(&mut stream)
-        .context("Failed to read hello message")?;
+    let hello =
+        read_message::<HelloMessage>(&mut stream).context("Failed to read hello message")?;
 
     if hello.msg_type != "hello" {
-        return Err(anyhow!("Expected 'hello' message, got '{}'", hello.msg_type));
+        return Err(anyhow!(
+            "Expected 'hello' message, got '{}'",
+            hello.msg_type
+        ));
     }
 
     info!(
@@ -282,14 +289,16 @@ fn handle_connection(mut stream: VsockStream, config_store: Arc<ConfigStore>) ->
 
     // Get pending config for this instance
     // Note: This is a blocking call in spawn_blocking context
-    let pending = tokio::runtime::Handle::current()
-        .block_on(config_store.take(&hello.instance_id));
+    let pending = tokio::runtime::Handle::current().block_on(config_store.take(&hello.instance_id));
 
     let pending = match pending {
         Some(p) => p,
         None => {
             error!(instance_id = %hello.instance_id, "No pending config for instance");
-            return Err(anyhow!("No pending config for instance {}", hello.instance_id));
+            return Err(anyhow!(
+                "No pending config for instance {}",
+                hello.instance_id
+            ));
         }
     };
 
@@ -440,9 +449,7 @@ fn read_message<T: serde::de::DeserializeOwned>(stream: &mut VsockStream) -> Res
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
 
-    reader
-        .read_line(&mut line)
-        .context("Failed to read line")?;
+    reader.read_line(&mut line).context("Failed to read line")?;
 
     if line.is_empty() {
         return Err(anyhow!("Connection closed"));

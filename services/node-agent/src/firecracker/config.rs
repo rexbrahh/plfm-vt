@@ -246,7 +246,10 @@ pub struct VsockConfig {
 impl VsockConfig {
     /// Create a new vsock configuration.
     pub fn new(guest_cid: u32, uds_path: PathBuf) -> Self {
-        Self { guest_cid, uds_path }
+        Self {
+            guest_cid,
+            uds_path,
+        }
     }
 }
 

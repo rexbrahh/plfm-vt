@@ -19,15 +19,28 @@ const INTERFACE: &str = "eth0";
 pub async fn configure(config: &NetworkConfig) -> Result<()> {
     // Validate IPv6 addresses
     let _overlay_addr: Ipv6Addr = config.overlay_ipv6.parse().map_err(|e| {
-        InitError::NetConfigFailed(format!("invalid overlay_ipv6 '{}': {}", config.overlay_ipv6, e))
+        InitError::NetConfigFailed(format!(
+            "invalid overlay_ipv6 '{}': {}",
+            config.overlay_ipv6, e
+        ))
     })?;
 
     let _gateway_addr: Ipv6Addr = config.gateway_ipv6.parse().map_err(|e| {
-        InitError::NetConfigFailed(format!("invalid gateway_ipv6 '{}': {}", config.gateway_ipv6, e))
+        InitError::NetConfigFailed(format!(
+            "invalid gateway_ipv6 '{}': {}",
+            config.gateway_ipv6, e
+        ))
     })?;
 
     // Set MTU
-    run_ip(&["link", "set", "dev", INTERFACE, "mtu", &config.mtu.to_string()])?;
+    run_ip(&[
+        "link",
+        "set",
+        "dev",
+        INTERFACE,
+        "mtu",
+        &config.mtu.to_string(),
+    ])?;
     debug!(mtu = config.mtu, "MTU set");
 
     // Bring interface up
@@ -41,7 +54,16 @@ pub async fn configure(config: &NetworkConfig) -> Result<()> {
 
     // Add default route
     let gateway_str = config.gateway_ipv6.clone();
-    run_ip(&["-6", "route", "replace", "default", "via", &gateway_str, "dev", INTERFACE])?;
+    run_ip(&[
+        "-6",
+        "route",
+        "replace",
+        "default",
+        "via",
+        &gateway_str,
+        "dev",
+        INTERFACE,
+    ])?;
     info!(gateway = %gateway_str, "default route configured");
 
     // Configure DNS
@@ -97,9 +119,8 @@ fn configure_dns(servers: &[String]) -> Result<()> {
 /// Set the system hostname.
 fn set_hostname(hostname: &str) -> Result<()> {
     // Use sethostname syscall via nix
-    nix::unistd::sethostname(hostname).map_err(|e| {
-        InitError::NetConfigFailed(format!("sethostname failed: {}", e))
-    })?;
+    nix::unistd::sethostname(hostname)
+        .map_err(|e| InitError::NetConfigFailed(format!("sethostname failed: {}", e)))?;
 
     // Also write /etc/hostname for persistence
     let _ = fs::write("/etc/hostname", format!("{}\n", hostname));

@@ -84,7 +84,8 @@ impl SniInspector {
         buffer.clear();
         buffer.resize(self.config.max_bytes, 0);
 
-        let read_result = timeout(self.config.timeout, self.read_client_hello(stream, buffer)).await;
+        let read_result =
+            timeout(self.config.timeout, self.read_client_hello(stream, buffer)).await;
 
         match read_result {
             Ok(Ok(bytes_read)) => {
@@ -228,8 +229,7 @@ fn parse_sni(data: &[u8]) -> SniResult {
     if pos + 2 > client_hello.len() {
         return SniResult::Malformed;
     }
-    let cipher_suites_len =
-        u16::from_be_bytes([client_hello[pos], client_hello[pos + 1]]) as usize;
+    let cipher_suites_len = u16::from_be_bytes([client_hello[pos], client_hello[pos + 1]]) as usize;
     pos += 2 + cipher_suites_len;
 
     // Compression methods
@@ -257,7 +257,9 @@ fn parse_sni(data: &[u8]) -> SniResult {
 
         if ext_type == 0x0000 {
             // SNI extension
-            return parse_sni_extension(&client_hello[pos..(pos + ext_len).min(client_hello.len())]);
+            return parse_sni_extension(
+                &client_hello[pos..(pos + ext_len).min(client_hello.len())],
+            );
         }
 
         pos += ext_len;

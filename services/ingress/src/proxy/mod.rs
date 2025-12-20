@@ -37,5 +37,7 @@ mod sni;
 pub use backend::{Backend, BackendPool, BackendPoolStats, BackendSelector, HealthStatus};
 pub use listener::{Listener, ListenerConfig, ListenerStats};
 pub use proxy_protocol::ProxyProtocolV2;
-pub use router::{ProtocolHint, ProxyProtocol, Route, RouteTable, RoutingDecision, SharedRouteTable};
+pub use router::{
+    ProtocolHint, ProxyProtocol, Route, RouteTable, RoutingDecision, SharedRouteTable,
+};
 pub use sni::{SniConfig, SniInspector, SniResult};

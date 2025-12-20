@@ -156,9 +156,18 @@ fn print_status_table(status: &EnvStatusResponse, verbose: bool) {
 
     // Release info
     println!("RELEASE");
-    println!("  Current:  {}", status.current_release_id.as_deref().unwrap_or("-"));
-    println!("  Desired:  {}", status.desired_release_id.as_deref().unwrap_or("-"));
-    println!("  Synced:   {}", if status.release_synced { "yes" } else { "no" });
+    println!(
+        "  Current:  {}",
+        status.current_release_id.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  Desired:  {}",
+        status.desired_release_id.as_deref().unwrap_or("-")
+    );
+    println!(
+        "  Synced:   {}",
+        if status.release_synced { "yes" } else { "no" }
+    );
     println!();
 
     // Instance counts

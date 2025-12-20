@@ -144,35 +144,55 @@ pub fn create_tap(config: &TapConfig) -> Result<TapDevice, TapError> {
         .map_err(|e| TapError::CreateFailed(e.to_string()))?;
 
     // Set MTU
-    run_ip(&["link", "set", "dev", &tap_name, "mtu", &config.mtu.to_string()])
-        .map_err(|e| {
-            // Try to clean up on failure
-            let _ = run_ip(&["link", "delete", &tap_name]);
-            TapError::ConfigFailed(format!("MTU: {}", e))
-        })?;
+    run_ip(&[
+        "link",
+        "set",
+        "dev",
+        &tap_name,
+        "mtu",
+        &config.mtu.to_string(),
+    ])
+    .map_err(|e| {
+        // Try to clean up on failure
+        let _ = run_ip(&["link", "delete", &tap_name]);
+        TapError::ConfigFailed(format!("MTU: {}", e))
+    })?;
 
     // Bring interface up
-    run_ip(&["link", "set", "dev", &tap_name, "up"])
-        .map_err(|e| {
-            let _ = run_ip(&["link", "delete", &tap_name]);
-            TapError::ConfigFailed(format!("bring up: {}", e))
-        })?;
+    run_ip(&["link", "set", "dev", &tap_name, "up"]).map_err(|e| {
+        let _ = run_ip(&["link", "delete", &tap_name]);
+        TapError::ConfigFailed(format!("bring up: {}", e))
+    })?;
 
     // Add link-local IPv6 address (gateway from guest's perspective)
     // fe80::1/64 on the tap interface
-    run_ip(&["-6", "addr", "add", &format!("{}/64", config.gateway_ipv6), "dev", &tap_name])
-        .map_err(|e| {
-            let _ = run_ip(&["link", "delete", &tap_name]);
-            TapError::ConfigFailed(format!("gateway address: {}", e))
-        })?;
+    run_ip(&[
+        "-6",
+        "addr",
+        "add",
+        &format!("{}/64", config.gateway_ipv6),
+        "dev",
+        &tap_name,
+    ])
+    .map_err(|e| {
+        let _ = run_ip(&["link", "delete", &tap_name]);
+        TapError::ConfigFailed(format!("gateway address: {}", e))
+    })?;
 
     // Add route for instance overlay IPv6 via this TAP
     // This tells the host to send traffic for the instance through this TAP
-    run_ip(&["-6", "route", "add", &format!("{}/128", config.overlay_ipv6), "dev", &tap_name])
-        .map_err(|e| {
-            let _ = run_ip(&["link", "delete", &tap_name]);
-            TapError::RouteFailed(e.to_string())
-        })?;
+    run_ip(&[
+        "-6",
+        "route",
+        "add",
+        &format!("{}/128", config.overlay_ipv6),
+        "dev",
+        &tap_name,
+    ])
+    .map_err(|e| {
+        let _ = run_ip(&["link", "delete", &tap_name]);
+        TapError::RouteFailed(e.to_string())
+    })?;
 
     // Enable proxy NDP for the instance address (so host responds to NDP on behalf of VM)
     // This may fail on some systems, so we just warn
@@ -207,14 +227,20 @@ fn delete_tap(tap_name: &str, overlay_ipv6: &str) -> Result<(), TapError> {
     info!(tap = %tap_name, "Deleting TAP device");
 
     // Remove route first (ignore errors as it may not exist)
-    let _ = run_ip(&["-6", "route", "del", &format!("{}/128", overlay_ipv6), "dev", tap_name]);
+    let _ = run_ip(&[
+        "-6",
+        "route",
+        "del",
+        &format!("{}/128", overlay_ipv6),
+        "dev",
+        tap_name,
+    ]);
 
     // Remove proxy NDP entry (ignore errors)
     let _ = run_ip(&["-6", "neigh", "del", "proxy", overlay_ipv6, "dev", tap_name]);
 
     // Delete the TAP device
-    run_ip(&["link", "delete", tap_name])
-        .map_err(|e| TapError::DeleteFailed(e.to_string()))?;
+    run_ip(&["link", "delete", tap_name]).map_err(|e| TapError::DeleteFailed(e.to_string()))?;
 
     debug!(tap = %tap_name, "TAP device deleted");
 
@@ -265,11 +291,11 @@ mod tests {
     fn test_tap_name_generation() {
         let config = TapConfig::new("inst_01JEXAMPLE123", "fd00::1234");
         let name = config.tap_name();
-        
+
         // Should be tap- prefix + last 8 chars
         assert!(name.starts_with("tap-"));
         assert!(name.len() <= 15); // IFNAMSIZ limit
-        // "inst_01JEXAMPLE123" has 18 chars, last 8 = "AMPLE123"
+                                   // "inst_01JEXAMPLE123" has 18 chars, last 8 = "AMPLE123"
         assert_eq!(name, "tap-AMPLE123");
     }
 
@@ -277,15 +303,14 @@ mod tests {
     fn test_tap_name_short_instance_id() {
         let config = TapConfig::new("inst_1", "fd00::1234");
         let name = config.tap_name();
-        
+
         assert_eq!(name, "tap-inst_1");
     }
 
     #[test]
     fn test_tap_config_builder() {
-        let config = TapConfig::new("inst_test", "fd00::abcd")
-            .with_mtu(9000);
-        
+        let config = TapConfig::new("inst_test", "fd00::abcd").with_mtu(9000);
+
         assert_eq!(config.mtu, 9000);
         assert_eq!(config.gateway_ipv6, "fe80::1");
         assert_eq!(config.overlay_ipv6, "fd00::abcd");

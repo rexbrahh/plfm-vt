@@ -119,10 +119,8 @@ impl BackendPool {
         let mut state = self.backends.write().await;
 
         // Build a map of existing backends for health preservation
-        let existing: HashMap<Backend, BackendState> = state
-            .drain(..)
-            .map(|s| (s.backend.clone(), s))
-            .collect();
+        let existing: HashMap<Backend, BackendState> =
+            state.drain(..).map(|s| (s.backend.clone(), s)).collect();
 
         // Build new state, preserving health for existing backends
         *state = backends
@@ -376,11 +374,7 @@ mod tests {
 
     #[test]
     fn test_backend_socket_addr() {
-        let backend = Backend::new(
-            "fd00::1".parse().unwrap(),
-            8080,
-            "inst-123".to_string(),
-        );
+        let backend = Backend::new("fd00::1".parse().unwrap(), 8080, "inst-123".to_string());
         let addr = backend.socket_addr();
         assert_eq!(addr.to_string(), "[fd00::1]:8080");
     }

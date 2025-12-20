@@ -84,7 +84,7 @@ const MAX_LOG_BYTES: usize = 1024 * 1024;
 pub fn init(log_path: &str) -> anyhow::Result<()> {
     // Create the boot log writer
     let writer = BootLogWriter::new(Path::new(log_path), MAX_LOG_BYTES)?;
-    
+
     // Leak to get 'static lifetime (guest-init runs for lifetime of process)
     let shared: &'static SharedWriter = Box::leak(Box::new(SharedWriter(Mutex::new(writer))));
 
@@ -119,18 +119,21 @@ mod tests {
     fn test_boot_log_writer_truncates() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("test.log");
-        
+
         let mut writer = BootLogWriter::new(&path, 100).unwrap();
-        
+
         // Write more than max
         let data = "x".repeat(200);
         let written = writer.write(data.as_bytes()).unwrap();
         assert_eq!(written, 200); // Reports full write
         writer.flush().unwrap();
-        
+
         // But file only has 100 bytes
         let mut contents = String::new();
-        File::open(&path).unwrap().read_to_string(&mut contents).unwrap();
+        File::open(&path)
+            .unwrap()
+            .read_to_string(&mut contents)
+            .unwrap();
         assert_eq!(contents.len(), 100);
     }
 }

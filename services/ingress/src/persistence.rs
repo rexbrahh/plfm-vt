@@ -100,8 +100,9 @@ impl StatePersistence {
         let content = fs::read_to_string(&self.state_path)
             .with_context(|| format!("Failed to read state file: {}", self.state_path.display()))?;
 
-        let state: PersistedState = serde_json::from_str(&content)
-            .with_context(|| format!("Failed to parse state file: {}", self.state_path.display()))?;
+        let state: PersistedState = serde_json::from_str(&content).with_context(|| {
+            format!("Failed to parse state file: {}", self.state_path.display())
+        })?;
 
         // Check version compatibility
         if state.version != STATE_VERSION {
@@ -135,19 +136,19 @@ impl StatePersistence {
 
         // Write to temp file
         let tmp_path = self.state_path.with_extension("tmp");
-        let content = serde_json::to_string_pretty(state)
-            .context("Failed to serialize state")?;
+        let content = serde_json::to_string_pretty(state).context("Failed to serialize state")?;
 
         fs::write(&tmp_path, &content)
             .with_context(|| format!("Failed to write temp file: {}", tmp_path.display()))?;
 
         // Atomic rename
-        fs::rename(&tmp_path, &self.state_path)
-            .with_context(|| format!(
+        fs::rename(&tmp_path, &self.state_path).with_context(|| {
+            format!(
                 "Failed to rename {} -> {}",
                 tmp_path.display(),
                 self.state_path.display()
-            ))?;
+            )
+        })?;
 
         debug!(
             path = %self.state_path.display(),
@@ -184,18 +185,21 @@ mod tests {
     #[test]
     fn test_persisted_state_serialization() {
         let mut routes = BTreeMap::new();
-        routes.insert("route_123".to_string(), PersistedRoute {
-            route_id: "route_123".to_string(),
-            hostname: "example.com".to_string(),
-            listen_port: 443,
-            app_id: "app_1".to_string(),
-            env_id: "env_1".to_string(),
-            backend_process_type: "web".to_string(),
-            backend_port: 8080,
-            proxy_protocol: "off".to_string(),
-            backend_expects_proxy_protocol: false,
-            ipv4_required: false,
-        });
+        routes.insert(
+            "route_123".to_string(),
+            PersistedRoute {
+                route_id: "route_123".to_string(),
+                hostname: "example.com".to_string(),
+                listen_port: 443,
+                app_id: "app_1".to_string(),
+                env_id: "env_1".to_string(),
+                backend_process_type: "web".to_string(),
+                backend_port: 8080,
+                proxy_protocol: "off".to_string(),
+                backend_expects_proxy_protocol: false,
+                ipv4_required: false,
+            },
+        );
 
         let state = PersistedState {
             version: STATE_VERSION,
@@ -223,18 +227,21 @@ mod tests {
 
         // Save some state
         let mut routes = BTreeMap::new();
-        routes.insert("r1".to_string(), PersistedRoute {
-            route_id: "r1".to_string(),
-            hostname: "test.example.com".to_string(),
-            listen_port: 443,
-            app_id: "app_1".to_string(),
-            env_id: "env_1".to_string(),
-            backend_process_type: "web".to_string(),
-            backend_port: 8080,
-            proxy_protocol: "v2".to_string(),
-            backend_expects_proxy_protocol: true,
-            ipv4_required: false,
-        });
+        routes.insert(
+            "r1".to_string(),
+            PersistedRoute {
+                route_id: "r1".to_string(),
+                hostname: "test.example.com".to_string(),
+                listen_port: 443,
+                app_id: "app_1".to_string(),
+                env_id: "env_1".to_string(),
+                backend_process_type: "web".to_string(),
+                backend_port: 8080,
+                proxy_protocol: "v2".to_string(),
+                backend_expects_proxy_protocol: true,
+                ipv4_required: false,
+            },
+        );
 
         persistence.save_with_cursor(&routes, 999).unwrap();
 
@@ -242,7 +249,10 @@ mod tests {
         let loaded = persistence.load().unwrap();
         assert_eq!(loaded.cursor, 999);
         assert_eq!(loaded.routes.len(), 1);
-        assert_eq!(loaded.routes.get("r1").unwrap().hostname, "test.example.com");
+        assert_eq!(
+            loaded.routes.get("r1").unwrap().hostname,
+            "test.example.com"
+        );
 
         // Cleanup
         let _ = fs::remove_file(&tmp);

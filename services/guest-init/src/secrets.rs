@@ -49,9 +49,8 @@ pub async fn materialize(config: &SecretsConfig) -> Result<()> {
     // Set ownership before rename
     let uid = Uid::from_raw(config.owner_uid);
     let gid = Gid::from_raw(config.owner_gid);
-    chown(&tmp_path, Some(uid), Some(gid)).map_err(|e| {
-        InitError::SecretsWriteFailed(format!("chown failed: {}", e))
-    })?;
+    chown(&tmp_path, Some(uid), Some(gid))
+        .map_err(|e| InitError::SecretsWriteFailed(format!("chown failed: {}", e)))?;
 
     // Sync to disk
     {
@@ -60,9 +59,8 @@ pub async fn materialize(config: &SecretsConfig) -> Result<()> {
     }
 
     // Rename to final path
-    fs::rename(&tmp_path, path).map_err(|e| {
-        InitError::SecretsWriteFailed(format!("rename failed: {}", e))
-    })?;
+    fs::rename(&tmp_path, path)
+        .map_err(|e| InitError::SecretsWriteFailed(format!("rename failed: {}", e)))?;
 
     info!(
         path = %config.path,

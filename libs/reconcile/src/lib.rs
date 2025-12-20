@@ -24,10 +24,7 @@ use thiserror::Error;
 pub enum ReconcileError {
     /// Timeout waiting for convergence.
     #[error("timeout after {elapsed:?} waiting for {resource}")]
-    Timeout {
-        resource: String,
-        elapsed: Duration,
-    },
+    Timeout { resource: String, elapsed: Duration },
 
     /// Resource not found.
     #[error("resource not found: {0}")]

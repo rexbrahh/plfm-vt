@@ -324,12 +324,7 @@ impl ExecSessionManager {
     }
 
     /// End a session.
-    pub async fn end_session(
-        &self,
-        session_id: &str,
-        exit_code: Option<i32>,
-        reason: EndReason,
-    ) {
+    pub async fn end_session(&self, session_id: &str, exit_code: Option<i32>, reason: EndReason) {
         let mut sessions = self.sessions.write().await;
         let mut counts = self.sessions_per_instance.write().await;
 
@@ -467,9 +462,7 @@ impl ExecService {
                         }
                         frame_type::EXIT => {
                             // Parse exit message
-                            if let Ok(exit_msg) =
-                                serde_json::from_slice::<ExitMessage>(payload)
-                            {
+                            if let Ok(exit_msg) = serde_json::from_slice::<ExitMessage>(payload) {
                                 exit_code = exit_msg.exit_code;
                                 end_reason = match exit_msg.reason.as_str() {
                                     "exited" => EndReason::Exited,
@@ -511,11 +504,7 @@ impl ExecService {
     }
 
     /// Send a signal to an exec session.
-    pub fn send_signal(
-        &self,
-        guest_cid: u32,
-        signal: ExecSignal,
-    ) -> Result<()> {
+    pub fn send_signal(&self, guest_cid: u32, signal: ExecSignal) -> Result<()> {
         let addr = VsockAddr::new(guest_cid, EXEC_PORT);
         let mut stream = VsockStream::connect(&addr)?;
 
@@ -533,12 +522,7 @@ impl ExecService {
     }
 
     /// Send a resize event to an exec session.
-    pub fn send_resize(
-        &self,
-        guest_cid: u32,
-        cols: u16,
-        rows: u16,
-    ) -> Result<()> {
+    pub fn send_resize(&self, guest_cid: u32, cols: u16, rows: u16) -> Result<()> {
         let addr = VsockAddr::new(guest_cid, EXEC_PORT);
         let mut stream = VsockStream::connect(&addr)?;
 
@@ -727,7 +711,9 @@ mod tests {
         manager.register_session(session).await.unwrap();
 
         // End the session
-        manager.end_session("sess_1", Some(0), EndReason::Exited).await;
+        manager
+            .end_session("sess_1", Some(0), EndReason::Exited)
+            .await;
 
         // Check state updated
         let ended = manager.get_session("sess_1").await.unwrap();

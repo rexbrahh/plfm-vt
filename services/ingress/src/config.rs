@@ -112,9 +112,7 @@ impl Config {
             .map(PathBuf::from);
 
         // State file for full route persistence (for atomic reload on restart)
-        let state_file = std::env::var("GHOST_STATE_FILE")
-            .ok()
-            .map(PathBuf::from);
+        let state_file = std::env::var("GHOST_STATE_FILE").ok().map(PathBuf::from);
 
         let once = std::env::var("GHOST_SYNC_ONCE")
             .map(|v| v == "1" || v.to_lowercase() == "true")
