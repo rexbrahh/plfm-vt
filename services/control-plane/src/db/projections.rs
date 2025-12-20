@@ -85,6 +85,23 @@ impl ProjectionStore {
         Ok(())
     }
 
+    /// Ensure a projection checkpoint row exists without lowering progress.
+    pub async fn ensure_checkpoint(&self, projection_name: &str) -> Result<(), DbError> {
+        sqlx::query(
+            r#"
+            INSERT INTO projection_checkpoints (projection_name, last_applied_event_id, updated_at)
+            VALUES ($1, 0, now())
+            ON CONFLICT (projection_name) DO NOTHING
+            "#,
+        )
+        .bind(projection_name)
+        .execute(&self.pool)
+        .await
+        .map_err(DbError::Query)?;
+
+        Ok(())
+    }
+
     /// Update checkpoint atomically with view updates.
     ///
     /// This is used when applying events within a transaction.
@@ -188,7 +205,7 @@ impl ProjectionStore {
                 Ok(cp) => cp,
                 Err(DbError::ProjectionNotFound(_)) => {
                     // Ensure the checkpoint row exists so other readers can observe progress.
-                    self.update_checkpoint(projection_name, 0).await?;
+                    self.ensure_checkpoint(projection_name).await?;
                     ProjectionCheckpoint {
                         projection_name: projection_name.to_string(),
                         last_applied_event_id: 0,
