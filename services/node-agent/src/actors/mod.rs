@@ -20,11 +20,11 @@
 //! - `ControlPlaneStreamActor`: Maintains connection to control plane
 //! - `NodeSupervisor`: Root supervisor that manages all child actors
 
-mod framework;
+pub mod framework;
 mod image;
 mod instance;
 mod stream;
-mod supervisor;
+pub mod supervisor;
 
 pub use framework::{
     Actor, ActorContext, ActorError, ActorHandle, ActorRef, BackoffPolicy, Message, RestartPolicy,

@@ -53,3 +53,5 @@ uuid = { workspace = true }
 rstest = { workspace = true }
 reqwest = { workspace = true }
 testcontainers = { workspace = true }
+rand = { workspace = true }
+base64 = { workspace = true }

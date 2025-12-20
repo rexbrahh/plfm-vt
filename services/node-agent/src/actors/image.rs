@@ -6,6 +6,8 @@
 //! - Handles disk pressure scenarios
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -13,6 +15,7 @@ use tokio::sync::oneshot;
 use tracing::{debug, info, warn};
 
 use super::framework::{Actor, ActorContext, ActorError};
+use crate::image::{ImageCache, ImageCacheConfig, ImagePuller, ImagePullerConfig};
 
 // =============================================================================
 // Messages
@@ -104,6 +107,12 @@ pub struct ImagePullActor {
 
     /// Current cache size in bytes.
     current_cache_bytes: u64,
+
+    /// Image puller (optional - only set after initialization).
+    puller: Option<Arc<ImagePuller>>,
+
+    /// Shared image cache.
+    image_cache: Option<Arc<ImageCache>>,
 }
 
 impl ImagePullActor {
@@ -115,7 +124,46 @@ impl ImagePullActor {
             image_dir,
             max_cache_bytes,
             current_cache_bytes: 0,
+            puller: None,
+            image_cache: None,
         }
+    }
+
+    /// Create a new image pull actor with a configured puller.
+    pub fn with_puller(image_dir: String, max_cache_bytes: u64) -> Result<Self, String> {
+        let cache_config = ImageCacheConfig {
+            max_size_bytes: max_cache_bytes,
+            rootdisk_dir: PathBuf::from(&image_dir).join("rootdisks"),
+            ..Default::default()
+        };
+        let image_cache = Arc::new(ImageCache::new(cache_config));
+
+        let puller_config = ImagePullerConfig {
+            oci: crate::image::OciConfig {
+                blob_dir: PathBuf::from(&image_dir).join("oci/blobs"),
+                ..Default::default()
+            },
+            rootdisk: crate::image::RootDiskConfig {
+                unpack_dir: PathBuf::from(&image_dir).join("unpacked"),
+                rootdisk_dir: PathBuf::from(&image_dir).join("rootdisks"),
+                tmp_dir: PathBuf::from(&image_dir).join("tmp"),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let puller = ImagePuller::new(puller_config, image_cache.clone())
+            .map_err(|e| format!("Failed to create image puller: {}", e))?;
+
+        Ok(Self {
+            cache: HashMap::new(),
+            in_progress: HashMap::new(),
+            image_dir,
+            max_cache_bytes,
+            current_cache_bytes: 0,
+            puller: Some(Arc::new(puller)),
+            image_cache: Some(image_cache),
+        })
     }
 
     /// Get the number of cached images.
@@ -138,7 +186,7 @@ impl ImagePullActor {
         expected_digest: String,
         reply_to: oneshot::Sender<Result<ImagePullResult, String>>,
     ) -> Result<(), ActorError> {
-        // Check if already cached
+        // Check if already cached in our local cache
         if let Some(entry) = self.cache.get_mut(&expected_digest) {
             debug!(
                 digest = %expected_digest,
@@ -181,13 +229,53 @@ impl ImagePullActor {
             },
         );
 
-        // TODO: Actually pull the image
-        // For now, simulate a successful pull
-        let root_disk_path = format!("{}/{}/rootfs.ext4", self.image_dir, expected_digest);
-        let size_bytes = 512 * 1024 * 1024; // Fake 512MB
+        // If we have a puller, use it
+        if let Some(puller) = &self.puller {
+            // Parse image reference to get repo
+            let (_registry, repo, _) = match crate::image::parse_image_ref(&image_ref) {
+                Ok(parsed) => parsed,
+                Err(e) => {
+                    self.fail_pull(&expected_digest, format!("Invalid image ref: {}", e));
+                    return Ok(());
+                }
+            };
 
-        // Complete the pull
-        self.complete_pull(&expected_digest, root_disk_path, size_bytes);
+            let puller = puller.clone();
+            let digest = expected_digest.clone();
+            let image_ref_clone = image_ref.clone();
+
+            // Spawn the actual pull operation
+            let pull_result = puller
+                .ensure_image(&image_ref_clone, &repo, &digest)
+                .await;
+
+            match pull_result {
+                Ok(result) => {
+                    self.complete_pull(
+                        &digest,
+                        result.root_disk_path.to_string_lossy().to_string(),
+                        result.root_disk_size,
+                    );
+                }
+                Err(e) => {
+                    self.fail_pull(&digest, format!("Pull failed: {}", e));
+                }
+            }
+        } else {
+            // Fallback: simulate a successful pull (for testing without real OCI)
+            warn!(
+                digest = %expected_digest,
+                "No puller configured, simulating successful pull"
+            );
+            let root_disk_path = format!(
+                "{}/rootdisks/{}.ext4",
+                self.image_dir,
+                expected_digest.replace(':', "_").replace('/', "_")
+            );
+            let size_bytes = 512 * 1024 * 1024; // Fake 512MB
+
+            self.complete_pull(&expected_digest, root_disk_path, size_bytes);
+        }
 
         Ok(())
     }
@@ -346,7 +434,12 @@ impl Actor for ImagePullActor {
             "ImagePullActor starting"
         );
 
-        // TODO: Scan existing images on disk and rebuild cache
+        // Initialize the image cache from disk
+        if let Some(cache) = &self.image_cache {
+            if let Err(e) = cache.init().await {
+                warn!(error = %e, "Failed to initialize image cache from disk");
+            }
+        }
 
         Ok(())
     }

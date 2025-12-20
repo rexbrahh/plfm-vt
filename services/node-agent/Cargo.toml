@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "plfm_node_agent"
+path = "src/lib.rs"
+
 [[bin]]
 name = "node-agent"
 path = "src/main.rs"
@@ -60,3 +64,4 @@ vsock = "0.5"
 
 [dev-dependencies]
 rstest = { workspace = true }
+tempfile = "3.10"

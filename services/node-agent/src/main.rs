@@ -1,28 +1,7 @@
-//! plfm-vt Node Agent
+//! plfm-vt Node Agent Binary
 //!
-//! The node agent runs on each bare-metal host and manages workload lifecycle.
-//! It receives desired state from the control plane and converges the node
-//! to match that state by booting/stopping Firecracker microVMs.
-//!
-//! ## Architecture
-//!
-//! The node agent uses an actor-based supervision tree for fault isolation:
-//!
-//! ```text
-//! NodeSupervisor
-//! ├── ControlPlaneStreamActor  (connection to control plane)
-//! ├── ImagePullActor           (deduped image pulls)
-//! └── InstanceActor(id)        (per-instance VM lifecycle)
-//! ```
-//!
-//! See `docs/architecture/07-actors-and-supervision.md` for details.
-//!
-//! ## Modules
-//!
-//! - `actors`: Actor framework and implementations
-//! - `firecracker`: Firecracker microVM runtime implementation
-//! - `image`: OCI image fetching and root disk building
-//! - `state`: Local SQLite state persistence
+//! This is the main entry point for the node agent.
+//! See the library crate (`plfm_node_agent`) for documentation.
 
 use std::sync::Arc;
 
@@ -31,29 +10,17 @@ use tokio::sync::watch;
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
-pub mod actors;
-mod client;
-mod config;
-pub mod exec;
-pub mod firecracker;
-mod heartbeat;
-pub mod image;
-mod instance;
-pub mod network;
-mod reconciler;
-mod runtime;
-pub mod state;
-pub mod vsock;
-
-use actors::NodeSupervisor;
-use instance::InstanceManager;
-use reconciler::{Reconciler, ReconcilerConfig};
-use runtime::MockRuntime;
+// Use the library crate
+use plfm_node_agent::actors::NodeSupervisor;
+use plfm_node_agent::config::Config;
+use plfm_node_agent::heartbeat;
+use plfm_node_agent::reconciler::{Reconciler, ReconcilerConfig};
+use plfm_node_agent::{InstanceManager, MockRuntime};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Load configuration
-    let config = config::Config::from_env()?;
+    let config = Config::from_env()?;
 
     // Initialize tracing (prefer RUST_LOG, fallback to GHOST_LOG_LEVEL)
     tracing_subscriber::registry()

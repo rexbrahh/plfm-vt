@@ -13,8 +13,10 @@
 
 mod cache;
 mod oci;
+mod puller;
 mod rootdisk;
 
 pub use cache::{ImageCache, ImageCacheConfig};
-pub use oci::{OciClient, OciConfig, OciError};
-pub use rootdisk::{RootDiskBuilder, RootDiskError};
+pub use oci::{Descriptor, Manifest, OciClient, OciConfig, OciError};
+pub use puller::{parse_image_ref, ImagePullError, ImagePuller, ImagePullerConfig, PullResult};
+pub use rootdisk::{RootDiskBuilder, RootDiskConfig, RootDiskError};
