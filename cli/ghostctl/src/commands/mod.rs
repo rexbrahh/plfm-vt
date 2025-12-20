@@ -18,6 +18,7 @@ mod releases;
 mod routes;
 mod scale;
 mod secrets;
+mod status;
 mod volumes;
 
 use anyhow::Result;
@@ -88,6 +89,9 @@ enum Commands {
     #[command(visible_alias = "apply")]
     Deploy(apply::ApplyCommand),
 
+    /// Show desired vs current state for the app/environment.
+    Status(status::StatusCommand),
+
     /// Manage nodes (infrastructure).
     Nodes(nodes::NodesCommand),
 
@@ -154,6 +158,7 @@ impl Cli {
             Commands::Releases(cmd) => cmd.run(ctx).await,
             Commands::Deploys(cmd) => cmd.run(ctx).await,
             Commands::Deploy(cmd) => cmd.run(ctx).await,
+            Commands::Status(cmd) => cmd.run(ctx).await,
             Commands::Nodes(cmd) => cmd.run(ctx).await,
             Commands::Instances(cmd) => cmd.run(ctx).await,
             Commands::Scale(cmd) => cmd.run(ctx).await,
