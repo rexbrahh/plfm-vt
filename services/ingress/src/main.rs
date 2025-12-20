@@ -16,6 +16,7 @@ use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod config;
+mod persistence;
 pub mod proxy;
 mod sync;
 

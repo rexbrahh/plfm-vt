@@ -2,6 +2,10 @@
 //!
 //! This module syncs route configuration from the control plane and updates
 //! the shared route table used by the proxy.
+//!
+//! Per docs/specs/networking/ingress-l4.md:
+//! - Config updates must be applied atomically
+//! - Control plane outage: edge continues operating on last applied config
 
 use std::{
     collections::BTreeMap,
@@ -20,6 +24,7 @@ use serde::Deserialize;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
+use crate::persistence::{PersistedRoute, StatePersistence};
 use crate::proxy::{
     Backend, BackendSelector, ProtocolHint, ProxyProtocol, Route, RouteTable,
 };
@@ -65,6 +70,38 @@ impl RouteState {
             proxy_protocol: payload.proxy_protocol,
             backend_expects_proxy_protocol: payload.backend_expects_proxy_protocol,
             ipv4_required: payload.ipv4_required,
+        }
+    }
+
+    /// Convert from persisted route.
+    fn from_persisted(p: &PersistedRoute) -> Self {
+        Self {
+            route_id: p.route_id.clone(),
+            hostname: p.hostname.clone(),
+            listen_port: p.listen_port,
+            app_id: p.app_id.clone(),
+            env_id: p.env_id.clone(),
+            backend_process_type: p.backend_process_type.clone(),
+            backend_port: p.backend_port,
+            proxy_protocol: PersistedRoute::proxy_protocol_from_string(&p.proxy_protocol),
+            backend_expects_proxy_protocol: p.backend_expects_proxy_protocol,
+            ipv4_required: p.ipv4_required,
+        }
+    }
+
+    /// Convert to persisted route.
+    fn to_persisted(&self) -> PersistedRoute {
+        PersistedRoute {
+            route_id: self.route_id.clone(),
+            hostname: self.hostname.clone(),
+            listen_port: self.listen_port,
+            app_id: self.app_id.clone(),
+            env_id: self.env_id.clone(),
+            backend_process_type: self.backend_process_type.clone(),
+            backend_port: self.backend_port,
+            proxy_protocol: PersistedRoute::proxy_protocol_to_string(self.proxy_protocol),
+            backend_expects_proxy_protocol: self.backend_expects_proxy_protocol,
+            ipv4_required: self.ipv4_required,
         }
     }
 
@@ -294,7 +331,7 @@ fn apply_route_event(
 pub async fn run_route_sync_loop(
     config: &Config,
     route_table: Arc<RouteTable>,
-    backend_selector: Arc<BackendSelector>,
+    _backend_selector: Arc<BackendSelector>,
 ) -> Result<()> {
     let mut headers = HeaderMap::new();
     if let Some(token) = &config.control_plane_token {
@@ -318,9 +355,41 @@ pub async fn run_route_sync_loop(
 
     let mut routes: BTreeMap<String, RouteState> = BTreeMap::new();
 
-    let mut cursor = match &config.cursor_file {
-        Some(path) => read_cursor(path)?,
-        None => 0,
+    // Initialize persistence if configured
+    let persistence = config.state_file.as_ref().map(|path| StatePersistence::new(path.clone()));
+
+    // Load initial state from persistence (if available)
+    let mut cursor = if let Some(ref p) = persistence {
+        match p.load() {
+            Ok(state) => {
+                // Restore routes from persisted state
+                for (id, persisted_route) in &state.routes {
+                    routes.insert(id.clone(), RouteState::from_persisted(persisted_route));
+                }
+                
+                // Update route table with restored state
+                if !routes.is_empty() {
+                    update_proxy_route_table(&routes, &route_table).await;
+                    info!(
+                        route_count = routes.len(),
+                        cursor = state.cursor,
+                        "Restored routes from persisted state"
+                    );
+                }
+                
+                state.cursor
+            }
+            Err(e) => {
+                warn!(error = %e, "Failed to load persisted state, starting fresh");
+                0
+            }
+        }
+    } else {
+        // Fall back to cursor-only file if no state persistence
+        match &config.cursor_file {
+            Some(path) => read_cursor(path)?,
+            None => 0,
+        }
     };
 
     loop {
@@ -381,7 +450,18 @@ pub async fn run_route_sync_loop(
 
         cursor = resp.next_after_event_id.max(cursor);
 
-        if let Some(path) = &config.cursor_file {
+        // Persist state atomically if configured
+        if let Some(ref p) = persistence {
+            let persisted_routes: BTreeMap<String, PersistedRoute> = routes
+                .iter()
+                .map(|(id, r)| (id.clone(), r.to_persisted()))
+                .collect();
+            
+            if let Err(e) = p.save_with_cursor(&persisted_routes, cursor) {
+                warn!(error = %e, "Failed to persist state");
+            }
+        } else if let Some(path) = &config.cursor_file {
+            // Fall back to cursor-only file
             write_cursor(path, cursor)?;
         }
     }

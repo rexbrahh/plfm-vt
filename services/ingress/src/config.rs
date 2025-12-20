@@ -52,8 +52,11 @@ pub struct Config {
     /// Poll interval when no new events are available.
     pub poll_interval: Duration,
 
-    /// Optional cursor file to persist last applied event_id.
+    /// Optional cursor file to persist last applied event_id (deprecated, use state_file).
     pub cursor_file: Option<PathBuf>,
+
+    /// Optional state file to persist full route state for atomic reload.
+    pub state_file: Option<PathBuf>,
 
     /// Exit once fully caught up (sync mode only).
     pub once: bool,
@@ -108,6 +111,11 @@ impl Config {
             .ok()
             .map(PathBuf::from);
 
+        // State file for full route persistence (for atomic reload on restart)
+        let state_file = std::env::var("GHOST_STATE_FILE")
+            .ok()
+            .map(PathBuf::from);
+
         let once = std::env::var("GHOST_SYNC_ONCE")
             .map(|v| v == "1" || v.to_lowercase() == "true")
             .unwrap_or(false);
@@ -144,6 +152,7 @@ impl Config {
             fetch_limit,
             poll_interval,
             cursor_file,
+            state_file,
             once,
             log_level,
             listeners,

@@ -7,13 +7,16 @@
 //! - Exact hostname match only (no wildcards in v1)
 //! - Hostnames normalized to lowercase, trailing dot trimmed
 //! - Routes bind hostname+port to environment/backend
+//! - Config updates must be applied atomically
+//! - Config reload must not drop established connections
 //!
 //! Reference: docs/specs/networking/ingress-l4.md
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+
+use arc_swap::ArcSwap;
 use tracing::{debug, info, warn};
 
 /// Protocol hint for a route.
@@ -99,30 +102,20 @@ struct RouteKey {
     hostname: Option<String>,
 }
 
-/// Route table managing all active routes.
-pub struct RouteTable {
+/// Immutable snapshot of route data for lock-free reads.
+#[derive(Debug, Default)]
+struct RouteSnapshot {
     /// Routes indexed by (port, hostname).
-    routes_by_key: RwLock<HashMap<RouteKey, Route>>,
+    by_key: HashMap<RouteKey, Route>,
     /// Routes indexed by port only (for fallback lookup).
-    routes_by_port: RwLock<HashMap<u16, Vec<Route>>>,
+    by_port: HashMap<u16, Vec<Route>>,
     /// All routes indexed by ID.
-    routes_by_id: RwLock<HashMap<String, Route>>,
+    by_id: HashMap<String, Route>,
 }
 
-impl RouteTable {
-    /// Create a new empty route table.
-    pub fn new() -> Self {
-        Self {
-            routes_by_key: RwLock::new(HashMap::new()),
-            routes_by_port: RwLock::new(HashMap::new()),
-            routes_by_id: RwLock::new(HashMap::new()),
-        }
-    }
-
-    /// Update the route table with a new set of routes.
-    ///
-    /// This replaces the entire route table atomically.
-    pub async fn update(&self, routes: Vec<Route>) {
+impl RouteSnapshot {
+    /// Create a new snapshot from a list of routes.
+    fn from_routes(routes: Vec<Route>) -> Self {
         let mut by_key = HashMap::new();
         let mut by_port: HashMap<u16, Vec<Route>> = HashMap::new();
         let mut by_id = HashMap::new();
@@ -138,82 +131,126 @@ impl RouteTable {
             by_id.insert(route.id.clone(), route);
         }
 
-        let route_count = by_id.len();
-
-        // Atomic update
-        *self.routes_by_key.write().await = by_key;
-        *self.routes_by_port.write().await = by_port;
-        *self.routes_by_id.write().await = by_id;
-
-        info!(
-            route_count = route_count,
-            "Route table updated"
-        );
+        Self { by_key, by_port, by_id }
     }
 
-    /// Add or update a single route.
-    pub async fn upsert(&self, route: Route) {
+    /// Create a new snapshot with a route added/updated.
+    fn with_upsert(&self, route: Route) -> Self {
+        let mut by_key = self.by_key.clone();
+        let mut by_port = self.by_port.clone();
+        let mut by_id = self.by_id.clone();
+
         let key = RouteKey {
             port: route.port,
             hostname: Some(route.hostname.clone()),
         };
 
-        {
-            let mut by_key = self.routes_by_key.write().await;
-            by_key.insert(key, route.clone());
+        by_key.insert(key, route.clone());
+
+        // Update port index
+        let port_routes = by_port.entry(route.port).or_default();
+        port_routes.retain(|r| r.id != route.id);
+        port_routes.push(route.clone());
+
+        by_id.insert(route.id.clone(), route);
+
+        Self { by_key, by_port, by_id }
+    }
+
+    /// Create a new snapshot with a route removed.
+    fn without(&self, route_id: &str) -> Self {
+        let route = match self.by_id.get(route_id) {
+            Some(r) => r.clone(),
+            None => return Self {
+                by_key: self.by_key.clone(),
+                by_port: self.by_port.clone(),
+                by_id: self.by_id.clone(),
+            },
+        };
+
+        let mut by_key = self.by_key.clone();
+        let mut by_port = self.by_port.clone();
+        let mut by_id = self.by_id.clone();
+
+        let key = RouteKey {
+            port: route.port,
+            hostname: Some(route.hostname.clone()),
+        };
+
+        by_key.remove(&key);
+        by_id.remove(route_id);
+
+        if let Some(port_routes) = by_port.get_mut(&route.port) {
+            port_routes.retain(|r| r.id != route_id);
+            if port_routes.is_empty() {
+                by_port.remove(&route.port);
+            }
         }
 
-        {
-            let mut by_port = self.routes_by_port.write().await;
-            let port_routes = by_port.entry(route.port).or_default();
-            // Remove existing route with same ID
-            port_routes.retain(|r| r.id != route.id);
-            port_routes.push(route.clone());
-        }
+        Self { by_key, by_port, by_id }
+    }
+}
 
-        {
-            let mut by_id = self.routes_by_id.write().await;
-            by_id.insert(route.id.clone(), route);
+/// Route table managing all active routes.
+///
+/// Uses ArcSwap for lock-free atomic config updates.
+/// Readers get consistent snapshots without blocking.
+/// Writers atomically swap in new snapshots.
+pub struct RouteTable {
+    /// Atomically swappable route snapshot.
+    snapshot: ArcSwap<RouteSnapshot>,
+}
+
+impl RouteTable {
+    /// Create a new empty route table.
+    pub fn new() -> Self {
+        Self {
+            snapshot: ArcSwap::from_pointee(RouteSnapshot::default()),
         }
     }
 
-    /// Remove a route by ID.
+    /// Update the route table with a new set of routes.
+    ///
+    /// This replaces the entire route table atomically in a single
+    /// pointer swap. Existing readers continue to see the old snapshot
+    /// until they finish, then the old snapshot is dropped.
+    pub async fn update(&self, routes: Vec<Route>) {
+        let route_count = routes.len();
+        let new_snapshot = Arc::new(RouteSnapshot::from_routes(routes));
+        
+        // Atomic swap - readers get consistent snapshots
+        self.snapshot.store(new_snapshot);
+
+        info!(
+            route_count = route_count,
+            "Route table updated atomically"
+        );
+    }
+
+    /// Add or update a single route atomically.
+    pub async fn upsert(&self, route: Route) {
+        // Load current, compute new, swap atomically
+        let current = self.snapshot.load();
+        let new_snapshot = Arc::new(current.with_upsert(route));
+        self.snapshot.store(new_snapshot);
+    }
+
+    /// Remove a route by ID atomically.
     pub async fn remove(&self, route_id: &str) {
-        let route = {
-            let mut by_id = self.routes_by_id.write().await;
-            by_id.remove(route_id)
-        };
-
-        if let Some(route) = route {
-            let key = RouteKey {
-                port: route.port,
-                hostname: Some(route.hostname.clone()),
-            };
-
-            {
-                let mut by_key = self.routes_by_key.write().await;
-                by_key.remove(&key);
-            }
-
-            {
-                let mut by_port = self.routes_by_port.write().await;
-                if let Some(port_routes) = by_port.get_mut(&route.port) {
-                    port_routes.retain(|r| r.id != route_id);
-                    if port_routes.is_empty() {
-                        by_port.remove(&route.port);
-                    }
-                }
-            }
-        }
+        let current = self.snapshot.load();
+        let new_snapshot = Arc::new(current.without(route_id));
+        self.snapshot.store(new_snapshot);
     }
 
     /// Get a route by ID.
     pub async fn get(&self, route_id: &str) -> Option<Route> {
-        let by_id = self.routes_by_id.read().await;
-        by_id.get(route_id).cloned()
+        let snapshot = self.snapshot.load();
+        snapshot.by_id.get(route_id).cloned()
     }
 
     /// Make a routing decision based on listener address and optional SNI.
+    ///
+    /// This is lock-free and can be called from hot path without blocking.
     ///
     /// # Arguments
     /// * `listener_addr` - The address the connection arrived on
@@ -224,6 +261,7 @@ impl RouteTable {
         sni: Option<&str>,
     ) -> RoutingDecision {
         let port = listener_addr.port();
+        let snapshot = self.snapshot.load();
 
         // Try exact match with SNI
         if let Some(hostname) = sni {
@@ -233,8 +271,7 @@ impl RouteTable {
                 hostname: Some(normalized.clone()),
             };
 
-            let by_key = self.routes_by_key.read().await;
-            if let Some(route) = by_key.get(&key) {
+            if let Some(route) = snapshot.by_key.get(&key) {
                 debug!(
                     route_id = %route.id,
                     hostname = %normalized,
@@ -251,8 +288,7 @@ impl RouteTable {
         }
 
         // No SNI - check if routing is unambiguous
-        let by_port = self.routes_by_port.read().await;
-        match by_port.get(&port) {
+        match snapshot.by_port.get(&port) {
             None => {
                 RoutingDecision::NoMatch {
                     reason: format!("No routes bound to port {}", port),
@@ -302,32 +338,32 @@ impl RouteTable {
 
     /// Get all routes for a specific port.
     pub async fn routes_for_port(&self, port: u16) -> Vec<Route> {
-        let by_port = self.routes_by_port.read().await;
-        by_port.get(&port).cloned().unwrap_or_default()
+        let snapshot = self.snapshot.load();
+        snapshot.by_port.get(&port).cloned().unwrap_or_default()
     }
 
     /// Get all configured ports.
     pub async fn ports(&self) -> Vec<u16> {
-        let by_port = self.routes_by_port.read().await;
-        by_port.keys().copied().collect()
+        let snapshot = self.snapshot.load();
+        snapshot.by_port.keys().copied().collect()
     }
 
     /// Get the total number of routes.
     pub async fn len(&self) -> usize {
-        let by_id = self.routes_by_id.read().await;
-        by_id.len()
+        let snapshot = self.snapshot.load();
+        snapshot.by_id.len()
     }
 
     /// Check if the route table is empty.
     pub async fn is_empty(&self) -> bool {
-        let by_id = self.routes_by_id.read().await;
-        by_id.is_empty()
+        let snapshot = self.snapshot.load();
+        snapshot.by_id.is_empty()
     }
 
     /// Get all route IDs.
     pub async fn route_ids(&self) -> Vec<String> {
-        let by_id = self.routes_by_id.read().await;
-        by_id.keys().cloned().collect()
+        let snapshot = self.snapshot.load();
+        snapshot.by_id.keys().cloned().collect()
     }
 }
 
