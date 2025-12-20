@@ -6,13 +6,15 @@
 //! - Reports status changes back to the control plane
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-use crate::client::{InstancePlan, InstanceStatus, InstanceStatusReport};
+use crate::client::{ControlPlaneClient, InstancePlan, InstanceStatus, InstanceStatusReport};
 use crate::runtime::{Runtime, VmHandle};
+use crate::vsock::{ConfigStore, PendingConfig};
 
 /// Tracks a single instance's state.
 #[derive(Debug, Clone)]
@@ -71,15 +73,31 @@ pub struct InstanceManager {
 
     /// Last applied plan version.
     last_plan_version: RwLock<i64>,
+
+    /// Config store for guest-init handshake.
+    config_store: Arc<ConfigStore>,
+
+    /// Control plane client (for secrets/logs).
+    control_plane: Arc<ControlPlaneClient>,
+
+    /// Config generation counter.
+    config_generation: AtomicU64,
 }
 
 impl InstanceManager {
     /// Create a new instance manager.
-    pub fn new(runtime: Arc<dyn Runtime>) -> Self {
+    pub fn new(
+        runtime: Arc<dyn Runtime>,
+        config_store: Arc<ConfigStore>,
+        control_plane: Arc<ControlPlaneClient>,
+    ) -> Self {
         Self {
             runtime,
             instances: RwLock::new(HashMap::new()),
             last_plan_version: RwLock::new(0),
+            config_store,
+            control_plane,
+            config_generation: AtomicU64::new(1),
         }
     }
 
@@ -207,6 +225,38 @@ impl InstanceManager {
         // Create initial state
         let mut state = InstanceState::from_plan(plan.clone());
 
+        let secrets_data = match plan.secrets_version_id.as_deref() {
+            Some(version_id) => match self.control_plane.fetch_secret_material(version_id).await {
+                Ok(payload) => Some(payload.data),
+                Err(e) => {
+                    state.status = InstanceStatus::Failed;
+                    state.error_message = Some(format!("Failed to fetch secrets: {e}"));
+                    error!(instance_id = %instance_id, error = %e, "Failed to fetch secrets");
+                    let mut instances = self.instances.write().await;
+                    instances.insert(instance_id, state);
+                    return;
+                }
+            },
+            None => None,
+        };
+
+        let generation = self.config_generation.fetch_add(1, Ordering::SeqCst);
+        let overlay_ipv6 = if plan.overlay_ipv6.is_empty() {
+            "fd00::1".to_string()
+        } else {
+            plan.overlay_ipv6.clone()
+        };
+
+        let pending = PendingConfig {
+            plan: plan.clone(),
+            overlay_ipv6,
+            gateway_ipv6: "fe80::1".to_string(),
+            generation,
+            secrets_data,
+        };
+
+        self.config_store.add(&instance_id, pending).await;
+
         // Try to start the VM
         match self.runtime.start_vm(&plan).await {
             Ok(handle) => {
@@ -219,6 +269,7 @@ impl InstanceManager {
                 state.status = InstanceStatus::Failed;
                 state.error_message = Some(e.to_string());
                 error!(instance_id = %instance_id, error = %e, "Failed to start instance");
+                self.config_store.remove(&instance_id).await;
             }
         }
 
@@ -259,6 +310,8 @@ impl InstanceManager {
             let mut instances = self.instances.write().await;
             instances.insert(instance_id.to_string(), state);
 
+            self.config_store.remove(instance_id).await;
+
             info!(instance_id = %instance_id, "Instance stopped");
         }
     }
@@ -267,6 +320,18 @@ impl InstanceManager {
     pub async fn get_status_reports(&self) -> Vec<InstanceStatusReport> {
         let instances = self.instances.read().await;
         instances.values().map(|i| i.to_status_report()).collect()
+    }
+
+    /// Get the guest CID for a running instance.
+    pub async fn guest_cid_for_instance(&self, instance_id: &str) -> Option<u32> {
+        let instances = self.instances.read().await;
+        instances.get(instance_id).and_then(|instance| {
+            if instance.status == InstanceStatus::Ready {
+                instance.vm_handle.as_ref().map(|handle| handle.guest_cid)
+            } else {
+                None
+            }
+        })
     }
 
     /// Check and update instance health.

@@ -22,6 +22,9 @@ pub struct VmHandle {
 
     /// Instance ID.
     pub instance_id: String,
+
+    /// Guest CID for vsock connections.
+    pub guest_cid: u32,
 }
 
 /// VM runtime interface.
@@ -105,6 +108,7 @@ impl Runtime for MockRuntime {
         Ok(VmHandle {
             boot_id,
             instance_id: plan.instance_id.clone(),
+            guest_cid: 3,
         })
     }
 

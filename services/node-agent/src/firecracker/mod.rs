@@ -25,4 +25,4 @@ mod runtime;
 pub use api::FirecrackerClient;
 pub use config::{BootSource, DriveConfig, MachineConfig, NetworkInterface, VsockConfig};
 pub use jailer::JailerConfig;
-pub use runtime::FirecrackerRuntime;
+pub use runtime::{FirecrackerRuntime, FirecrackerRuntimeConfig};

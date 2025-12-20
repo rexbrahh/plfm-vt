@@ -2,6 +2,7 @@
 
 use anyhow::Result;
 use plfm_id::NodeId;
+use std::net::SocketAddr;
 
 /// Node agent configuration.
 #[derive(Debug, Clone)]
@@ -20,6 +21,9 @@ pub struct Config {
 
     /// Log level (trace, debug, info, warn, error).
     pub log_level: String,
+
+    /// Exec gateway listen address.
+    pub exec_listen_addr: SocketAddr,
 }
 
 impl Config {
@@ -44,12 +48,18 @@ impl Config {
 
         let log_level = std::env::var("GHOST_LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
 
+        let exec_listen_addr = std::env::var("GHOST_EXEC_LISTEN_ADDR")
+            .or_else(|_| std::env::var("PLFM_EXEC_LISTEN_ADDR"))
+            .unwrap_or_else(|_| "0.0.0.0:5090".to_string())
+            .parse()?;
+
         Ok(Self {
             node_id,
             control_plane_url,
             data_dir,
             heartbeat_interval_secs,
             log_level,
+            exec_listen_addr,
         })
     }
 }

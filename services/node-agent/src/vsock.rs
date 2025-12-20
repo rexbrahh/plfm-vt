@@ -420,8 +420,8 @@ fn build_config_message(instance_id: &str, pending: &PendingConfig) -> ConfigMes
         mode: "0400".to_string(),
         owner_uid: 0,
         owner_gid: 0,
-        format: "dotenv".to_string(),
-        bundle_version_id: None,
+        format: "platform_env_v1".to_string(),
+        bundle_version_id: plan.secrets_version_id.clone(),
         data: Some(data.clone()),
     });
 

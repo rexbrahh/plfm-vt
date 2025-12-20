@@ -27,6 +27,7 @@
 pub mod actors;
 pub mod client;
 pub mod exec;
+pub mod exec_gateway;
 pub mod firecracker;
 pub mod image;
 pub mod network;

@@ -544,6 +544,7 @@ mod tests {
             data_dir: "/tmp/test".to_string(),
             heartbeat_interval_secs: 30,
             log_level: "info".to_string(),
+            exec_listen_addr: "127.0.0.1:0".parse().unwrap(),
         }
     }
 

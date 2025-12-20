@@ -93,7 +93,6 @@ impl Default for ImagePullerConfig {
 /// - Building ext4 root disks
 /// - Deduplicating concurrent pulls for the same digest
 pub struct ImagePuller {
-    oci_client: OciClient,
     rootdisk_builder: RootDiskBuilder,
     cache: Arc<ImageCache>,
     /// Per-digest build locks to prevent concurrent builds of the same image.
@@ -104,11 +103,9 @@ pub struct ImagePuller {
 impl ImagePuller {
     /// Create a new image puller.
     pub fn new(config: ImagePullerConfig, cache: Arc<ImageCache>) -> Result<Self, ImagePullError> {
-        let oci_client = OciClient::new(config.oci.clone())?;
         let rootdisk_builder = RootDiskBuilder::new(config.rootdisk.clone());
 
         Ok(Self {
-            oci_client,
             rootdisk_builder,
             cache,
             build_locks: Arc::new(Mutex::new(std::collections::HashMap::new())),
@@ -123,6 +120,7 @@ impl ImagePuller {
     ///
     /// # Arguments
     /// * `image_ref` - Human-readable image reference (for logging only)
+    /// * `registry` - Registry hostname (e.g., "registry-1.docker.io")
     /// * `repo` - Repository name (e.g., "library/alpine")
     /// * `digest` - Content-addressable digest (e.g., "sha256:abc123...")
     ///
@@ -131,6 +129,7 @@ impl ImagePuller {
     pub async fn ensure_image(
         &self,
         image_ref: &str,
+        registry: &str,
         repo: &str,
         digest: &str,
     ) -> Result<PullResult, ImagePullError> {
@@ -211,7 +210,7 @@ impl ImagePuller {
             "Pulling image and building root disk"
         );
 
-        let result = self.pull_and_build(repo, digest).await?;
+        let result = self.pull_and_build(registry, repo, digest).await?;
 
         let duration = start.elapsed();
         info!(
@@ -245,9 +244,15 @@ impl ImagePuller {
     }
 
     /// Pull manifest and layers, then build root disk.
-    async fn pull_and_build(&self, repo: &str, digest: &str) -> Result<PullResult, ImagePullError> {
+    async fn pull_and_build(
+        &self,
+        registry: &str,
+        repo: &str,
+        digest: &str,
+    ) -> Result<PullResult, ImagePullError> {
+        let oci_client = self.oci_client_for_registry(registry)?;
         // 1. Pull manifest
-        let manifest = self.oci_client.pull_manifest(repo, digest).await?;
+        let manifest = oci_client.pull_manifest(repo, digest).await?;
 
         // 2. Check total size before pulling
         let total_compressed = manifest.total_layer_size();
@@ -268,10 +273,10 @@ impl ImagePuller {
         // 3. Pull all layers
         let mut layer_paths = Vec::with_capacity(manifest.layers.len());
         for (i, layer) in manifest.layers.iter().enumerate() {
-            let layer_path = self.oci_client.blob_path(&layer.digest);
+            let layer_path = oci_client.blob_path(&layer.digest);
 
             // Skip if already cached
-            if self.oci_client.blob_exists(&layer.digest) {
+            if oci_client.blob_exists(&layer.digest) {
                 debug!(
                     layer = i,
                     digest = %layer.digest,
@@ -288,7 +293,7 @@ impl ImagePuller {
                 "Pulling layer"
             );
 
-            self.oci_client
+            oci_client
                 .pull_blob(repo, &layer.digest, &layer_path)
                 .await?;
 
@@ -315,6 +320,17 @@ impl ImagePuller {
             was_cached: false,
             pull_duration_ms: None,
         })
+    }
+
+    fn oci_client_for_registry(&self, registry: &str) -> Result<OciClient, ImagePullError> {
+        let mut config = self.config.oci.clone();
+        let registry_url = if registry.starts_with("http://") || registry.starts_with("https://") {
+            registry.to_string()
+        } else {
+            format!("https://{registry}")
+        };
+        config.registry_url = registry_url;
+        Ok(OciClient::new(config)?)
     }
 
     /// Get or create a build lock for a digest.

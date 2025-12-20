@@ -24,6 +24,7 @@ fn test_config() -> Config {
         data_dir: "/tmp/node-agent-test".to_string(),
         heartbeat_interval_secs: 30,
         log_level: "debug".to_string(),
+        exec_listen_addr: "127.0.0.1:0".parse().unwrap(),
     }
 }
 

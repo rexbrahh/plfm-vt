@@ -7,6 +7,7 @@
 use std::time::Duration;
 
 use anyhow::Result;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error};
 
@@ -77,6 +78,52 @@ impl ControlPlaneClient {
             let body = response.text().await.unwrap_or_default();
             error!(status = %status_code, body = %body, "Failed to report status");
             anyhow::bail!("Failed to report status: {} - {}", status_code, body);
+        }
+
+        Ok(())
+    }
+
+    /// Fetch decrypted secret material for a version.
+    pub async fn fetch_secret_material(&self, version_id: &str) -> Result<SecretMaterialResponse> {
+        let url = format!(
+            "{}/v1/nodes/{}/secrets/{}",
+            self.base_url, self.node_id, version_id
+        );
+        debug!(url = %url, "Fetching secret material");
+
+        let response = self.client.get(&url).send().await?;
+
+        if !response.status().is_success() {
+            let status_code = response.status();
+            let body = response.text().await.unwrap_or_default();
+            error!(status = %status_code, body = %body, "Failed to fetch secret material");
+            anyhow::bail!(
+                "Failed to fetch secret material: {} - {}",
+                status_code,
+                body
+            );
+        }
+
+        let payload: SecretMaterialResponse = response.json().await?;
+        Ok(payload)
+    }
+
+    /// Send workload log entries to the control plane.
+    pub async fn send_workload_logs(&self, entries: Vec<WorkloadLogEntry>) -> Result<()> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+
+        let url = format!("{}/v1/nodes/{}/logs", self.base_url, self.node_id);
+        let request = WorkloadLogRequest { entries };
+
+        let response = self.client.post(&url).json(&request).send().await?;
+
+        if !response.status().is_success() {
+            let status_code = response.status();
+            let body = response.text().await.unwrap_or_default();
+            error!(status = %status_code, body = %body, "Failed to send workload logs");
+            anyhow::bail!("Failed to send workload logs: {} - {}", status_code, body);
         }
 
         Ok(())
@@ -178,6 +225,30 @@ pub struct VolumeMount {
 
     /// Whether the mount is read-only.
     pub read_only: bool,
+}
+
+/// Secret material response from the control plane.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SecretMaterialResponse {
+    pub version_id: String,
+    pub format: String,
+    pub data_hash: String,
+    pub data: String,
+}
+
+/// Workload log entry sent by node agents.
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkloadLogEntry {
+    pub ts: DateTime<Utc>,
+    pub instance_id: String,
+    pub stream: String,
+    pub line: String,
+    pub truncated: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct WorkloadLogRequest {
+    entries: Vec<WorkloadLogEntry>,
 }
 
 /// Instance status report sent to the control plane.

@@ -232,7 +232,7 @@ impl ImagePullActor {
         // If we have a puller, use it
         if let Some(puller) = &self.puller {
             // Parse image reference to get repo
-            let (_registry, repo, _) = match crate::image::parse_image_ref(&image_ref) {
+            let (registry, repo, _) = match crate::image::parse_image_ref(&image_ref) {
                 Ok(parsed) => parsed,
                 Err(e) => {
                     self.fail_pull(&expected_digest, format!("Invalid image ref: {}", e));
@@ -245,7 +245,8 @@ impl ImagePullActor {
             let image_ref_clone = image_ref.clone();
 
             // Spawn the actual pull operation
-            let pull_result = puller.ensure_image(&image_ref_clone, &repo, &digest).await;
+            let pull_result =
+                puller.ensure_image(&image_ref_clone, &registry, &repo, &digest).await;
 
             match pull_result {
                 Ok(result) => {
