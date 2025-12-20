@@ -204,7 +204,12 @@ async fn test_node_heartbeat() {
 
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert!(status.is_success(), "Enrollment failed: {} - {:?}", status, body);
+    assert!(
+        status.is_success(),
+        "Enrollment failed: {} - {:?}",
+        status,
+        body
+    );
     let node_id = body["id"].as_str().expect("missing node id").to_string();
 
     // Wait for projection to create node in nodes_view
@@ -259,7 +264,12 @@ async fn test_node_plan_empty() {
 
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert!(status.is_success(), "Enrollment failed: {} - {:?}", status, body);
+    assert!(
+        status.is_success(),
+        "Enrollment failed: {} - {:?}",
+        status,
+        body
+    );
     let node_id = body["id"].as_str().expect("missing node id").to_string();
 
     // Wait for projection
@@ -278,7 +288,9 @@ async fn test_node_plan_empty() {
         plan
     );
 
-    let instances = plan["instances"].as_array().expect("missing instances array");
+    let instances = plan["instances"]
+        .as_array()
+        .expect("missing instances array");
     assert!(instances.is_empty(), "Plan should be empty for new node");
 }
 
@@ -391,7 +403,12 @@ async fn test_node_plan_with_scheduled_instance() {
 
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert!(status.is_success(), "Enrollment failed: {} - {:?}", status, body);
+    assert!(
+        status.is_success(),
+        "Enrollment failed: {} - {:?}",
+        status,
+        body
+    );
     let node_id = body["id"].as_str().unwrap().to_string();
 
     // Wait for projections
@@ -417,7 +434,9 @@ async fn test_node_plan_with_scheduled_instance() {
         plan
     );
 
-    let instances = plan["instances"].as_array().expect("missing instances array");
+    let instances = plan["instances"]
+        .as_array()
+        .expect("missing instances array");
     assert!(!instances.is_empty(), "Plan should have scheduled instance");
 
     // Verify instance has required fields
@@ -448,7 +467,12 @@ async fn test_instance_status_reporting() {
 
     let status = resp.status();
     let body: serde_json::Value = resp.json().await.unwrap();
-    assert!(status.is_success(), "Enrollment failed: {} - {:?}", status, body);
+    assert!(
+        status.is_success(),
+        "Enrollment failed: {} - {:?}",
+        status,
+        body
+    );
     let node_id = body["id"].as_str().unwrap().to_string();
 
     // Insert an instance directly into the database for testing

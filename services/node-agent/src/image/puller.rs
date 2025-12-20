@@ -362,7 +362,10 @@ pub fn parse_image_ref(image_ref: &str) -> Result<(String, String, String), Imag
     let parts: Vec<&str> = name_part.splitn(2, '/').collect();
     let (registry, repo) = if parts.len() == 1 {
         // No slash - Docker Hub library image
-        ("registry-1.docker.io".to_string(), format!("library/{}", parts[0]))
+        (
+            "registry-1.docker.io".to_string(),
+            format!("library/{}", parts[0]),
+        )
     } else if parts[0].contains('.') || parts[0].contains(':') || parts[0] == "localhost" {
         // First part looks like a registry
         (parts[0].to_string(), parts[1].to_string())

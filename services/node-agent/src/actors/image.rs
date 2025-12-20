@@ -245,9 +245,7 @@ impl ImagePullActor {
             let image_ref_clone = image_ref.clone();
 
             // Spawn the actual pull operation
-            let pull_result = puller
-                .ensure_image(&image_ref_clone, &repo, &digest)
-                .await;
+            let pull_result = puller.ensure_image(&image_ref_clone, &repo, &digest).await;
 
             match pull_result {
                 Ok(result) => {
