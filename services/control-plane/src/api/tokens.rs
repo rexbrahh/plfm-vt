@@ -112,12 +112,20 @@ impl SubjectType {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s {
             "user" => Some(SubjectType::User),
             "service_principal" => Some(SubjectType::ServicePrincipal),
             _ => None,
         }
+    }
+}
+
+impl std::str::FromStr for SubjectType {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        SubjectType::parse(s).ok_or(())
     }
 }
 
@@ -275,7 +283,7 @@ pub async fn validate_access_token(
             .with_request_id(request_id.to_string()));
     }
 
-    let subject_type = SubjectType::from_str(&row.subject_type).ok_or_else(|| {
+    let subject_type = SubjectType::parse(&row.subject_type).ok_or_else(|| {
         ApiError::internal("internal_error", "Invalid subject type in token")
             .with_request_id(request_id.to_string())
     })?;
@@ -340,17 +348,15 @@ async fn validate_refresh_token_inner(
         "#
     };
 
-    let row = sqlx::query_as::<_, RefreshTokenRow>(
-        query,
-    )
-    .bind(&token_hash)
-    .fetch_optional(executor)
-    .await
-    .map_err(|e| {
-        tracing::error!(error = %e, request_id = %request_id, "Failed to query refresh token");
-        ApiError::internal("internal_error", "Failed to validate token")
-            .with_request_id(request_id.to_string())
-    })?;
+    let row = sqlx::query_as::<_, RefreshTokenRow>(query)
+        .bind(&token_hash)
+        .fetch_optional(executor)
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to query refresh token");
+            ApiError::internal("internal_error", "Failed to validate token")
+                .with_request_id(request_id.to_string())
+        })?;
 
     let Some(row) = row else {
         return Err(
@@ -373,7 +379,7 @@ async fn validate_refresh_token_inner(
             .with_request_id(request_id.to_string()));
     }
 
-    let subject_type = SubjectType::from_str(&row.subject_type).ok_or_else(|| {
+    let subject_type = SubjectType::parse(&row.subject_type).ok_or_else(|| {
         ApiError::internal("internal_error", "Invalid subject type in token")
             .with_request_id(request_id.to_string())
     })?;

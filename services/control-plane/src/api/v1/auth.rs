@@ -414,7 +414,7 @@ async fn device_token(
                 )
                 .with_request_id(request_id.clone())
             })?;
-            let subject_type = SubjectType::from_str(&subject_type_str).ok_or_else(|| {
+            let subject_type = SubjectType::parse(&subject_type_str).ok_or_else(|| {
                 ApiError::internal("internal_error", "Invalid subject type")
                     .with_request_id(request_id.clone())
             })?;

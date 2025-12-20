@@ -379,9 +379,9 @@ async fn handle_exec_socket(
 
     let end_state_agent = end_state.clone();
     let state_agent = state.clone();
-    let exec_session_id_agent = exec_session_id.clone();
-    let org_id_agent = org_id.clone();
-    let instance_id_agent = instance_id.clone();
+    let exec_session_id_agent = exec_session_id;
+    let org_id_agent = org_id;
+    let instance_id_agent = instance_id;
     let end_emitted_agent = end_emitted.clone();
 
     let to_client = tokio::spawn(async move {
@@ -442,9 +442,9 @@ async fn handle_exec_socket(
 
     let end_state_client = end_state.clone();
     let state_client = state.clone();
-    let exec_session_id_client = exec_session_id.clone();
-    let org_id_client = org_id.clone();
-    let instance_id_client = instance_id.clone();
+    let exec_session_id_client = exec_session_id;
+    let org_id_client = org_id;
+    let instance_id_client = instance_id;
     let end_emitted_client = end_emitted.clone();
 
     let to_agent = tokio::spawn(async move {
@@ -784,9 +784,9 @@ async fn emit_exec_connected(
         .unwrap_or(0);
 
     let payload = ExecSessionConnectedPayload {
-        exec_session_id: exec_session_id.clone(),
-        org_id: org_id.clone(),
-        instance_id: instance_id.clone(),
+        exec_session_id: *exec_session_id,
+        org_id: *org_id,
+        instance_id: *instance_id,
         connected_at: Utc::now().to_rfc3339(),
     };
 
@@ -805,7 +805,7 @@ async fn emit_exec_connected(
         event_version: 1,
         actor_type: ActorType::System,
         actor_id: "exec_gateway".to_string(),
-        org_id: Some(org_id.clone()),
+        org_id: Some(*org_id),
         request_id: RequestId::new().to_string(),
         idempotency_key: None,
         app_id: None,
@@ -867,9 +867,9 @@ async fn emit_exec_end(
         .unwrap_or(0);
 
     let payload = ExecSessionEndedPayload {
-        exec_session_id: exec_session_id.clone(),
-        org_id: org_id.clone(),
-        instance_id: instance_id.clone(),
+        exec_session_id: *exec_session_id,
+        org_id: *org_id,
+        instance_id: *instance_id,
         ended_at: Utc::now().to_rfc3339(),
         exit_code,
         end_reason: Some(reason.to_string()),
@@ -891,7 +891,7 @@ async fn emit_exec_end(
         event_version: 1,
         actor_type: ActorType::System,
         actor_id: "exec_gateway".to_string(),
-        org_id: Some(org_id.clone()),
+        org_id: Some(*org_id),
         request_id: RequestId::new().to_string(),
         idempotency_key: None,
         app_id: None,

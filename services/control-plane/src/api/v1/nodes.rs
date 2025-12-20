@@ -1388,7 +1388,7 @@ fn normalize_log_stream(stream: Option<&str>) -> String {
 }
 
 fn normalize_log_line(line: &str, truncated_flag: bool) -> (String, bool) {
-    if line.as_bytes().len() <= MAX_LOG_LINE_BYTES {
+    if line.len() <= MAX_LOG_LINE_BYTES {
         return (line.to_string(), truncated_flag);
     }
 

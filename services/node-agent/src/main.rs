@@ -54,8 +54,10 @@ async fn build_firecracker_runtime(
     };
     let image_puller = Arc::new(ImagePuller::new(puller_config, image_cache)?);
 
-    let mut fc_config = FirecrackerRuntimeConfig::default();
-    fc_config.data_dir = data_dir;
+    let mut fc_config = FirecrackerRuntimeConfig {
+        data_dir,
+        ..Default::default()
+    };
     if let Ok(path) =
         std::env::var("PLFM_FIRECRACKER_PATH").or_else(|_| std::env::var("GHOST_FIRECRACKER_PATH"))
     {

@@ -229,9 +229,9 @@ pub async fn stream_logs(
 
     let stream_state = LogStreamState {
         state: state.clone(),
-        org_id: org_id.clone(),
-        app_id: app_id.clone(),
-        env_id: env_id.clone(),
+        org_id,
+        app_id,
+        env_id,
         filters,
         tail_lines,
         last_id: 0,
@@ -355,6 +355,7 @@ fn parse_rfc3339(
     Ok(Some(parsed.with_timezone(&Utc)))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn fetch_log_rows(
     state: &AppState,
     org_id: &OrgId,
@@ -393,12 +394,12 @@ async fn fetch_log_rows(
 
     if let Some(since) = filters.since.as_ref() {
         builder.push(" AND ts >= ");
-        builder.push_bind(since.clone());
+        builder.push_bind(*since);
     }
 
     if let Some(until) = filters.until.as_ref() {
         builder.push(" AND ts <= ");
-        builder.push_bind(until.clone());
+        builder.push_bind(*until);
     }
 
     if order_asc {

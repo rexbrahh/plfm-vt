@@ -7,7 +7,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -237,8 +237,8 @@ impl FirecrackerRuntime {
         &self,
         client: &FirecrackerClient,
         plan: &InstancePlan,
-        root_disk_path: &PathBuf,
-        scratch_path: &PathBuf,
+        root_disk_path: &Path,
+        scratch_path: &Path,
         guest_cid: u32,
     ) -> Result<Option<TapDevice>> {
         let instance_id = &plan.instance_id;
@@ -260,10 +260,10 @@ impl FirecrackerRuntime {
         client.put_boot_source(&boot_source).await?;
 
         // Configure root and scratch drives
-        let root_drive = DriveConfig::root_disk(root_disk_path.clone());
+        let root_drive = DriveConfig::root_disk(root_disk_path.to_path_buf());
         client.put_drive(&root_drive).await?;
 
-        let scratch_drive = DriveConfig::scratch_disk(scratch_path.clone());
+        let scratch_drive = DriveConfig::scratch_disk(scratch_path.to_path_buf());
         client.put_drive(&scratch_drive).await?;
 
         // Configure volume drives (sorted by volume_id for deterministic mapping)
@@ -607,7 +607,7 @@ async fn flush_log_batch(buffer: &mut Vec<WorkloadLogEntry>, control_plane: &Con
 }
 
 fn normalize_log_line(line: &str) -> (String, bool) {
-    if line.as_bytes().len() <= MAX_LOG_LINE_BYTES {
+    if line.len() <= MAX_LOG_LINE_BYTES {
         return (line.to_string(), false);
     }
 
