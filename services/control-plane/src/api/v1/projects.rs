@@ -28,7 +28,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_project))
         .route("/", get(list_projects))
-        .route("/:project_id", get(get_project))
+        .route("/{project_id}", get(get_project))
 }
 
 // =============================================================================

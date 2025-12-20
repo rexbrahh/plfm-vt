@@ -28,7 +28,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_env))
         .route("/", get(list_envs))
-        .route("/:env_id", get(get_env))
+        .route("/{env_id}", get(get_env))
 }
 
 /// Create env status routes.

@@ -557,6 +557,7 @@ mod tests {
             instance_id: "inst_test".to_string(),
             app_id: "app_test".to_string(),
             env_id: "env_test".to_string(),
+            process_type: "web".to_string(),
             release_id: "rel_test".to_string(),
             deploy_id: "dep_test".to_string(),
             image: "test:latest".to_string(),
@@ -564,6 +565,8 @@ mod tests {
                 cpu: 1.0,
                 memory_bytes: 512 * 1024 * 1024,
             },
+            overlay_ipv6: "fd00::1234".to_string(),
+            secrets_version_id: None,
             env_vars: serde_json::json!({"PORT": "8080"}),
             volumes: vec![],
         };

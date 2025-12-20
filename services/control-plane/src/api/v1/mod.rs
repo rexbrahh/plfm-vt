@@ -29,63 +29,63 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .nest("/auth", auth::routes())
         .nest("/orgs", orgs::routes())
-        .nest("/orgs/:org_id/members", members::routes())
-        .nest("/orgs/:org_id/projects", projects::routes())
+        .nest("/orgs/{org_id}/members", members::routes())
+        .nest("/orgs/{org_id}/projects", projects::routes())
         .route(
-            "/orgs/:org_id/events",
+            "/orgs/{org_id}/events",
             axum::routing::get(events::list_events),
         )
         .route(
-            "/orgs/:org_id/apps/:app_id/envs/:env_id/logs",
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs",
             axum::routing::get(logs::query_logs),
         )
         .route(
-            "/orgs/:org_id/apps/:app_id/envs/:env_id/logs/stream",
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs/stream",
             axum::routing::get(logs::stream_logs),
         )
         .route(
-            "/orgs/:org_id/apps/:app_id/envs/:env_id/rollbacks",
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/rollbacks",
             axum::routing::post(deploys::create_rollback),
         )
         // Apps are nested under orgs: /v1/orgs/{org_id}/apps
-        .nest("/orgs/:org_id/apps", apps::routes())
+        .nest("/orgs/{org_id}/apps", apps::routes())
         // Envs are nested under apps: /v1/orgs/{org_id}/apps/{app_id}/envs
-        .nest("/orgs/:org_id/apps/:app_id/envs", envs::routes())
+        .nest("/orgs/{org_id}/apps/{app_id}/envs", envs::routes())
         // Releases are nested under apps: /v1/orgs/{org_id}/apps/{app_id}/releases
-        .nest("/orgs/:org_id/apps/:app_id/releases", releases::routes())
+        .nest("/orgs/{org_id}/apps/{app_id}/releases", releases::routes())
         // Deploys are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/deploys
         .nest(
-            "/orgs/:org_id/apps/:app_id/envs/:env_id/deploys",
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/deploys",
             deploys::routes(),
         )
         // Instances are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/instances
         .nest(
-            "/orgs/:org_id/apps/:app_id/envs/:env_id/instances",
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/instances",
             env_instances::routes(),
         )
         // Routes are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/routes
         .nest(
-            "/orgs/:org_id/apps/:app_id/envs/:env_id/routes",
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/routes",
             routes::routes(),
         )
         // Volume attachments are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/volume-attachments
         .nest(
-            "/orgs/:org_id/apps/:app_id/envs/:env_id/volume-attachments",
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/volume-attachments",
             volume_attachments::routes(),
         )
         // Secrets are nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/secrets
         .nest(
-            "/orgs/:org_id/apps/:app_id/envs/:env_id/secrets",
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/secrets",
             secrets::routes(),
         )
         // Scale is nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale
         .nest(
-            "/orgs/:org_id/apps/:app_id/envs/:env_id/scale",
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/scale",
             envs::scale_routes(),
         )
         // Status is nested under envs: /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/status
         .nest(
-            "/orgs/:org_id/apps/:app_id/envs/:env_id/status",
+            "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/status",
             envs::status_routes(),
         )
         // Nodes are infrastructure resources: /v1/nodes
@@ -93,7 +93,7 @@ pub fn routes() -> Router<AppState> {
         // Instances are VM instances: /v1/instances
         .nest("/instances", instances::routes())
         // Volumes are org-scoped resources: /v1/orgs/{org_id}/volumes
-        .nest("/orgs/:org_id/volumes", volumes::routes())
+        .nest("/orgs/{org_id}/volumes", volumes::routes())
         // Development/debug endpoints: /v1/_debug/*
         .nest("/_debug", debug::routes())
 }

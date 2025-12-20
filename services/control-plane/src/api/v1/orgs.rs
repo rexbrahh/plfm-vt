@@ -26,7 +26,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_org))
         .route("/", get(list_orgs))
-        .route("/:org_id", get(get_org))
+        .route("/{org_id}", get(get_org))
 }
 
 // =============================================================================

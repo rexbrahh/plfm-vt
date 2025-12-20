@@ -311,6 +311,7 @@ mod tests {
             instance_id: "inst_123".to_string(),
             app_id: "app_456".to_string(),
             env_id: "env_789".to_string(),
+            process_type: "web".to_string(),
             release_id: "rel_abc".to_string(),
             deploy_id: "dep_xyz".to_string(),
             image: "ghcr.io/org/app:v1".to_string(),
@@ -318,6 +319,8 @@ mod tests {
                 cpu: 1.0,
                 memory_bytes: 512 * 1024 * 1024,
             },
+            overlay_ipv6: "fd00::1".to_string(),
+            secrets_version_id: None,
             env_vars: serde_json::json!({}),
             volumes: vec![],
         };
@@ -333,6 +336,7 @@ mod tests {
             instance_id: "inst_123".to_string(),
             app_id: "app_456".to_string(),
             env_id: "env_789".to_string(),
+            process_type: "web".to_string(),
             release_id: "rel_abc".to_string(),
             deploy_id: "dep_xyz".to_string(),
             image: "ghcr.io/org/app:v1".to_string(),
@@ -340,6 +344,8 @@ mod tests {
                 cpu: 1.0,
                 memory_bytes: 512 * 1024 * 1024,
             },
+            overlay_ipv6: "fd00::1".to_string(),
+            secrets_version_id: None,
             env_vars: serde_json::json!({}),
             volumes: vec![],
         };

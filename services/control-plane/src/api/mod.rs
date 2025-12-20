@@ -52,8 +52,8 @@ pub fn create_router(state: AppState) -> Router {
     let propagate_request_id = PropagateRequestIdLayer::new(request_id_header);
 
     Router::new()
-        // Health endpoints (no auth required)
-        .nest("/", health::routes())
+        // Health endpoints (no auth required) - merged at root level
+        .merge(health::routes())
         // API v1 routes
         .nest("/v1", v1::routes())
         // Middleware

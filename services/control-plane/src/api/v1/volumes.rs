@@ -32,11 +32,11 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_volumes))
         .route("/", post(create_volume))
-        .route("/:volume_id", get(get_volume))
-        .route("/:volume_id", delete(delete_volume))
-        .route("/:volume_id/snapshots", post(create_snapshot))
-        .route("/:volume_id/snapshots", get(list_snapshots))
-        .route("/:volume_id/restore", post(restore_volume))
+        .route("/{volume_id}", get(get_volume))
+        .route("/{volume_id}", delete(delete_volume))
+        .route("/{volume_id}/snapshots", post(create_snapshot))
+        .route("/{volume_id}/snapshots", get(list_snapshots))
+        .route("/{volume_id}/restore", post(restore_volume))
 }
 
 // =============================================================================

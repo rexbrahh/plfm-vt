@@ -125,6 +125,9 @@ pub struct InstancePlan {
     /// Env ID.
     pub env_id: String,
 
+    /// Process type (web, worker, etc).
+    pub process_type: String,
+
     /// Release ID to run.
     pub release_id: String,
 
@@ -137,7 +140,15 @@ pub struct InstancePlan {
     /// Resource requests.
     pub resources: InstanceResources,
 
-    /// Environment variables.
+    /// Overlay IPv6 address for this instance.
+    #[serde(default)]
+    pub overlay_ipv6: String,
+
+    /// Secrets version ID (node-agent fetches secrets separately).
+    #[serde(default)]
+    pub secrets_version_id: Option<String>,
+
+    /// Environment variables (non-secret config).
     #[serde(default)]
     pub env_vars: serde_json::Value,
 
@@ -269,13 +280,15 @@ mod tests {
                     "instance_id": "inst_123",
                     "app_id": "app_456",
                     "env_id": "env_789",
+                    "process_type": "web",
                     "release_id": "rel_abc",
                     "deploy_id": "dep_xyz",
                     "image": "ghcr.io/org/app:v1",
                     "resources": {
                         "cpu": 1.0,
                         "memory_bytes": 536870912
-                    }
+                    },
+                    "overlay_ipv6": "fd00::1234"
                 }
             ]
         }"#;
@@ -284,6 +297,8 @@ mod tests {
         assert_eq!(plan.plan_version, 42);
         assert_eq!(plan.instances.len(), 1);
         assert_eq!(plan.instances[0].instance_id, "inst_123");
+        assert_eq!(plan.instances[0].process_type, "web");
+        assert_eq!(plan.instances[0].overlay_ipv6, "fd00::1234");
     }
 
     #[test]

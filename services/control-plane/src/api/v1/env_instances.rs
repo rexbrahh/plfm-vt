@@ -23,8 +23,8 @@ use super::exec;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_instances))
-        .route("/:instance_id", get(get_instance))
-        .nest("/:instance_id/exec", exec::routes())
+        .route("/{instance_id}", get(get_instance))
+        .nest("/{instance_id}/exec", exec::routes())
 }
 
 // =============================================================================
@@ -127,7 +127,7 @@ async fn list_instances(
             d.node_id,
             d.generation,
             d.desired_state,
-            d.overlay_ipv6,
+            d.overlay_ipv6::TEXT as overlay_ipv6,
             d.created_at,
             d.updated_at,
             s.status as reported_status,
@@ -224,7 +224,7 @@ async fn get_instance(
             d.node_id,
             d.generation,
             d.desired_state,
-            d.overlay_ipv6,
+            d.overlay_ipv6::TEXT as overlay_ipv6,
             d.created_at,
             d.updated_at,
             s.status as reported_status,

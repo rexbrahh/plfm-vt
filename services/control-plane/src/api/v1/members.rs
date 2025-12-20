@@ -28,8 +28,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_members))
         .route("/", post(create_member))
-        .route("/:member_id", axum::routing::patch(update_member))
-        .route("/:member_id", axum::routing::delete(delete_member))
+        .route("/{member_id}", axum::routing::patch(update_member))
+        .route("/{member_id}", axum::routing::delete(delete_member))
 }
 
 // =============================================================================

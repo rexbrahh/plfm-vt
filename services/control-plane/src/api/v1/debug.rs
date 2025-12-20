@@ -22,7 +22,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/projections", get(list_projections))
         .route(
-            "/projections/:projection_name/reset",
+            "/projections/{projection_name}/reset",
             post(reset_projection),
         )
         .route("/idempotency/cleanup", post(cleanup_idempotency))

@@ -28,11 +28,11 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/enroll", post(enroll_node))
         .route("/", get(list_nodes))
-        .route("/:node_id", get(get_node))
-        .route("/:node_id/heartbeat", post(heartbeat))
-        .route("/:node_id/plan", get(get_plan))
+        .route("/{node_id}", get(get_node))
+        .route("/{node_id}/heartbeat", post(heartbeat))
+        .route("/{node_id}/plan", get(get_plan))
         .route(
-            "/:node_id/instances/:instance_id/status",
+            "/{node_id}/instances/{instance_id}/status",
             post(report_instance_status),
         )
 }

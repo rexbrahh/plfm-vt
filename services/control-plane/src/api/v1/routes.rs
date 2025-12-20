@@ -32,9 +32,9 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_routes))
         .route("/", post(create_route))
-        .route("/:route_id", get(get_route))
-        .route("/:route_id", patch(update_route))
-        .route("/:route_id", delete(delete_route))
+        .route("/{route_id}", get(get_route))
+        .route("/{route_id}", patch(update_route))
+        .route("/{route_id}", delete(delete_route))
 }
 
 // =============================================================================

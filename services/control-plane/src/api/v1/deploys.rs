@@ -29,7 +29,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_deploy))
         .route("/", get(list_deploys))
-        .route("/:deploy_id", get(get_deploy))
+        .route("/{deploy_id}", get(get_deploy))
 }
 
 // =============================================================================

@@ -13,4 +13,4 @@
 
 mod tap;
 
-pub use tap::{TapConfig, TapDevice, TapError};
+pub use tap::{create_tap, TapConfig, TapDevice, TapError};

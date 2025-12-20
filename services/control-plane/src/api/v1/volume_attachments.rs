@@ -29,7 +29,7 @@ use crate::state::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_attachment))
-        .route("/:attachment_id", delete(delete_attachment))
+        .route("/{attachment_id}", delete(delete_attachment))
 }
 
 // =============================================================================

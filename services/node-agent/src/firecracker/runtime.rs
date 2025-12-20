@@ -18,11 +18,11 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use crate::client::InstancePlan;
-use crate::network::TapDevice;
+use crate::network::{create_tap, TapConfig, TapDevice};
 use crate::runtime::{Runtime, VmHandle};
 
 use super::api::FirecrackerClient;
-use super::config::{BootSource, MachineConfig};
+use super::config::{generate_mac_address, BootSource, MachineConfig, NetworkInterface};
 use super::jailer::SandboxManager;
 
 /// Default timeout for Firecracker API operations.
@@ -164,11 +164,13 @@ impl FirecrackerRuntime {
     }
 
     /// Configure and boot a VM via the API.
+    ///
+    /// Returns the TAP device that was created for this VM, if networking was configured.
     async fn configure_and_boot(
         &self,
         client: &FirecrackerClient,
         plan: &InstancePlan,
-    ) -> Result<()> {
+    ) -> Result<Option<TapDevice>> {
         let instance_id = &plan.instance_id;
 
         // Convert plan resources to Firecracker config
@@ -187,11 +189,43 @@ impl FirecrackerRuntime {
         // Note: In production, we'd configure drives from the rootdisk path
         // For now, this is a placeholder that would need the rootdisk path
 
+        // Configure networking if overlay_ipv6 is provided
+        let tap_device = if !plan.overlay_ipv6.is_empty() {
+            let tap_config = TapConfig::new(instance_id, &plan.overlay_ipv6);
+            let tap_device = create_tap(&tap_config).map_err(|e| {
+                error!(instance_id = %instance_id, error = %e, "Failed to create TAP device");
+                anyhow!("Failed to create TAP device: {}", e)
+            })?;
+
+            // Configure network interface in Firecracker
+            let mac = generate_mac_address(instance_id);
+            let net_iface = NetworkInterface::new("eth0", tap_device.name()).with_mac(&mac);
+
+            client.put_network_interface(&net_iface).await.map_err(|e| {
+                error!(instance_id = %instance_id, error = %e, "Failed to configure network interface");
+                // TAP will be cleaned up when tap_device is dropped
+                anyhow!("Failed to configure network interface: {}", e)
+            })?;
+
+            info!(
+                instance_id = %instance_id,
+                tap = %tap_device.name(),
+                mac = %mac,
+                overlay_ipv6 = %plan.overlay_ipv6,
+                "Network configured"
+            );
+
+            Some(tap_device)
+        } else {
+            warn!(instance_id = %instance_id, "No overlay_ipv6 provided, skipping network configuration");
+            None
+        };
+
         // Start the instance
         client.start_instance().await?;
 
         info!(instance_id = %instance_id, "VM started successfully");
-        Ok(())
+        Ok(tap_device)
     }
 }
 
@@ -209,13 +243,16 @@ impl Runtime for FirecrackerRuntime {
         // Create API client
         let client = FirecrackerClient::new(&socket_path);
 
-        // Configure and boot
-        if let Err(e) = self.configure_and_boot(&client, plan).await {
-            error!(instance_id = %instance_id, error = %e, "Failed to configure VM");
-            // Kill the process on failure
-            drop(process);
-            return Err(e);
-        }
+        // Configure and boot (this also creates the TAP device if needed)
+        let tap_device = match self.configure_and_boot(&client, plan).await {
+            Ok(tap) => tap,
+            Err(e) => {
+                error!(instance_id = %instance_id, error = %e, "Failed to configure VM");
+                // Kill the process on failure
+                drop(process);
+                return Err(e);
+            }
+        };
 
         // Store instance state
         let state = InstanceState {
@@ -224,7 +261,7 @@ impl Runtime for FirecrackerRuntime {
             process,
             client,
             socket_path,
-            tap_device: None, // TAP device created separately when networking is configured
+            tap_device,
             sandbox: None,
         };
 

@@ -25,8 +25,8 @@ use crate::state::AppState;
 pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", get(list_instances))
-        .route("/:instance_id", get(get_instance))
-        .route("/:instance_id/status", post(report_status))
+        .route("/{instance_id}", get(get_instance))
+        .route("/{instance_id}/status", post(report_status))
 }
 
 // =============================================================================
