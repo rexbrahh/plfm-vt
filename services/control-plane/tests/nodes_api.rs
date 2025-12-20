@@ -305,7 +305,7 @@ async fn test_node_plan_with_scheduled_instance() {
     // Create org
     let resp = harness
         .client
-        .post(&format!("{}/v1/orgs", harness.base_url))
+        .post(format!("{}/v1/orgs", harness.base_url))
         .header("Authorization", auth_header)
         .header("Idempotency-Key", format!("org-{}", unique_suffix()))
         .json(&serde_json::json!({ "name": org_name }))
@@ -321,7 +321,7 @@ async fn test_node_plan_with_scheduled_instance() {
     // Create app
     let resp = harness
         .client
-        .post(&format!("{}/v1/orgs/{}/apps", harness.base_url, org_id))
+        .post(format!("{}/v1/orgs/{}/apps", harness.base_url, org_id))
         .header("Authorization", auth_header)
         .header("Idempotency-Key", format!("app-{}", unique_suffix()))
         .json(&serde_json::json!({ "name": "myapp", "description": "test app" }))
@@ -337,7 +337,7 @@ async fn test_node_plan_with_scheduled_instance() {
     // Create env
     let resp = harness
         .client
-        .post(&format!(
+        .post(format!(
             "{}/v1/orgs/{}/apps/{}/envs",
             harness.base_url, org_id, app_id
         ))
@@ -356,7 +356,7 @@ async fn test_node_plan_with_scheduled_instance() {
     // Create release
     let resp = harness
         .client
-        .post(&format!(
+        .post(format!(
             "{}/v1/orgs/{}/apps/{}/releases",
             harness.base_url, org_id, app_id
         ))
@@ -380,7 +380,7 @@ async fn test_node_plan_with_scheduled_instance() {
     // Create deploy
     let resp = harness
         .client
-        .post(&format!(
+        .post(format!(
             "{}/v1/orgs/{}/apps/{}/envs/{}/deploys",
             harness.base_url, org_id, app_id, env_id
         ))
@@ -395,7 +395,7 @@ async fn test_node_plan_with_scheduled_instance() {
     // Enroll a node
     let resp = harness
         .client
-        .post(&format!("{}/v1/nodes/enroll", harness.base_url))
+        .post(format!("{}/v1/nodes/enroll", harness.base_url))
         .json(&harness.enroll_payload("scheduler-node.example.com"))
         .send()
         .await
@@ -459,7 +459,7 @@ async fn test_instance_status_reporting() {
     // Enroll a node
     let resp = harness
         .client
-        .post(&format!("{}/v1/nodes/enroll", harness.base_url))
+        .post(format!("{}/v1/nodes/enroll", harness.base_url))
         .json(&harness.enroll_payload("status-node.example.com"))
         .send()
         .await
