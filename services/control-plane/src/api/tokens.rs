@@ -16,7 +16,11 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use chrono::{DateTime, Duration, Utc};
 use rand::Rng;
 use sha2::{Digest, Sha256};
-use sqlx::PgPool;
+use sqlx::{Executor, PgPool, Postgres};
+use std::collections::HashMap;
+use std::sync::OnceLock;
+use std::time::{Duration as StdDuration, Instant};
+use tokio::sync::RwLock;
 
 use crate::api::error::ApiError;
 
@@ -32,6 +36,9 @@ pub const DEVICE_CODE_LIFETIME_MINUTES: i64 = 10;
 
 /// Minimum poll interval for device flow (seconds).
 pub const DEVICE_POLL_INTERVAL_SECONDS: u32 = 5;
+
+const ACCESS_TOKEN_CACHE_TTL_SECS_DEFAULT: u64 = 30;
+const ACCESS_TOKEN_CACHE_MAX_ENTRIES_DEFAULT: usize = 10_000;
 
 /// Token bytes (32 bytes = 256 bits of entropy).
 const TOKEN_BYTES: usize = 32;
@@ -136,6 +143,80 @@ pub struct ValidatedRefreshToken {
     pub expires_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone)]
+struct CachedAccessToken {
+    token: ValidatedAccessToken,
+    cached_at: Instant,
+}
+
+#[derive(Debug)]
+pub(crate) struct AccessTokenCache {
+    ttl: StdDuration,
+    max_entries: usize,
+    inner: RwLock<HashMap<String, CachedAccessToken>>,
+}
+
+impl AccessTokenCache {
+    fn new(ttl: StdDuration, max_entries: usize) -> Self {
+        Self {
+            ttl,
+            max_entries,
+            inner: RwLock::new(HashMap::new()),
+        }
+    }
+
+    async fn get(&self, token_hash: &str) -> Option<ValidatedAccessToken> {
+        if self.ttl.is_zero() || self.max_entries == 0 {
+            return None;
+        }
+
+        let now = Instant::now();
+        let mut cache = self.inner.write().await;
+        let entry = cache.get(token_hash)?;
+        if now.duration_since(entry.cached_at) > self.ttl || entry.token.expires_at <= Utc::now() {
+            cache.remove(token_hash);
+            return None;
+        }
+
+        Some(entry.token.clone())
+    }
+
+    async fn insert(&self, token_hash: String, token: ValidatedAccessToken) {
+        if self.ttl.is_zero() || self.max_entries == 0 {
+            return;
+        }
+
+        let mut cache = self.inner.write().await;
+        if cache.len() >= self.max_entries {
+            cache.clear();
+        }
+
+        cache.insert(
+            token_hash,
+            CachedAccessToken {
+                token,
+                cached_at: Instant::now(),
+            },
+        );
+    }
+}
+
+static ACCESS_TOKEN_CACHE: OnceLock<AccessTokenCache> = OnceLock::new();
+
+pub(crate) fn access_token_cache() -> &'static AccessTokenCache {
+    ACCESS_TOKEN_CACHE.get_or_init(|| {
+        let ttl_secs = std::env::var("PLFM_ACCESS_TOKEN_CACHE_TTL_SECS")
+            .ok()
+            .and_then(|v| v.parse::<u64>().ok())
+            .unwrap_or(ACCESS_TOKEN_CACHE_TTL_SECS_DEFAULT);
+        let max_entries = std::env::var("PLFM_ACCESS_TOKEN_CACHE_MAX_ENTRIES")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(ACCESS_TOKEN_CACHE_MAX_ENTRIES_DEFAULT);
+        AccessTokenCache::new(StdDuration::from_secs(ttl_secs), max_entries)
+    })
+}
+
 /// Look up and validate an access token.
 ///
 /// Returns the token info if valid, or an error if:
@@ -143,7 +224,7 @@ pub struct ValidatedRefreshToken {
 /// - Token expired
 /// - Token revoked
 pub async fn validate_access_token(
-    pool: &PgPool,
+    executor: impl Executor<'_, Database = Postgres>,
     token: &str,
     request_id: &str,
 ) -> Result<ValidatedAccessToken, ApiError> {
@@ -165,7 +246,7 @@ pub async fn validate_access_token(
         "#,
     )
     .bind(&token_hash)
-    .fetch_optional(pool)
+    .fetch_optional(executor)
     .await
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to query access token");
@@ -213,9 +294,26 @@ pub async fn validate_access_token(
 
 /// Look up and validate a refresh token.
 pub async fn validate_refresh_token(
-    pool: &PgPool,
+    executor: impl Executor<'_, Database = Postgres>,
     token: &str,
     request_id: &str,
+) -> Result<ValidatedRefreshToken, ApiError> {
+    validate_refresh_token_inner(executor, token, request_id, false).await
+}
+
+pub async fn validate_refresh_token_for_update(
+    executor: impl Executor<'_, Database = Postgres>,
+    token: &str,
+    request_id: &str,
+) -> Result<ValidatedRefreshToken, ApiError> {
+    validate_refresh_token_inner(executor, token, request_id, true).await
+}
+
+async fn validate_refresh_token_inner(
+    executor: impl Executor<'_, Database = Postgres>,
+    token: &str,
+    request_id: &str,
+    for_update: bool,
 ) -> Result<ValidatedRefreshToken, ApiError> {
     // Must have correct prefix
     if !token.starts_with(REFRESH_TOKEN_PREFIX) {
@@ -227,15 +325,26 @@ pub async fn validate_refresh_token(
 
     let token_hash = hash_token(token);
 
-    let row = sqlx::query_as::<_, RefreshTokenRow>(
+    let query = if for_update {
         r#"
         SELECT token_id, subject_type, subject_id, subject_email, scopes, expires_at, revoked_at
         FROM refresh_tokens
         WHERE token_hash = $1
-        "#,
+        FOR UPDATE
+        "#
+    } else {
+        r#"
+        SELECT token_id, subject_type, subject_id, subject_email, scopes, expires_at, revoked_at
+        FROM refresh_tokens
+        WHERE token_hash = $1
+        "#
+    };
+
+    let row = sqlx::query_as::<_, RefreshTokenRow>(
+        query,
     )
     .bind(&token_hash)
-    .fetch_optional(pool)
+    .fetch_optional(executor)
     .await
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to query refresh token");
@@ -283,7 +392,7 @@ pub async fn validate_refresh_token(
 
 /// Create a new access token in the database.
 pub async fn create_access_token(
-    pool: &PgPool,
+    executor: impl Executor<'_, Database = Postgres>,
     subject_type: SubjectType,
     subject_id: &str,
     subject_email: Option<&str>,
@@ -315,7 +424,7 @@ pub async fn create_access_token(
     .bind(expires_at)
     .bind(refresh_token_id)
     .bind(device_code_id)
-    .execute(pool)
+    .execute(executor)
     .await?;
 
     Ok((token, expires_at))
@@ -323,7 +432,7 @@ pub async fn create_access_token(
 
 /// Create a new refresh token in the database.
 pub async fn create_refresh_token(
-    pool: &PgPool,
+    executor: impl Executor<'_, Database = Postgres>,
     subject_type: SubjectType,
     subject_id: &str,
     subject_email: Option<&str>,
@@ -355,7 +464,7 @@ pub async fn create_refresh_token(
     .bind(expires_at)
     .bind(device_code_id)
     .bind(previous_token_id)
-    .execute(pool)
+    .execute(executor)
     .await?;
 
     Ok((token, token_id, expires_at))

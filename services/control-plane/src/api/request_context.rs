@@ -108,12 +108,30 @@ async fn actor_from_authorization_header(
         }
     }
 
+    let token_hash = tokens::hash_token(token);
+    if let Some(cached) = tokens::access_token_cache().get(&token_hash).await {
+        let actor_type = match cached.subject_type {
+            tokens::SubjectType::User => ActorType::User,
+            tokens::SubjectType::ServicePrincipal => ActorType::ServicePrincipal,
+        };
+        return Ok(Some((
+            actor_type,
+            cached.subject_id,
+            cached.subject_email,
+            cached.scopes,
+        )));
+    }
+
     // Validate access token against DB.
     let validated = tokens::validate_access_token(state.db().pool(), token, request_id).await?;
     let actor_type = match validated.subject_type {
         tokens::SubjectType::User => ActorType::User,
         tokens::SubjectType::ServicePrincipal => ActorType::ServicePrincipal,
     };
+
+    tokens::access_token_cache()
+        .insert(token_hash, validated.clone())
+        .await;
 
     Ok(Some((
         actor_type,

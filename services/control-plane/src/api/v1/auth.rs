@@ -25,8 +25,8 @@ use crate::api::error::ApiError;
 use crate::api::request_context::RequestContext;
 use crate::api::tokens::{
     self, create_access_token, create_refresh_token, hash_token, revoke_access_token,
-    revoke_refresh_token, validate_refresh_token, SubjectType, ACCESS_TOKEN_LIFETIME_MINUTES,
-    DEVICE_CODE_LIFETIME_MINUTES, DEVICE_POLL_INTERVAL_SECONDS,
+    revoke_refresh_token, validate_refresh_token_for_update, SubjectType,
+    ACCESS_TOKEN_LIFETIME_MINUTES, DEVICE_CODE_LIFETIME_MINUTES, DEVICE_POLL_INTERVAL_SECONDS,
 };
 use crate::state::AppState;
 
@@ -428,14 +428,22 @@ async fn device_token(
                 .and_then(|v| serde_json::from_value(v).ok())
                 .unwrap_or_default();
 
+            let mut tx = state.db().pool().begin().await.map_err(|e| {
+                tracing::error!(error = %e, request_id = %request_id, "Failed to begin device token txn");
+                ApiError::internal("internal_error", "Failed to complete authorization")
+                    .with_request_id(request_id.clone())
+            })?;
+
             // Mark device code as consumed
-            sqlx::query(
+            let consumed = sqlx::query(
                 r#"
-                UPDATE device_codes SET status = 'consumed' WHERE device_code_id = $1
+                UPDATE device_codes
+                SET status = 'consumed'
+                WHERE device_code_id = $1 AND status = 'approved'
                 "#,
             )
             .bind(&row.device_code_id)
-            .execute(state.db().pool())
+            .execute(&mut *tx)
             .await
             .map_err(|e| {
                 tracing::error!(error = %e, request_id = %request_id, "Failed to consume device code");
@@ -443,9 +451,17 @@ async fn device_token(
                     .with_request_id(request_id.clone())
             })?;
 
+            if consumed.rows_affected() == 0 {
+                return Err(ApiError::bad_request(
+                    "invalid_grant",
+                    "Device code has already been used",
+                )
+                .with_request_id(request_id));
+            }
+
             // Create refresh token first
             let (refresh_token, refresh_token_id, _) = create_refresh_token(
-                state.db().pool(),
+                &mut *tx,
                 subject_type,
                 &subject_id,
                 subject_email.as_deref(),
@@ -462,7 +478,7 @@ async fn device_token(
 
             // Create access token
             let (access_token, _) = create_access_token(
-                state.db().pool(),
+                &mut *tx,
                 subject_type,
                 &subject_id,
                 subject_email.as_deref(),
@@ -474,6 +490,12 @@ async fn device_token(
             .map_err(|e| {
                 tracing::error!(error = %e, request_id = %request_id, "Failed to create access token");
                 ApiError::internal("internal_error", "Failed to create tokens")
+                    .with_request_id(request_id.clone())
+            })?;
+
+            tx.commit().await.map_err(|e| {
+                tracing::error!(error = %e, request_id = %request_id, "Failed to commit device token txn");
+                ApiError::internal("internal_error", "Failed to complete authorization")
                     .with_request_id(request_id.clone())
             })?;
 
@@ -629,22 +651,59 @@ async fn token_refresh(
 ) -> Result<impl IntoResponse, ApiError> {
     let request_id = ctx.request_id;
 
+    let mut tx = state.db().pool().begin().await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to begin refresh token txn");
+        ApiError::internal("internal_error", "Failed to refresh token")
+            .with_request_id(request_id.clone())
+    })?;
+
     // Validate refresh token
     let validated =
-        validate_refresh_token(state.db().pool(), &req.refresh_token, &request_id).await?;
+        validate_refresh_token_for_update(&mut *tx, &req.refresh_token, &request_id).await?;
 
     // Revoke the old refresh token (rotation)
-    revoke_refresh_token(state.db().pool(), &req.refresh_token)
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, request_id = %request_id, "Failed to revoke old refresh token");
-            ApiError::internal("internal_error", "Failed to refresh token")
-                .with_request_id(request_id.clone())
-        })?;
+    sqlx::query(
+        r#"
+        UPDATE access_tokens
+        SET revoked_at = now()
+        WHERE refresh_token_id = $1 AND revoked_at IS NULL
+        "#,
+    )
+    .bind(&validated.token_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to revoke access tokens");
+        ApiError::internal("internal_error", "Failed to refresh token")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let refresh_revoked = sqlx::query(
+        r#"
+        UPDATE refresh_tokens
+        SET revoked_at = now()
+        WHERE token_id = $1 AND revoked_at IS NULL
+        "#,
+    )
+    .bind(&validated.token_id)
+    .execute(&mut *tx)
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to revoke refresh token");
+        ApiError::internal("internal_error", "Failed to refresh token")
+            .with_request_id(request_id.clone())
+    })?;
+
+    if refresh_revoked.rows_affected() == 0 {
+        return Err(
+            ApiError::unauthorized("token_revoked", "Token has been revoked")
+                .with_request_id(request_id),
+        );
+    }
 
     // Create new refresh token
     let (new_refresh_token, new_refresh_token_id, _) = create_refresh_token(
-        state.db().pool(),
+        &mut *tx,
         validated.subject_type,
         &validated.subject_id,
         validated.subject_email.as_deref(),
@@ -661,7 +720,7 @@ async fn token_refresh(
 
     // Create new access token
     let (access_token, _) = create_access_token(
-        state.db().pool(),
+        &mut *tx,
         validated.subject_type,
         &validated.subject_id,
         validated.subject_email.as_deref(),
@@ -672,6 +731,12 @@ async fn token_refresh(
     .await
     .map_err(|e| {
         tracing::error!(error = %e, request_id = %request_id, "Failed to create access token");
+        ApiError::internal("internal_error", "Failed to refresh token")
+            .with_request_id(request_id.clone())
+    })?;
+
+    tx.commit().await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to commit refresh token txn");
         ApiError::internal("internal_error", "Failed to refresh token")
             .with_request_id(request_id.clone())
     })?;
