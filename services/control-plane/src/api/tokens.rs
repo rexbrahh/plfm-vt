@@ -165,7 +165,7 @@ impl AccessTokenCache {
         }
     }
 
-    async fn get(&self, token_hash: &str) -> Option<ValidatedAccessToken> {
+    pub(crate) async fn get(&self, token_hash: &str) -> Option<ValidatedAccessToken> {
         if self.ttl.is_zero() || self.max_entries == 0 {
             return None;
         }
@@ -181,7 +181,7 @@ impl AccessTokenCache {
         Some(entry.token.clone())
     }
 
-    async fn insert(&self, token_hash: String, token: ValidatedAccessToken) {
+    pub(crate) async fn insert(&self, token_hash: String, token: ValidatedAccessToken) {
         if self.ttl.is_zero() || self.max_entries == 0 {
             return;
         }
