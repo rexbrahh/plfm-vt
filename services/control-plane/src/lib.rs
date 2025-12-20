@@ -8,4 +8,5 @@ pub mod config;
 pub mod db;
 pub mod projections;
 pub mod scheduler;
+pub mod secrets;
 pub mod state;

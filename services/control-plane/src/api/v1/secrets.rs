@@ -15,6 +15,7 @@ use axum::{
 use chrono::{DateTime, Utc};
 use plfm_events::{event_types, AggregateType};
 use plfm_id::{AppId, EnvId, OrgId, SecretBundleId, SecretVersionId};
+use plfm_secrets_format::Secrets;
 use sha2::{Digest, Sha256};
 
 use crate::api::authz;
@@ -22,6 +23,7 @@ use crate::api::error::ApiError;
 use crate::api::idempotency;
 use crate::api::request_context::RequestContext;
 use crate::db::AppendEvent;
+use crate::secrets as secrets_crypto;
 use crate::state::AppState;
 
 /// Secrets routes.
@@ -206,7 +208,8 @@ async fn put_secrets(
     let role = authz::require_org_member(&state, &org_id_typed, &ctx).await?;
     authz::require_org_write(role, &request_id)?;
 
-    let (format, data_hash) = validate_and_hash_secrets(&req, &request_id)?;
+    let (format, data_hash, plaintext_bytes) =
+        validate_and_canonicalize_secrets(&req, &request_id)?;
 
     let org_scope = org_id_typed.to_string();
     let request_hash = idempotency_key.as_deref().map(|key| {
@@ -330,6 +333,22 @@ async fn put_secrets(
             })?
             .unwrap_or(0);
 
+        store_secret_material(
+            &state,
+            &org_id_typed,
+            &app_id_typed,
+            &env_id_typed,
+            &bundle_id,
+            &version_id,
+            actor_type,
+            &actor_id,
+            &format,
+            &data_hash,
+            &plaintext_bytes,
+            &request_id,
+        )
+        .await?;
+
         let payload = serde_json::json!({
             "bundle_id": bundle_id,
             "org_id": org_id_typed,
@@ -379,6 +398,22 @@ async fn put_secrets(
         (bundle_id, vec![event_id])
     } else {
         let bundle_id = SecretBundleId::new();
+
+        store_secret_material(
+            &state,
+            &org_id_typed,
+            &app_id_typed,
+            &env_id_typed,
+            &bundle_id,
+            &version_id,
+            actor_type,
+            &actor_id,
+            &format,
+            &data_hash,
+            &plaintext_bytes,
+            &request_id,
+        )
+        .await?;
 
         let created_payload = serde_json::json!({
             "bundle_id": bundle_id,
@@ -473,7 +508,7 @@ async fn put_secrets(
         .wait_for_checkpoint(
             "secret_bundles",
             last_event_id.value(),
-            std::time::Duration::from_secs(2),
+            crate::api::projection_wait_timeout(),
         )
         .await
         .map_err(|e| {
@@ -552,10 +587,10 @@ async fn put_secrets(
 // Helpers
 // =============================================================================
 
-fn validate_and_hash_secrets(
+fn validate_and_canonicalize_secrets(
     req: &PutSecretsRequest,
     request_id: &str,
-) -> Result<(String, String), ApiError> {
+) -> Result<(String, String, Vec<u8>), ApiError> {
     match req {
         PutSecretsRequest::EnvFile(env_file) => {
             if env_file.format != "platform_env_v1" {
@@ -566,8 +601,16 @@ fn validate_and_hash_secrets(
                 .with_request_id(request_id.to_string()));
             }
 
+            let secrets = Secrets::parse(&env_file.data).map_err(|e| {
+                ApiError::bad_request("invalid_secrets_format", e.to_string())
+                    .with_request_id(request_id.to_string())
+            })?;
+
+            let canonical = secrets.serialize();
+            let data_hash = secrets.data_hash();
+            let bytes = canonical.into_bytes();
             let max_len = 1_048_576usize; // 1 MiB guardrail for v1
-            if env_file.data.len() > max_len {
+            if bytes.len() > max_len {
                 return Err(ApiError::bad_request(
                     "secrets_too_large",
                     "secrets data is too large",
@@ -575,12 +618,9 @@ fn validate_and_hash_secrets(
                 .with_request_id(request_id.to_string()));
             }
 
-            let mut hasher = Sha256::new();
-            hasher.update(env_file.data.as_bytes());
-            Ok((env_file.format.clone(), format!("{:x}", hasher.finalize())))
+            Ok((env_file.format.clone(), data_hash, bytes))
         }
         PutSecretsRequest::Map(map) => {
-            // Validate key names only (never log values).
             if map.values.len() > 10_000 {
                 return Err(
                     ApiError::bad_request("secrets_too_large", "Too many secret keys")
@@ -588,32 +628,18 @@ fn validate_and_hash_secrets(
                 );
             }
 
-            let mut total_bytes: usize = 0;
+            let secrets = Secrets::try_from_iter(map.values.iter().map(|(k, v)| (k, v))).map_err(
+                |e| {
+                    ApiError::bad_request("invalid_secrets_format", e.to_string())
+                        .with_request_id(request_id.to_string())
+                },
+            )?;
 
-            for (key, value) in &map.values {
-                total_bytes = total_bytes
-                    .saturating_add(key.len())
-                    .saturating_add(value.len());
-
-                let key = key.trim();
-                if key.is_empty() {
-                    return Err(ApiError::bad_request(
-                        "invalid_secret_key",
-                        "secret keys cannot be empty",
-                    )
-                    .with_request_id(request_id.to_string()));
-                }
-                if key.len() > 256 {
-                    return Err(ApiError::bad_request(
-                        "invalid_secret_key",
-                        "secret keys must be <= 256 characters",
-                    )
-                    .with_request_id(request_id.to_string()));
-                }
-            }
-
+            let canonical = secrets.serialize();
+            let data_hash = secrets.data_hash();
+            let bytes = canonical.into_bytes();
             let max_len = 1_048_576usize; // 1 MiB guardrail for v1
-            if total_bytes > max_len {
+            if bytes.len() > max_len {
                 return Err(ApiError::bad_request(
                     "secrets_too_large",
                     "secrets data is too large",
@@ -621,22 +647,112 @@ fn validate_and_hash_secrets(
                 .with_request_id(request_id.to_string()));
             }
 
-            let mut canonical = String::new();
-            for (k, v) in &map.values {
-                canonical.push_str(k);
-                canonical.push('=');
-                canonical.push_str(v);
-                canonical.push('\n');
-            }
-
-            let mut hasher = Sha256::new();
-            hasher.update(canonical.as_bytes());
-            Ok((
-                "platform_env_v1".to_string(),
-                format!("{:x}", hasher.finalize()),
-            ))
+            Ok(("platform_env_v1".to_string(), data_hash, bytes))
         }
     }
+}
+
+fn secrets_aad(
+    org_id: &OrgId,
+    env_id: &EnvId,
+    bundle_id: &SecretBundleId,
+    version_id: &SecretVersionId,
+    data_hash: &str,
+) -> String {
+    format!(
+        "trc-secrets-v1|org:{org_id}|env:{env_id}|bundle:{bundle_id}|version:{version_id}|hash:{data_hash}"
+    )
+}
+
+async fn store_secret_material(
+    state: &AppState,
+    org_id: &OrgId,
+    app_id: &AppId,
+    env_id: &EnvId,
+    bundle_id: &SecretBundleId,
+    version_id: &SecretVersionId,
+    actor_type: plfm_events::ActorType,
+    actor_id: &str,
+    format: &str,
+    data_hash: &str,
+    plaintext: &[u8],
+    request_id: &str,
+) -> Result<(), ApiError> {
+    let aad = secrets_aad(org_id, env_id, bundle_id, version_id, data_hash);
+    let encrypted = secrets_crypto::encrypt(plaintext, aad.as_bytes()).map_err(|e| {
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            env_id = %env_id,
+            "Failed to encrypt secrets"
+        );
+        ApiError::internal("secrets_encryption_failed", "Failed to encrypt secrets")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    let material_id = format!("sm_{}", plfm_id::RequestId::new());
+
+    sqlx::query(
+        r#"
+        INSERT INTO secret_material (
+            material_id, cipher, nonce, ciphertext, master_key_id,
+            wrapped_data_key, wrapped_data_key_nonce, plaintext_size_bytes
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#,
+    )
+    .bind(&material_id)
+    .bind(&encrypted.cipher)
+    .bind(&encrypted.nonce)
+    .bind(&encrypted.ciphertext)
+    .bind(&encrypted.master_key_id)
+    .bind(&encrypted.wrapped_data_key)
+    .bind(&encrypted.wrapped_data_key_nonce)
+    .bind(encrypted.plaintext_size_bytes)
+    .execute(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            "Failed to store secret material"
+        );
+        ApiError::internal("internal_error", "Failed to set secrets")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    sqlx::query(
+        r#"
+        INSERT INTO secret_versions (
+            version_id, bundle_id, org_id, app_id, env_id, data_hash,
+            format, material_id, created_by_actor_id, created_by_actor_type
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        "#,
+    )
+    .bind(version_id.to_string())
+    .bind(bundle_id.to_string())
+    .bind(org_id.to_string())
+    .bind(app_id.to_string())
+    .bind(env_id.to_string())
+    .bind(data_hash)
+    .bind(format)
+    .bind(&material_id)
+    .bind(actor_id)
+    .bind(actor_type.to_string())
+    .execute(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(
+            error = %e,
+            request_id = %request_id,
+            "Failed to store secret version"
+        );
+        ApiError::internal("internal_error", "Failed to set secrets")
+            .with_request_id(request_id.to_string())
+    })?;
+
+    Ok(())
 }
 
 // =============================================================================
