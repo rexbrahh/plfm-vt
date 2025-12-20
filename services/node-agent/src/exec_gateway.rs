@@ -103,10 +103,7 @@ async fn handle_connection(
     let std_stream = stream.into_std()?;
     std_stream.set_nonblocking(false)?;
 
-    tokio::task::spawn_blocking(move || {
-        run_exec_session(std_stream, guest_cid, init)
-    })
-    .await??;
+    tokio::task::spawn_blocking(move || run_exec_session(std_stream, guest_cid, init)).await??;
 
     Ok(())
 }
@@ -117,9 +114,8 @@ fn run_exec_session(
     init: ExecConnectInit,
 ) -> Result<()> {
     let addr = VsockAddr::new(guest_cid, crate::exec::EXEC_PORT);
-    let mut vsock = VsockStream::connect(&addr).map_err(|e| {
-        anyhow!("Failed to connect to guest exec service: {e}")
-    })?;
+    let mut vsock = VsockStream::connect(&addr)
+        .map_err(|e| anyhow!("Failed to connect to guest exec service: {e}"))?;
 
     let request = ExecRequest {
         command: init.command,

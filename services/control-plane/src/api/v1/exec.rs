@@ -243,7 +243,14 @@ async fn create_exec_grant(
             .with_request_id(request_id.clone())
     })?;
 
-    store_exec_token(&state, &exec_session_id, &session_token, expires_at, &request_id).await?;
+    store_exec_token(
+        &state,
+        &exec_session_id,
+        &session_token,
+        expires_at,
+        &request_id,
+    )
+    .await?;
 
     state
         .db()

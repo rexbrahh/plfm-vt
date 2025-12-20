@@ -628,12 +628,11 @@ fn validate_and_canonicalize_secrets(
                 );
             }
 
-            let secrets = Secrets::try_from_iter(map.values.iter().map(|(k, v)| (k, v))).map_err(
-                |e| {
+            let secrets =
+                Secrets::try_from_iter(map.values.iter().map(|(k, v)| (k, v))).map_err(|e| {
                     ApiError::bad_request("invalid_secrets_format", e.to_string())
                         .with_request_id(request_id.to_string())
-                },
-            )?;
+                })?;
 
             let canonical = secrets.serialize();
             let data_hash = secrets.data_hash();

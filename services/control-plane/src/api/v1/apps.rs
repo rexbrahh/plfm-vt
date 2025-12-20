@@ -242,7 +242,11 @@ async fn create_app(
     state
         .db()
         .projection_store()
-        .wait_for_checkpoint("apps", event_id.value(), crate::api::projection_wait_timeout())
+        .wait_for_checkpoint(
+            "apps",
+            event_id.value(),
+            crate::api::projection_wait_timeout(),
+        )
         .await
         .map_err(|e| {
             tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");

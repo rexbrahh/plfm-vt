@@ -144,16 +144,6 @@ pub async fn query_logs(
         }
     }
 
-    if let (Some(since), Some(until)) = (since, until) {
-        if since > until {
-            return Err(ApiError::bad_request(
-                "invalid_time_range",
-                "'since' must be before 'until'",
-            )
-            .with_request_id(request_id));
-        }
-    }
-
     let tail_lines = query
         .tail_lines
         .unwrap_or(DEFAULT_TAIL_LINES)

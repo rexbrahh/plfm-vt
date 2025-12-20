@@ -304,8 +304,10 @@ async fn device_token(
 
     // Validate device code format
     if !req.device_code.starts_with(tokens::DEVICE_CODE_PREFIX) {
-        return Err(ApiError::bad_request("invalid_request", "Invalid device code format")
-            .with_request_id(request_id));
+        return Err(
+            ApiError::bad_request("invalid_request", "Invalid device code format")
+                .with_request_id(request_id),
+        );
     }
 
     let device_code_hash = hash_token(&req.device_code);
@@ -329,14 +331,18 @@ async fn device_token(
     })?;
 
     let Some(row) = row else {
-        return Err(ApiError::bad_request("invalid_grant", "Invalid device code")
-            .with_request_id(request_id));
+        return Err(
+            ApiError::bad_request("invalid_grant", "Invalid device code")
+                .with_request_id(request_id),
+        );
     };
 
     // Check expiry
     if row.expires_at < Utc::now() {
-        return Err(ApiError::bad_request("expired_token", "Device code has expired")
-            .with_request_id(request_id));
+        return Err(
+            ApiError::bad_request("expired_token", "Device code has expired")
+                .with_request_id(request_id),
+        );
     }
 
     // Rate limit polling
@@ -381,30 +387,32 @@ async fn device_token(
     })?;
 
     match row.status.as_str() {
-        "pending" => {
-            Err(ApiError::bad_request(
-                "authorization_pending",
-                "User has not yet authorized this device",
-            )
-            .with_request_id(request_id))
-        }
-        "denied" => {
-            Err(ApiError::bad_request("access_denied", "User denied authorization")
-                .with_request_id(request_id))
-        }
-        "expired" => {
-            Err(ApiError::bad_request("expired_token", "Device code has expired")
-                .with_request_id(request_id))
-        }
-        "consumed" => {
-            Err(ApiError::bad_request("invalid_grant", "Device code has already been used")
-                .with_request_id(request_id))
-        }
+        "pending" => Err(ApiError::bad_request(
+            "authorization_pending",
+            "User has not yet authorized this device",
+        )
+        .with_request_id(request_id)),
+        "denied" => Err(
+            ApiError::bad_request("access_denied", "User denied authorization")
+                .with_request_id(request_id),
+        ),
+        "expired" => Err(
+            ApiError::bad_request("expired_token", "Device code has expired")
+                .with_request_id(request_id),
+        ),
+        "consumed" => Err(ApiError::bad_request(
+            "invalid_grant",
+            "Device code has already been used",
+        )
+        .with_request_id(request_id)),
         "approved" => {
             // User has approved! Generate tokens
             let subject_type_str = row.approved_subject_type.ok_or_else(|| {
-                ApiError::internal("internal_error", "Approved device code missing subject type")
-                    .with_request_id(request_id.clone())
+                ApiError::internal(
+                    "internal_error",
+                    "Approved device code missing subject type",
+                )
+                .with_request_id(request_id.clone())
             })?;
             let subject_type = SubjectType::from_str(&subject_type_str).ok_or_else(|| {
                 ApiError::internal("internal_error", "Invalid subject type")
@@ -476,8 +484,10 @@ async fn device_token(
                 expires_in_seconds: ACCESS_TOKEN_LIFETIME_MINUTES * 60,
             }))
         }
-        _ => Err(ApiError::internal("internal_error", "Invalid device code status")
-            .with_request_id(request_id)),
+        _ => Err(
+            ApiError::internal("internal_error", "Invalid device code status")
+                .with_request_id(request_id),
+        ),
     }
 }
 
@@ -551,8 +561,7 @@ async fn token(
     }
 
     // Get allowed scopes
-    let allowed_scopes: Vec<String> =
-        serde_json::from_value(sp.scopes.clone()).unwrap_or_default();
+    let allowed_scopes: Vec<String> = serde_json::from_value(sp.scopes.clone()).unwrap_or_default();
 
     // If scopes requested, validate they're a subset
     let granted_scopes = if let Some(requested_scopes) = req.scopes {

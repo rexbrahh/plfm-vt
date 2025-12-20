@@ -816,8 +816,11 @@ async fn get_secret_material(
     })?;
 
     let version_id_typed: SecretVersionId = version_id.parse().map_err(|_| {
-        ApiError::bad_request("invalid_secret_version_id", "Invalid secret version ID format")
-            .with_request_id(request_id.clone())
+        ApiError::bad_request(
+            "invalid_secret_version_id",
+            "Invalid secret version ID format",
+        )
+        .with_request_id(request_id.clone())
     })?;
 
     let node_exists = sqlx::query_scalar::<_, bool>(
@@ -868,14 +871,32 @@ async fn get_secret_material(
     })?;
 
     let Some(row) = row else {
-        return Err(ApiError::not_found(
-            "secret_version_not_found",
-            "Secret version not found",
-        )
-        .with_request_id(request_id));
+        return Err(
+            ApiError::not_found("secret_version_not_found", "Secret version not found")
+                .with_request_id(request_id),
+        );
     };
 
-    let aad = secrets_aad(&row.org_id, &row.env_id, &row.bundle_id, &row.version_id, &row.data_hash);
+    if row.cipher != secrets_crypto::CIPHER_NAME {
+        tracing::error!(
+            cipher = %row.cipher,
+            request_id = %request_id,
+            "Unsupported cipher for secret material"
+        );
+        return Err(ApiError::internal(
+            "unsupported_cipher",
+            "Unsupported cipher for secret material",
+        )
+        .with_request_id(request_id));
+    }
+
+    let aad = secrets_aad(
+        &row.org_id,
+        &row.env_id,
+        &row.bundle_id,
+        &row.version_id,
+        &row.data_hash,
+    );
     let plaintext = secrets_crypto::decrypt(
         &row.master_key_id,
         &row.nonce,
@@ -891,8 +912,11 @@ async fn get_secret_material(
     })?;
 
     let data = String::from_utf8(plaintext).map_err(|_| {
-        ApiError::internal("secrets_decode_failed", "Secrets payload was not valid UTF-8")
-            .with_request_id(request_id.clone())
+        ApiError::internal(
+            "secrets_decode_failed",
+            "Secrets payload was not valid UTF-8",
+        )
+        .with_request_id(request_id.clone())
     })?;
 
     Ok(Json(SecretMaterialResponse {
@@ -998,8 +1022,7 @@ async fn ingest_logs(
         };
 
         let stream = normalize_log_stream(entry.stream.as_deref());
-        let (line, truncated) =
-            normalize_log_line(&entry.line, entry.truncated.unwrap_or(false));
+        let (line, truncated) = normalize_log_line(&entry.line, entry.truncated.unwrap_or(false));
 
         accepted_entries.push(WorkloadLogRow {
             org_id: meta.org_id.clone(),
@@ -1038,11 +1061,15 @@ async fn ingest_logs(
             .push_bind(entry.truncated);
     });
 
-    builder.build().execute(state.db().pool()).await.map_err(|e| {
-        tracing::error!(error = %e, request_id = %request_id, "Failed to insert workload logs");
-        ApiError::internal("internal_error", "Failed to ingest logs")
-            .with_request_id(request_id.clone())
-    })?;
+    builder
+        .build()
+        .execute(state.db().pool())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to insert workload logs");
+            ApiError::internal("internal_error", "Failed to ingest logs")
+                .with_request_id(request_id.clone())
+        })?;
 
     Ok(Json(WorkloadLogIngestResponse {
         accepted: accepted_entries.len(),
@@ -1391,10 +1418,7 @@ fn compose_image_ref(image_ref: &str, image_digest: &str) -> String {
 }
 
 fn resources_from_snapshot(snapshot: &serde_json::Value) -> InstanceResources {
-    let cpu = snapshot
-        .get("cpu")
-        .and_then(|v| v.as_f64())
-        .unwrap_or(1.0);
+    let cpu = snapshot.get("cpu").and_then(|v| v.as_f64()).unwrap_or(1.0);
     let memory_bytes = snapshot
         .get("memory_bytes")
         .and_then(|v| v.as_i64())

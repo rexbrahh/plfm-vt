@@ -1,6 +1,10 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use plfm_control_plane::{api, db::{Database, DbConfig}, state::AppState};
+use plfm_control_plane::{
+    api,
+    db::{Database, DbConfig},
+    state::AppState,
+};
 use plfm_id::OrgId;
 use testcontainers::{core::IntoContainerPort, runners::AsyncRunner, GenericImage, ImageExt};
 use tokio::net::TcpListener;
@@ -136,8 +140,12 @@ async fn device_flow_token_refresh_and_revoke() {
     assert!(resp.status().is_success());
 
     let tokens: serde_json::Value = resp.json().await.unwrap();
-    let access_token = tokens["access_token"].as_str().expect("missing access_token");
-    let refresh_token = tokens["refresh_token"].as_str().expect("missing refresh_token");
+    let access_token = tokens["access_token"]
+        .as_str()
+        .expect("missing access_token");
+    let refresh_token = tokens["refresh_token"]
+        .as_str()
+        .expect("missing refresh_token");
 
     // whoami should succeed with access token
     let resp = client
@@ -161,8 +169,12 @@ async fn device_flow_token_refresh_and_revoke() {
         .unwrap();
     assert!(resp.status().is_success());
     let refreshed: serde_json::Value = resp.json().await.unwrap();
-    let new_access = refreshed["access_token"].as_str().expect("missing access_token");
-    let new_refresh = refreshed["refresh_token"].as_str().expect("missing refresh_token");
+    let new_access = refreshed["access_token"]
+        .as_str()
+        .expect("missing access_token");
+    let new_refresh = refreshed["refresh_token"]
+        .as_str()
+        .expect("missing refresh_token");
     assert_ne!(new_access, access_token);
     assert_ne!(new_refresh, refresh_token);
 
@@ -237,7 +249,9 @@ async fn service_principal_token_flow() {
     assert!(resp.status().is_success());
 
     let tokens: serde_json::Value = resp.json().await.unwrap();
-    let access_token = tokens["access_token"].as_str().expect("missing access_token");
+    let access_token = tokens["access_token"]
+        .as_str()
+        .expect("missing access_token");
 
     let resp = client
         .get(format!("{base_url}/v1/auth/whoami"))

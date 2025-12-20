@@ -361,12 +361,7 @@ impl FirecrackerRuntime {
             ));
         }
         if let Some(stderr) = stderr {
-            tokio::spawn(run_log_reader(
-                stderr,
-                "stderr",
-                instance_id,
-                tx,
-            ));
+            tokio::spawn(run_log_reader(stderr, "stderr", instance_id, tx));
         }
     }
 }

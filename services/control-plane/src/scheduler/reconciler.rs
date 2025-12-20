@@ -151,8 +151,9 @@ impl SchedulerReconciler {
         for row in rows {
             let release_id: ReleaseId = row.release_id.parse().unwrap_or_else(|_| ReleaseId::new());
             let env_id = row.env_id.parse().unwrap_or_else(|_| EnvId::new());
-            let (volume_hash, has_volumes) =
-                self.volume_hash_for_group(&env_id, &row.process_type).await?;
+            let (volume_hash, has_volumes) = self
+                .volume_hash_for_group(&env_id, &row.process_type)
+                .await?;
             let desired_replicas = if has_volumes && row.desired_replicas > 1 {
                 warn!(
                     env_id = %env_id,
@@ -553,10 +554,7 @@ fn compute_spec_hash(
 }
 
 impl SchedulerReconciler {
-    async fn allocate_instance_ipv6(
-        &self,
-        instance_id: &InstanceId,
-    ) -> SchedulerResult<String> {
+    async fn allocate_instance_ipv6(&self, instance_id: &InstanceId) -> SchedulerResult<String> {
         let prefix = std::env::var("PLFM_INSTANCE_IPV6_PREFIX")
             .or_else(|_| std::env::var("GHOST_INSTANCE_IPV6_PREFIX"))
             .unwrap_or_else(|_| "fd00::".to_string());

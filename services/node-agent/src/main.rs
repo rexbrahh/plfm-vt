@@ -14,13 +14,13 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilte
 // Use the library crate
 use plfm_node_agent::actors::NodeSupervisor;
 use plfm_node_agent::config::Config;
+use plfm_node_agent::exec_gateway::ExecGateway;
 use plfm_node_agent::firecracker::{FirecrackerRuntime, FirecrackerRuntimeConfig};
 use plfm_node_agent::heartbeat;
 use plfm_node_agent::image::{
     ImageCache, ImageCacheConfig, ImagePuller, ImagePullerConfig, OciConfig, RootDiskConfig,
 };
 use plfm_node_agent::reconciler::{Reconciler, ReconcilerConfig};
-use plfm_node_agent::exec_gateway::ExecGateway;
 use plfm_node_agent::vsock::{ConfigDeliveryService, ConfigStore};
 use plfm_node_agent::{ControlPlaneClient, InstanceManager, MockRuntime};
 
@@ -143,7 +143,8 @@ async fn main() -> Result<()> {
         info!("Using actor-based supervision tree");
 
         if runtime_kind == "firecracker" {
-            let runtime = build_firecracker_runtime(&config, Arc::clone(&control_plane_client)).await?;
+            let runtime =
+                build_firecracker_runtime(&config, Arc::clone(&control_plane_client)).await?;
             let mut supervisor =
                 NodeSupervisor::new(config.clone(), Arc::clone(&runtime), shutdown_rx.clone());
             supervisor.start();
@@ -186,8 +187,7 @@ async fn main() -> Result<()> {
         // === Legacy mode (backward compatible) ===
         info!("Using legacy reconciliation mode");
 
-        let runtime: Arc<dyn plfm_node_agent::runtime::Runtime> = if runtime_kind == "firecracker"
-        {
+        let runtime: Arc<dyn plfm_node_agent::runtime::Runtime> = if runtime_kind == "firecracker" {
             build_firecracker_runtime(&config, Arc::clone(&control_plane_client)).await?
         } else {
             Arc::new(MockRuntime::new())

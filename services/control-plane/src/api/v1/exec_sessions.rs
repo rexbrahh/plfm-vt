@@ -261,11 +261,10 @@ async fn connect_exec_session(
     }
 
     if session.expires_at < Utc::now() {
-        return Err(ApiError::unauthorized(
-            "exec_session_expired",
-            "Exec session has expired",
-        )
-        .with_request_id(request_id));
+        return Err(
+            ApiError::unauthorized("exec_session_expired", "Exec session has expired")
+                .with_request_id(request_id),
+        );
     }
 
     let instance_id: InstanceId = session.instance_id.parse().map_err(|_| {
@@ -548,23 +547,31 @@ async fn validate_and_consume_exec_token(
     })?;
 
     let Some(row) = row else {
-        return Err(ApiError::unauthorized("invalid_token", "Invalid exec token")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::unauthorized("invalid_token", "Invalid exec token")
+                .with_request_id(request_id.to_string()),
+        );
     };
 
     if row.exec_session_id != exec_session_id.to_string() {
-        return Err(ApiError::unauthorized("invalid_token", "Invalid exec token")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::unauthorized("invalid_token", "Invalid exec token")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     if row.expires_at < Utc::now() {
-        return Err(ApiError::unauthorized("token_expired", "Exec token has expired")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::unauthorized("token_expired", "Exec token has expired")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     if row.consumed_at.is_some() {
-        return Err(ApiError::unauthorized("token_consumed", "Exec token already used")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::unauthorized("token_consumed", "Exec token already used")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     sqlx::query(
@@ -673,7 +680,10 @@ async fn load_node_address(
     })
 }
 
-fn resolve_exec_agent_socket(node: &NodeAddressRow, request_id: &str) -> Result<SocketAddr, ApiError> {
+fn resolve_exec_agent_socket(
+    node: &NodeAddressRow,
+    request_id: &str,
+) -> Result<SocketAddr, ApiError> {
     let port = std::env::var("PLFM_NODE_EXEC_PORT")
         .or_else(|_| std::env::var("GHOST_NODE_EXEC_PORT"))
         .ok()
@@ -685,11 +695,10 @@ fn resolve_exec_agent_socket(node: &NodeAddressRow, request_id: &str) -> Result<
     } else if let Some(ipv4) = node.public_ipv4.as_deref() {
         format!("{ipv4}:{port}")
     } else {
-        return Err(ApiError::internal(
-            "node_address_missing",
-            "Node has no public address",
-        )
-        .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::internal("node_address_missing", "Node has no public address")
+                .with_request_id(request_id.to_string()),
+        );
     };
 
     addr.parse().map_err(|_| {
@@ -707,14 +716,12 @@ async fn write_framed<W: AsyncWrite + Unpin>(
     frame.push(frame_type);
     frame.extend_from_slice(payload);
     let len = frame.len() as u32;
-    stream
-        .write_all(&len.to_be_bytes())
-        .await
-        .map_err(|e| ApiError::internal("exec_proxy_failed", format!("failed to write frame: {e}")))?;
-    stream
-        .write_all(&frame)
-        .await
-        .map_err(|e| ApiError::internal("exec_proxy_failed", format!("failed to write frame: {e}")))?;
+    stream.write_all(&len.to_be_bytes()).await.map_err(|e| {
+        ApiError::internal("exec_proxy_failed", format!("failed to write frame: {e}"))
+    })?;
+    stream.write_all(&frame).await.map_err(|e| {
+        ApiError::internal("exec_proxy_failed", format!("failed to write frame: {e}"))
+    })?;
     Ok(())
 }
 
@@ -784,7 +791,10 @@ async fn emit_exec_connected(
     };
 
     let payload = serde_json::to_value(&payload).map_err(|e| {
-        ApiError::internal("internal_error", format!("Failed to serialize payload: {e}"))
+        ApiError::internal(
+            "internal_error",
+            format!("Failed to serialize payload: {e}"),
+        )
     })?;
 
     let event = AppendEvent {
@@ -824,9 +834,11 @@ async fn emit_exec_end_from_state(
         return;
     }
 
-    let final_state = end_state.lock().await.clone().unwrap_or_else(|| {
-        ExecEndState::new(None, "client_disconnect")
-    });
+    let final_state = end_state
+        .lock()
+        .await
+        .clone()
+        .unwrap_or_else(|| ExecEndState::new(None, "client_disconnect"));
 
     emit_exec_end(
         state,

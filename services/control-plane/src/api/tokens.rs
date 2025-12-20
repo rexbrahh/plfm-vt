@@ -149,8 +149,10 @@ pub async fn validate_access_token(
 ) -> Result<ValidatedAccessToken, ApiError> {
     // Must have correct prefix
     if !token.starts_with(ACCESS_TOKEN_PREFIX) {
-        return Err(ApiError::unauthorized("invalid_token", "Invalid token format")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::unauthorized("invalid_token", "Invalid token format")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     let token_hash = hash_token(token);
@@ -180,8 +182,10 @@ pub async fn validate_access_token(
 
     // Check if revoked
     if row.revoked_at.is_some() {
-        return Err(ApiError::unauthorized("token_revoked", "Token has been revoked")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::unauthorized("token_revoked", "Token has been revoked")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     // Check if expired
@@ -215,8 +219,10 @@ pub async fn validate_refresh_token(
 ) -> Result<ValidatedRefreshToken, ApiError> {
     // Must have correct prefix
     if !token.starts_with(REFRESH_TOKEN_PREFIX) {
-        return Err(ApiError::unauthorized("invalid_token", "Invalid token format")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::unauthorized("invalid_token", "Invalid token format")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     let token_hash = hash_token(token);
@@ -246,8 +252,10 @@ pub async fn validate_refresh_token(
 
     // Check if revoked
     if row.revoked_at.is_some() {
-        return Err(ApiError::unauthorized("token_revoked", "Token has been revoked")
-            .with_request_id(request_id.to_string()));
+        return Err(
+            ApiError::unauthorized("token_revoked", "Token has been revoked")
+                .with_request_id(request_id.to_string()),
+        );
     }
 
     // Check if expired

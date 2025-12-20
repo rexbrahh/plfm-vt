@@ -17,13 +17,16 @@ use rand::RngCore;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+pub const CIPHER_NAME: &str = "aes-256-gcm";
 const DATA_KEY_BYTES: usize = 32;
 const NONCE_BYTES: usize = 12;
 const WRAP_AAD: &[u8] = b"plfm-secrets-wrap-v1";
 
 #[derive(Debug, Error)]
 pub enum SecretsCryptoError {
-    #[error("missing secrets master key (set PLFM_SECRETS_MASTER_KEY or PLFM_SECRETS_MASTER_KEY_FILE)")]
+    #[error(
+        "missing secrets master key (set PLFM_SECRETS_MASTER_KEY or PLFM_SECRETS_MASTER_KEY_FILE)"
+    )]
     MissingMasterKey,
     #[error("invalid secrets master key encoding")]
     InvalidMasterKey,
@@ -72,7 +75,8 @@ fn load_master_key_bytes() -> Result<[u8; DATA_KEY_BYTES], SecretsCryptoError> {
         .ok();
 
     if let Some(path) = key_path {
-        let contents = fs::read_to_string(path).map_err(|_| SecretsCryptoError::InvalidMasterKey)?;
+        let contents =
+            fs::read_to_string(path).map_err(|_| SecretsCryptoError::InvalidMasterKey)?;
         let bytes = base64::engine::general_purpose::STANDARD
             .decode(contents.trim())
             .map_err(|_| SecretsCryptoError::InvalidMasterKey)?;
@@ -116,7 +120,13 @@ pub fn encrypt(plaintext: &[u8], aad: &[u8]) -> Result<EncryptedSecret, SecretsC
     let cipher =
         Aes256Gcm::new_from_slice(&data_key).map_err(|_| SecretsCryptoError::EncryptFailed)?;
     let ciphertext = cipher
-        .encrypt(nonce, Payload { msg: plaintext, aad })
+        .encrypt(
+            nonce,
+            Payload {
+                msg: plaintext,
+                aad,
+            },
+        )
         .map_err(|_| SecretsCryptoError::EncryptFailed)?;
 
     let mut wrap_nonce_bytes = [0u8; NONCE_BYTES];
@@ -135,7 +145,7 @@ pub fn encrypt(plaintext: &[u8], aad: &[u8]) -> Result<EncryptedSecret, SecretsC
         .map_err(|_| SecretsCryptoError::EncryptFailed)?;
 
     Ok(EncryptedSecret {
-        cipher: "aes-256-gcm".to_string(),
+        cipher: CIPHER_NAME.to_string(),
         nonce: nonce_bytes.to_vec(),
         ciphertext,
         master_key_id: master.id,
@@ -155,7 +165,9 @@ pub fn decrypt(
 ) -> Result<Vec<u8>, SecretsCryptoError> {
     let master = load_master_key()?;
     if master.id != master_key_id {
-        return Err(SecretsCryptoError::UnknownMasterKey(master_key_id.to_string()));
+        return Err(SecretsCryptoError::UnknownMasterKey(
+            master_key_id.to_string(),
+        ));
     }
 
     let wrap_nonce = Nonce::from_slice(wrapped_data_key_nonce);
@@ -175,6 +187,12 @@ pub fn decrypt(
     let cipher =
         Aes256Gcm::new_from_slice(&data_key).map_err(|_| SecretsCryptoError::DecryptFailed)?;
     cipher
-        .decrypt(nonce, Payload { msg: ciphertext, aad })
+        .decrypt(
+            nonce,
+            Payload {
+                msg: ciphertext,
+                aad,
+            },
+        )
         .map_err(|_| SecretsCryptoError::DecryptFailed)
 }

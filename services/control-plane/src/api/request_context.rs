@@ -144,13 +144,10 @@ impl FromRequestParts<AppState> for RequestContext {
             }
         }
 
-        let (actor_type, actor_id, actor_email, scopes) = actor_from_authorization_header(
-            state,
-            &parts.headers,
-            &request_id,
-        )
-        .await?
-        .unwrap_or((ActorType::System, "system".to_string(), None, Vec::new()));
+        let (actor_type, actor_id, actor_email, scopes) =
+            actor_from_authorization_header(state, &parts.headers, &request_id)
+                .await?
+                .unwrap_or((ActorType::System, "system".to_string(), None, Vec::new()));
 
         Ok(Self {
             request_id,
