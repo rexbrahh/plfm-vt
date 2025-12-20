@@ -12,6 +12,7 @@ use plfm_events::{ActorType, AggregateType};
 use plfm_id::{AppId, EnvId, InstanceId, OrgId, ReleaseId, RequestId};
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
+use std::net::Ipv6Addr;
 use tracing::{debug, info, instrument, warn};
 
 use crate::db::{AppendEvent, EventStore};
@@ -30,6 +31,9 @@ pub enum SchedulerError {
 
     #[error("event store error: {0}")]
     EventStore(String),
+
+    #[error("ipam error: {0}")]
+    Ipam(String),
 }
 
 /// Desired state for a (env, process_type) group.
@@ -43,6 +47,8 @@ pub struct GroupDesiredState {
     pub deploy_id: Option<String>,
     pub desired_replicas: i32,
     pub spec_hash: String,
+    pub secrets_version_id: Option<String>,
+    pub volume_hash: String,
 }
 
 /// Current instance state.
@@ -129,10 +135,13 @@ impl SchedulerReconciler {
                 r.process_type,
                 r.release_id,
                 r.deploy_id,
-                COALESCE(s.desired_replicas, 1) as desired_replicas
+                COALESCE(s.desired_replicas, 1) as desired_replicas,
+                sb.current_version_id as secrets_version_id
             FROM env_desired_releases_view r
             LEFT JOIN env_scale_view s
                 ON r.env_id = s.env_id AND r.process_type = s.process_type
+            LEFT JOIN secret_bundles_view sb
+                ON r.env_id = sb.env_id
             "#,
         )
         .fetch_all(&self.pool)
@@ -141,16 +150,37 @@ impl SchedulerReconciler {
         let mut groups = Vec::new();
         for row in rows {
             let release_id: ReleaseId = row.release_id.parse().unwrap_or_else(|_| ReleaseId::new());
-            let spec_hash = compute_spec_hash(&release_id, &row.process_type, None);
+            let env_id = row.env_id.parse().unwrap_or_else(|_| EnvId::new());
+            let (volume_hash, has_volumes) =
+                self.volume_hash_for_group(&env_id, &row.process_type).await?;
+            let desired_replicas = if has_volumes && row.desired_replicas > 1 {
+                warn!(
+                    env_id = %env_id,
+                    process_type = %row.process_type,
+                    desired_replicas = row.desired_replicas,
+                    "Volume-backed process types are limited to 1 replica in v1; clamping"
+                );
+                1
+            } else {
+                row.desired_replicas
+            };
+            let spec_hash = compute_spec_hash(
+                &release_id,
+                &row.process_type,
+                row.secrets_version_id.as_deref(),
+                &volume_hash,
+            );
             groups.push(GroupDesiredState {
                 org_id: row.org_id.parse().unwrap_or_else(|_| OrgId::new()),
                 app_id: row.app_id.parse().unwrap_or_else(|_| AppId::new()),
-                env_id: row.env_id.parse().unwrap_or_else(|_| EnvId::new()),
+                env_id,
                 process_type: row.process_type,
                 release_id,
                 deploy_id: row.deploy_id,
-                desired_replicas: row.desired_replicas,
+                desired_replicas,
                 spec_hash,
+                secrets_version_id: row.secrets_version_id,
+                volume_hash,
             });
         }
 
@@ -305,8 +335,8 @@ impl SchedulerReconciler {
             "Selected node for placement"
         );
 
-        // Generate overlay IPv6 (simplified - just use a deterministic address based on instance_id)
-        let overlay_ipv6 = generate_overlay_ipv6(&instance_id);
+        // Allocate overlay IPv6 via IPAM
+        let overlay_ipv6 = self.allocate_instance_ipv6(&instance_id).await?;
 
         // Get release info for resources
         let release_info = self.get_release_info(&group.release_id).await?;
@@ -337,6 +367,7 @@ impl SchedulerReconciler {
                 "node_id": node.node_id,
                 "process_type": group.process_type,
                 "release_id": group.release_id.to_string(),
+                "secrets_version_id": group.secrets_version_id,
                 "overlay_ipv6": overlay_ipv6,
                 "resources_snapshot": resources_snapshot,
                 "spec_hash": group.spec_hash,
@@ -508,6 +539,7 @@ fn compute_spec_hash(
     release_id: &ReleaseId,
     process_type: &str,
     secrets_version: Option<&str>,
+    volume_hash: &str,
 ) -> String {
     let mut hasher = Sha256::new();
     hasher.update(release_id.to_string().as_bytes());
@@ -515,22 +547,119 @@ fn compute_spec_hash(
     hasher.update(process_type.as_bytes());
     hasher.update(b":");
     hasher.update(secrets_version.unwrap_or("none").as_bytes());
+    hasher.update(b":");
+    hasher.update(volume_hash.as_bytes());
     format!("{:x}", hasher.finalize())[..16].to_string()
 }
 
-/// Generate an overlay IPv6 address from instance ID.
-/// This is a simplified version - real implementation would use IPAM.
-fn generate_overlay_ipv6(instance_id: &InstanceId) -> String {
-    // Use fd00::/8 private range
-    // Hash the instance_id to generate the address
-    let mut hasher = Sha256::new();
-    hasher.update(instance_id.to_string().as_bytes());
-    let hash = hasher.finalize();
+impl SchedulerReconciler {
+    async fn allocate_instance_ipv6(
+        &self,
+        instance_id: &InstanceId,
+    ) -> SchedulerResult<String> {
+        let prefix = std::env::var("PLFM_INSTANCE_IPV6_PREFIX")
+            .or_else(|_| std::env::var("GHOST_INSTANCE_IPV6_PREFIX"))
+            .unwrap_or_else(|_| "fd00::".to_string());
 
-    format!(
-        "fd00::{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}:{:02x}{:02x}",
-        hash[0], hash[1], hash[2], hash[3], hash[4], hash[5], hash[6], hash[7]
-    )
+        let base: Ipv6Addr = prefix.parse().map_err(|_| {
+            SchedulerError::Ipam(format!(
+                "invalid instance IPv6 prefix '{}'; expected /64 base address",
+                prefix
+            ))
+        })?;
+
+        let base_u128 = u128::from(base) & (!0u128 << 64);
+        let mut attempts = 0;
+
+        loop {
+            let suffix: i64 = sqlx::query_scalar("SELECT nextval('ipam_instance_suffix_seq')")
+                .fetch_one(&self.pool)
+                .await?;
+
+            if suffix < 0 {
+                attempts += 1;
+                if attempts > 5 {
+                    return Err(SchedulerError::Ipam(
+                        "failed to allocate IPv6 suffix".to_string(),
+                    ));
+                }
+                continue;
+            }
+
+            let suffix_u64 = suffix as u64;
+            let addr = Ipv6Addr::from(base_u128 | suffix_u64 as u128);
+
+            let insert = sqlx::query(
+                r#"
+                INSERT INTO ipam_instances (instance_id, ipv6_suffix, overlay_ipv6)
+                VALUES ($1, $2, $3::inet)
+                "#,
+            )
+            .bind(instance_id.to_string())
+            .bind(suffix)
+            .bind(addr.to_string())
+            .execute(&self.pool)
+            .await;
+
+            match insert {
+                Ok(_) => return Ok(addr.to_string()),
+                Err(sqlx::Error::Database(db_err)) => {
+                    let constraint = db_err.constraint().unwrap_or_default();
+                    if constraint == "ipam_instances_pkey"
+                        || constraint == "ipam_instances_ipv6_suffix_key"
+                        || constraint == "ipam_instances_overlay_ipv6_key"
+                    {
+                        attempts += 1;
+                        if attempts > 5 {
+                            return Err(SchedulerError::Ipam(
+                                "ipam allocation retry limit reached".to_string(),
+                            ));
+                        }
+                        continue;
+                    }
+                    return Err(SchedulerError::Database(sqlx::Error::Database(db_err)));
+                }
+                Err(e) => return Err(SchedulerError::Database(e)),
+            }
+        }
+    }
+
+    async fn volume_hash_for_group(
+        &self,
+        env_id: &EnvId,
+        process_type: &str,
+    ) -> SchedulerResult<(String, bool)> {
+        let rows = sqlx::query_as::<_, VolumeAttachmentRow>(
+            r#"
+            SELECT volume_id, mount_path, read_only
+            FROM volume_attachments_view
+            WHERE env_id = $1
+              AND process_type = $2
+              AND NOT is_deleted
+            ORDER BY volume_id ASC, mount_path ASC
+            "#,
+        )
+        .bind(env_id.to_string())
+        .bind(process_type)
+        .fetch_all(&self.pool)
+        .await?;
+
+        if rows.is_empty() {
+            return Ok(("none".to_string(), false));
+        }
+
+        let mut hasher = Sha256::new();
+        for row in rows {
+            hasher.update(row.volume_id.as_bytes());
+            hasher.update(b":");
+            hasher.update(row.mount_path.as_bytes());
+            hasher.update(b":");
+            hasher.update(if row.read_only { b"ro" } else { b"rw" });
+            hasher.update(b";");
+        }
+
+        Ok((format!("{:x}", hasher.finalize())[..16].to_string(), true))
+    }
 }
 
 // =============================================================================
@@ -546,6 +675,7 @@ struct GroupRow {
     release_id: String,
     deploy_id: Option<String>,
     desired_replicas: i32,
+    secrets_version_id: Option<String>,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for GroupRow {
@@ -559,6 +689,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for GroupRow {
             release_id: row.try_get("release_id")?,
             deploy_id: row.try_get("deploy_id")?,
             desired_replicas: row.try_get("desired_replicas")?,
+            secrets_version_id: row.try_get("secrets_version_id")?,
         })
     }
 }
@@ -627,6 +758,24 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for ReleaseInfoRow {
     }
 }
 
+#[derive(Debug)]
+struct VolumeAttachmentRow {
+    volume_id: String,
+    mount_path: String,
+    read_only: bool,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for VolumeAttachmentRow {
+    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            volume_id: row.try_get("volume_id")?,
+            mount_path: row.try_get("mount_path")?,
+            read_only: row.try_get("read_only")?,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -634,23 +783,16 @@ mod tests {
     #[test]
     fn test_compute_spec_hash_deterministic() {
         let release_id: ReleaseId = "rel_01ABC".parse().unwrap_or_else(|_| ReleaseId::new());
-        let hash1 = compute_spec_hash(&release_id, "web", None);
-        let hash2 = compute_spec_hash(&release_id, "web", None);
+        let hash1 = compute_spec_hash(&release_id, "web", None, "none");
+        let hash2 = compute_spec_hash(&release_id, "web", None, "none");
         assert_eq!(hash1, hash2);
     }
 
     #[test]
     fn test_compute_spec_hash_different_inputs() {
         let release_id: ReleaseId = "rel_01ABC".parse().unwrap_or_else(|_| ReleaseId::new());
-        let hash1 = compute_spec_hash(&release_id, "web", None);
-        let hash2 = compute_spec_hash(&release_id, "worker", None);
+        let hash1 = compute_spec_hash(&release_id, "web", None, "none");
+        let hash2 = compute_spec_hash(&release_id, "worker", None, "none");
         assert_ne!(hash1, hash2);
-    }
-
-    #[test]
-    fn test_generate_overlay_ipv6_format() {
-        let instance_id = InstanceId::new();
-        let ipv6 = generate_overlay_ipv6(&instance_id);
-        assert!(ipv6.starts_with("fd00::"));
     }
 }
