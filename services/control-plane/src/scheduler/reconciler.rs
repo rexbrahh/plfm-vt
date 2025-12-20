@@ -451,17 +451,41 @@ impl SchedulerReconciler {
                 n.state,
                 COALESCE((n.allocatable->>'memory_bytes')::BIGINT, 0) as allocatable_memory_bytes,
                 COALESCE((n.allocatable->>'cpu_cores')::INT, 0) as allocatable_cpu_cores,
-                COALESCE((n.allocatable->>'available_memory_bytes')::BIGINT, 0) as available_memory_bytes,
-                COALESCE((n.allocatable->>'available_cpu_cores')::INT, 0) as available_cpu_cores,
+                COALESCE(
+                    (n.allocatable->>'available_memory_bytes')::BIGINT,
+                    (n.allocatable->>'memory_bytes')::BIGINT,
+                    0
+                ) as available_memory_bytes,
+                COALESCE(
+                    (n.allocatable->>'available_cpu_cores')::INT,
+                    (n.allocatable->>'cpu_cores')::INT,
+                    0
+                ) as available_cpu_cores,
                 COALESCE((n.allocatable->>'instance_count')::INT, 0) as instance_count
             FROM nodes_view n
             WHERE n.state = 'active'
-              AND COALESCE((n.allocatable->>'available_memory_bytes')::BIGINT, 0) >= $1
-              AND COALESCE((n.allocatable->>'available_cpu_cores')::INT, 0) >= $2
+              AND COALESCE(
+                    (n.allocatable->>'available_memory_bytes')::BIGINT,
+                    (n.allocatable->>'memory_bytes')::BIGINT,
+                    0
+                ) >= $1
+              AND COALESCE(
+                    (n.allocatable->>'available_cpu_cores')::INT,
+                    (n.allocatable->>'cpu_cores')::INT,
+                    0
+                ) >= $2
             ORDER BY
                 -- Prefer nodes with more available resources
-                COALESCE((n.allocatable->>'available_memory_bytes')::BIGINT, 0) DESC,
-                COALESCE((n.allocatable->>'available_cpu_cores')::INT, 0) DESC,
+                COALESCE(
+                    (n.allocatable->>'available_memory_bytes')::BIGINT,
+                    (n.allocatable->>'memory_bytes')::BIGINT,
+                    0
+                ) DESC,
+                COALESCE(
+                    (n.allocatable->>'available_cpu_cores')::INT,
+                    (n.allocatable->>'cpu_cores')::INT,
+                    0
+                ) DESC,
                 -- Tie-break by node_id for determinism
                 n.node_id ASC
             LIMIT 1
