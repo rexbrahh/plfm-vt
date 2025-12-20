@@ -1,0 +1,153 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 650">
+  <style>
+    .title { font: bold 18px sans-serif; fill: #333; }
+    .label { font: 13px sans-serif; fill: #333; }
+    .sublabel { font: 11px sans-serif; fill: #666; }
+    .ip { font: 11px monospace; fill: #1565c0; }
+    .external { fill: #fff3e0; stroke: #ff9800; stroke-width: 2; }
+    .edge { fill: #e3f2fd; stroke: #1976d2; stroke-width: 2; }
+    .overlay { fill: #e8f5e9; stroke: #388e3c; stroke-width: 2; }
+    .host { fill: #f3e5f5; stroke: #7b1fa2; stroke-width: 2; }
+    .vm { fill: #fce4ec; stroke: #c2185b; stroke-width: 2; }
+    .arrow { stroke: #666; stroke-width: 2; fill: none; marker-end: url(#arrowhead); }
+    .arrow-overlay { stroke: #388e3c; stroke-width: 2; fill: none; marker-end: url(#arrowhead-green); stroke-dasharray: 8,4; }
+    .arrow-label { font: 10px sans-serif; fill: #555; }
+    .zone { fill-opacity: 0.05; stroke-width: 2; stroke-dasharray: 10,5; }
+  </style>
+  
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#666"/>
+    </marker>
+    <marker id="arrowhead-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#388e3c"/>
+    </marker>
+  </defs>
+
+  <text x="450" y="30" text-anchor="middle" class="title">Network: WireGuard Overlay and L4 Ingress</text>
+
+  <!-- Internet Zone -->
+  <rect x="30" y="50" width="180" height="550" rx="10" class="zone" style="fill:#ff9800; stroke:#ff9800;"/>
+  <text x="120" y="75" text-anchor="middle" class="label">Internet</text>
+
+  <!-- Edge Zone -->
+  <rect x="230" y="50" width="200" height="550" rx="10" class="zone" style="fill:#1976d2; stroke:#1976d2;"/>
+  <text x="330" y="75" text-anchor="middle" class="label">Edge Layer</text>
+
+  <!-- Overlay Zone -->
+  <rect x="450" y="50" width="420" height="550" rx="10" class="zone" style="fill:#388e3c; stroke:#388e3c;"/>
+  <text x="660" y="75" text-anchor="middle" class="label">WireGuard Overlay (IPv6)</text>
+
+  <!-- End User -->
+  <rect x="50" y="120" width="140" height="60" rx="5" class="external"/>
+  <text x="120" y="145" text-anchor="middle" class="label">End User</text>
+  <text x="120" y="165" text-anchor="middle" class="ip">203.0.113.42</text>
+
+  <!-- DNS -->
+  <rect x="50" y="220" width="140" height="60" rx="5" class="external"/>
+  <text x="120" y="245" text-anchor="middle" class="label">DNS</text>
+  <text x="120" y="265" text-anchor="middle" class="sublabel">AAAA record</text>
+
+  <!-- Edge Node 1 -->
+  <rect x="250" y="120" width="160" height="100" rx="5" class="edge"/>
+  <text x="330" y="145" text-anchor="middle" class="label">Edge Node 1</text>
+  <text x="330" y="170" text-anchor="middle" class="sublabel">L4 Proxy</text>
+  <text x="330" y="190" text-anchor="middle" class="ip">2001:db8:edge::1</text>
+  <text x="330" y="208" text-anchor="middle" class="sublabel">SNI inspection</text>
+
+  <!-- Edge Node 2 -->
+  <rect x="250" y="250" width="160" height="100" rx="5" class="edge"/>
+  <text x="330" y="275" text-anchor="middle" class="label">Edge Node 2</text>
+  <text x="330" y="300" text-anchor="middle" class="sublabel">L4 Proxy</text>
+  <text x="330" y="320" text-anchor="middle" class="ip">2001:db8:edge::2</text>
+  <text x="330" y="338" text-anchor="middle" class="sublabel">PROXY v2 inject</text>
+
+  <!-- Host 1 -->
+  <rect x="480" y="100" width="180" height="180" rx="5" class="host"/>
+  <text x="570" y="125" text-anchor="middle" class="label">Host 1 (Node Agent)</text>
+  <text x="570" y="145" text-anchor="middle" class="ip">2001:db8:host::1</text>
+  
+  <!-- VM 1 -->
+  <rect x="500" y="160" width="140" height="50" rx="3" class="vm"/>
+  <text x="570" y="182" text-anchor="middle" class="sublabel">MicroVM (app-web)</text>
+  <text x="570" y="200" text-anchor="middle" class="ip">2001:db8:vm::a1</text>
+  
+  <!-- VM 2 -->
+  <rect x="500" y="220" width="140" height="50" rx="3" class="vm"/>
+  <text x="570" y="242" text-anchor="middle" class="sublabel">MicroVM (app-web)</text>
+  <text x="570" y="260" text-anchor="middle" class="ip">2001:db8:vm::a2</text>
+
+  <!-- Host 2 -->
+  <rect x="690" y="100" width="180" height="180" rx="5" class="host"/>
+  <text x="780" y="125" text-anchor="middle" class="label">Host 2 (Node Agent)</text>
+  <text x="780" y="145" text-anchor="middle" class="ip">2001:db8:host::2</text>
+  
+  <!-- VM 3 -->
+  <rect x="710" y="160" width="140" height="50" rx="3" class="vm"/>
+  <text x="780" y="182" text-anchor="middle" class="sublabel">MicroVM (app-worker)</text>
+  <text x="780" y="200" text-anchor="middle" class="ip">2001:db8:vm::b1</text>
+  
+  <!-- VM 4 -->
+  <rect x="710" y="220" width="140" height="50" rx="3" class="vm"/>
+  <text x="780" y="242" text-anchor="middle" class="sublabel">MicroVM (app-web)</text>
+  <text x="780" y="260" text-anchor="middle" class="ip">2001:db8:vm::b2</text>
+
+  <!-- Control Plane -->
+  <rect x="580" y="320" width="180" height="80" rx="5" class="overlay"/>
+  <text x="670" y="350" text-anchor="middle" class="label">Control Plane</text>
+  <text x="670" y="370" text-anchor="middle" class="sublabel">IPAM + Route config</text>
+  <text x="670" y="388" text-anchor="middle" class="ip">2001:db8:cp::1</text>
+
+  <!-- Arrows - User to Edge -->
+  <path d="M190,150 L245,170" class="arrow"/>
+  <text x="217" y="152" class="arrow-label">TLS (SNI)</text>
+
+  <!-- DNS Resolution -->
+  <path d="M120,180 L120,215" class="arrow"/>
+  <path d="M190,250 L245,200" class="arrow"/>
+  <text x="217" y="218" class="arrow-label">resolve</text>
+
+  <!-- Edge to Overlay -->
+  <path d="M410,170 L475,185" class="arrow-overlay"/>
+  <text x="442" y="168" class="arrow-label">overlay</text>
+  
+  <path d="M410,300 L475,245" class="arrow-overlay"/>
+  <text x="442" y="268" class="arrow-label">overlay</text>
+
+  <!-- Host to Host overlay -->
+  <path d="M660,200 L705,200" class="arrow-overlay"/>
+  <text x="682" y="192" class="arrow-label">mesh</text>
+
+  <!-- Control Plane connections -->
+  <path d="M670,320 L570,280" class="arrow-overlay"/>
+  <path d="M670,320 L780,280" class="arrow-overlay"/>
+  <path d="M580,360 L410,300" class="arrow-overlay"/>
+  <text x="490" y="322" class="arrow-label">route updates</text>
+
+  <!-- Protocol Details Box -->
+  <rect x="50" y="420" width="370" height="160" rx="5" style="fill:#fafafa; stroke:#ddd;"/>
+  <text x="235" y="445" text-anchor="middle" class="label">L4 Ingress Flow</text>
+  <text x="70" y="475" class="sublabel">1. User connects to edge IPv6 (TLS ClientHello)</text>
+  <text x="70" y="495" class="sublabel">2. Edge inspects SNI: app.example.com</text>
+  <text x="70" y="515" class="sublabel">3. Edge looks up route -> env:prod, proc:web</text>
+  <text x="70" y="535" class="sublabel">4. Edge selects ready backend VM over overlay</text>
+  <text x="70" y="555" class="sublabel">5. Optional: Edge prepends PROXY v2 header</text>
+  <text x="70" y="575" class="sublabel">6. TLS passthrough (no termination at edge)</text>
+
+  <!-- IPAM Box -->
+  <rect x="480" y="420" width="380" height="160" rx="5" style="fill:#fafafa; stroke:#ddd;"/>
+  <text x="670" y="445" text-anchor="middle" class="label">IPv6 Addressing (IPAM)</text>
+  <text x="500" y="475" class="ip">2001:db8:edge::/48    Edge nodes</text>
+  <text x="500" y="495" class="ip">2001:db8:host::/48    Host overlay IPs</text>
+  <text x="500" y="515" class="ip">2001:db8:vm::/48      MicroVM overlay IPs</text>
+  <text x="500" y="535" class="ip">2001:db8:cp::/48      Control plane</text>
+  <text x="500" y="565" class="sublabel">IPv4 add-on: Dedicated per-env, NAT64 internally</text>
+
+  <!-- Legend -->
+  <rect x="50" y="320" width="140" height="80" rx="5" style="fill:#fafafa; stroke:#ddd;"/>
+  <text x="120" y="340" text-anchor="middle" class="sublabel">Legend</text>
+  <line x1="60" y1="355" x2="90" y2="355" class="arrow"/>
+  <text x="100" y="360" class="sublabel">Underlay</text>
+  <line x1="60" y1="375" x2="90" y2="375" class="arrow-overlay"/>
+  <text x="100" y="380" class="sublabel">WireGuard</text>
+</svg>

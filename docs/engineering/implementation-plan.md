@@ -132,3 +132,38 @@ For each milestone:
   - rollout plan
   - compatibility notes
 - each PR must link the relevant milestone section and update it if scope changes.
+
+## Milestone mapping to product roadmap
+
+This table maps engineering milestones (implementation-based) to product milestones (capability-based). See `docs/product/07-roadmap-milestones.md` for product scope.
+
+| Engineering Milestone | Product Milestone | Notes |
+|-----------------------|-------------------|-------|
+| M0: Repo foundation | A: Developer preview | Foundation for all subsequent work |
+| M1: Control-plane core | A: Developer preview | Core resource model |
+| M2: Manifest workflow | A: Developer preview | Primary deploy UX |
+| M3: Node agent runtime | A: Developer preview | Workload execution |
+| M4: L4 ingress IPv6 | A: Developer preview | External reachability |
+| M5: Secrets E2E | A: Developer preview | Secure config delivery |
+| M6: Releases + rollout | A: Developer preview | Deploy lifecycle |
+| M7: Observability | A: Developer preview | Introspection surfaces |
+| M8: Frontend | A: Developer preview | Web terminal + console |
+| Post-M8 hardening | B: v1 | Production hardening, quotas, billing |
+
+### Dependency graph
+
+```
+M0 (DX foundation)
+ |
+ +---> M1 (Control core) ---> M2 (Manifest) ---> M6 (Releases)
+ |                       \
+ |                        +---> M5 (Secrets)
+ |
+ +---> M3 (Runtime) ------+---> M5 (Secrets)
+ |                        |
+ |                        +---> M4 (Ingress)
+ |
+ +---> M7 (Observability) ---> M8 (Frontend)
+```
+
+All M0-M8 milestones must complete before Product Milestone A (Developer Preview) is achieved.

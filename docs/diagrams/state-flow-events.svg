@@ -1,0 +1,145 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 600">
+  <style>
+    .title { font: bold 18px sans-serif; fill: #333; }
+    .label { font: 13px sans-serif; fill: #333; }
+    .sublabel { font: 11px sans-serif; fill: #666; }
+    .event { font: 11px monospace; fill: #1565c0; }
+    .command { fill: #e3f2fd; stroke: #1976d2; stroke-width: 2; }
+    .eventlog { fill: #fff8e1; stroke: #ff8f00; stroke-width: 2; }
+    .projection { fill: #e8f5e9; stroke: #388e3c; stroke-width: 2; }
+    .reconciler { fill: #fce4ec; stroke: #c2185b; stroke-width: 2; }
+    .agent { fill: #f3e5f5; stroke: #7b1fa2; stroke-width: 2; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+    .arrow-dashed { stroke: #999; stroke-width: 1.5; fill: none; stroke-dasharray: 5,3; marker-end: url(#arrowhead-gray); }
+    .arrow-label { font: 10px sans-serif; fill: #555; }
+    .phase { font: bold 12px sans-serif; fill: #666; }
+  </style>
+  
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#666"/>
+    </marker>
+    <marker id="arrowhead-gray" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#999"/>
+    </marker>
+  </defs>
+
+  <text x="450" y="30" text-anchor="middle" class="title">State Flow: Event Sourcing and Reconciliation</text>
+
+  <!-- Phase Labels -->
+  <text x="50" y="70" class="phase">1. COMMAND</text>
+  <text x="220" y="70" class="phase">2. EVENT LOG</text>
+  <text x="420" y="70" class="phase">3. PROJECTION</text>
+  <text x="620" y="70" class="phase">4. RECONCILE</text>
+  <text x="800" y="70" class="phase">5. ACTUAL</text>
+
+  <!-- Command Handler -->
+  <rect x="30" y="90" width="140" height="80" rx="5" class="command"/>
+  <text x="100" y="120" text-anchor="middle" class="label">Command Handler</text>
+  <text x="100" y="140" text-anchor="middle" class="sublabel">Validate + Auth</text>
+  <text x="100" y="155" text-anchor="middle" class="sublabel">Append events</text>
+
+  <!-- Event Log -->
+  <rect x="200" y="90" width="160" height="120" rx="5" class="eventlog"/>
+  <text x="280" y="115" text-anchor="middle" class="label">Event Log (Postgres)</text>
+  <text x="280" y="140" text-anchor="middle" class="event">ReleaseCreated</text>
+  <text x="280" y="158" text-anchor="middle" class="event">InstanceAllocated</text>
+  <text x="280" y="176" text-anchor="middle" class="event">RouteUpdated</text>
+  <text x="280" y="194" text-anchor="middle" class="event">SecretVersioned</text>
+
+  <!-- Projection Workers -->
+  <rect x="400" y="90" width="160" height="80" rx="5" class="projection"/>
+  <text x="480" y="120" text-anchor="middle" class="label">Projection Workers</text>
+  <text x="480" y="140" text-anchor="middle" class="sublabel">Consume events</text>
+  <text x="480" y="155" text-anchor="middle" class="sublabel">Update views</text>
+
+  <!-- Materialized Views -->
+  <rect x="400" y="190" width="160" height="100" rx="5" class="projection"/>
+  <text x="480" y="215" text-anchor="middle" class="label">Materialized Views</text>
+  <text x="480" y="240" text-anchor="middle" class="sublabel">releases</text>
+  <text x="480" y="258" text-anchor="middle" class="sublabel">instances (desired)</text>
+  <text x="480" y="276" text-anchor="middle" class="sublabel">routes, secrets</text>
+
+  <!-- Reconcilers -->
+  <rect x="600" y="90" width="140" height="120" rx="5" class="reconciler"/>
+  <text x="670" y="115" text-anchor="middle" class="label">Reconcilers</text>
+  <text x="670" y="140" text-anchor="middle" class="sublabel">Scheduler</text>
+  <text x="670" y="158" text-anchor="middle" class="sublabel">Route reconciler</text>
+  <text x="670" y="176" text-anchor="middle" class="sublabel">Secrets reconciler</text>
+  <text x="670" y="194" text-anchor="middle" class="sublabel">Volume reconciler</text>
+
+  <!-- Agents -->
+  <rect x="780" y="90" width="100" height="80" rx="5" class="agent"/>
+  <text x="830" y="120" text-anchor="middle" class="label">Node Agent</text>
+  <text x="830" y="140" text-anchor="middle" class="sublabel">Converge VMs</text>
+  <text x="830" y="155" text-anchor="middle" class="sublabel">Report state</text>
+
+  <!-- Edge -->
+  <rect x="780" y="190" width="100" height="60" rx="5" class="agent"/>
+  <text x="830" y="215" text-anchor="middle" class="label">Edge</text>
+  <text x="830" y="235" text-anchor="middle" class="sublabel">Apply routes</text>
+
+  <!-- Arrows - Main Flow -->
+  <path d="M170,130 L195,130" class="arrow"/>
+  <text x="182" y="122" class="arrow-label">emit</text>
+
+  <path d="M360,130 L395,130" class="arrow"/>
+  <text x="377" y="122" class="arrow-label">read</text>
+
+  <path d="M480,170 L480,185" class="arrow"/>
+
+  <path d="M560,240 L595,170" class="arrow"/>
+  <text x="577" y="200" class="arrow-label">diff</text>
+
+  <path d="M740,150 L775,130" class="arrow"/>
+  <text x="757" y="132" class="arrow-label">specs</text>
+
+  <path d="M740,180 L775,210" class="arrow"/>
+
+  <!-- Feedback Loop -->
+  <path d="M830,170 L830,320 L280,320 L280,215" class="arrow-dashed"/>
+  <text x="550" y="340" class="arrow-label">status events (InstanceReady, HealthCheck, etc.)</text>
+
+  <!-- Instance Lifecycle State Machine -->
+  <rect x="30" y="380" width="400" height="180" rx="5" style="fill:#fafafa; stroke:#ddd; stroke-width:1;"/>
+  <text x="230" y="405" text-anchor="middle" class="label">Instance Lifecycle State Machine</text>
+  
+  <rect x="50" y="425" width="70" height="30" rx="3" style="fill:#bbdefb; stroke:#1976d2;"/>
+  <text x="85" y="445" text-anchor="middle" class="sublabel">allocated</text>
+  
+  <rect x="140" y="425" width="70" height="30" rx="3" style="fill:#bbdefb; stroke:#1976d2;"/>
+  <text x="175" y="445" text-anchor="middle" class="sublabel">preparing</text>
+  
+  <rect x="230" y="425" width="70" height="30" rx="3" style="fill:#bbdefb; stroke:#1976d2;"/>
+  <text x="265" y="445" text-anchor="middle" class="sublabel">booting</text>
+  
+  <rect x="320" y="425" width="70" height="30" rx="3" style="fill:#c8e6c9; stroke:#388e3c;"/>
+  <text x="355" y="445" text-anchor="middle" class="sublabel">ready</text>
+  
+  <rect x="140" y="480" width="70" height="30" rx="3" style="fill:#ffecb3; stroke:#ff8f00;"/>
+  <text x="175" y="500" text-anchor="middle" class="sublabel">draining</text>
+  
+  <rect x="230" y="480" width="70" height="30" rx="3" style="fill:#ffcdd2; stroke:#e53935;"/>
+  <text x="265" y="500" text-anchor="middle" class="sublabel">stopped</text>
+  
+  <rect x="320" y="480" width="70" height="30" rx="3" style="fill:#e0e0e0; stroke:#757575;"/>
+  <text x="355" y="500" text-anchor="middle" class="sublabel">gc</text>
+
+  <path d="M120,440 L135,440" class="arrow"/>
+  <path d="M210,440 L225,440" class="arrow"/>
+  <path d="M300,440 L315,440" class="arrow"/>
+  <path d="M355,455 L175,475" class="arrow"/>
+  <path d="M210,495 L225,495" class="arrow"/>
+  <path d="M300,495 L315,495" class="arrow"/>
+
+  <!-- Event Examples -->
+  <rect x="470" y="380" width="400" height="180" rx="5" style="fill:#fafafa; stroke:#ddd; stroke-width:1;"/>
+  <text x="670" y="405" text-anchor="middle" class="label">Event Examples</text>
+  
+  <text x="490" y="435" class="event">{ event_id: 1001,</text>
+  <text x="490" y="455" class="event">  aggregate: "release/r-abc123",</text>
+  <text x="490" y="475" class="event">  type: "ReleaseCreated",</text>
+  <text x="490" y="495" class="event">  actor: "user:u-xyz",</text>
+  <text x="490" y="515" class="event">  payload: { image_digest: "sha256:...",</text>
+  <text x="490" y="535" class="event">             manifest_hash: "..." } }</text>
+</svg>

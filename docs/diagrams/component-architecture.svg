@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700">
+  <style>
+    .title { font: bold 18px sans-serif; fill: #333; }
+    .section-title { font: bold 14px sans-serif; fill: #fff; }
+    .label { font: 13px sans-serif; fill: #333; }
+    .sublabel { font: 11px sans-serif; fill: #666; }
+    .control-plane { fill: #e3f2fd; stroke: #1976d2; stroke-width: 2; }
+    .data-plane { fill: #e8f5e9; stroke: #388e3c; stroke-width: 2; }
+    .edge { fill: #fff3e0; stroke: #f57c00; stroke-width: 2; }
+    .storage { fill: #fce4ec; stroke: #c2185b; stroke-width: 2; }
+    .section-bg { fill-opacity: 0.1; stroke-width: 2; stroke-dasharray: 5,5; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+    .arrow-label { font: 10px sans-serif; fill: #555; }
+  </style>
+  
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#666"/>
+    </marker>
+  </defs>
+
+  <text x="450" y="30" text-anchor="middle" class="title">Component Architecture: plfm-vt Platform</text>
+
+  <!-- Control Plane Section -->
+  <rect x="30" y="50" width="400" height="280" rx="10" class="section-bg" style="fill:#1976d2; stroke:#1976d2;"/>
+  <rect x="40" y="55" width="120" height="25" rx="3" style="fill:#1976d2;"/>
+  <text x="100" y="72" text-anchor="middle" class="section-title">Control Plane</text>
+
+  <!-- API Server -->
+  <rect x="50" y="90" width="110" height="60" rx="5" class="control-plane"/>
+  <text x="105" y="115" text-anchor="middle" class="label">HTTP API</text>
+  <text x="105" y="130" text-anchor="middle" class="sublabel">Auth + Commands</text>
+
+  <!-- Event Store -->
+  <rect x="180" y="90" width="110" height="60" rx="5" class="control-plane"/>
+  <text x="235" y="115" text-anchor="middle" class="label">Event Log</text>
+  <text x="235" y="130" text-anchor="middle" class="sublabel">Postgres</text>
+
+  <!-- Projections -->
+  <rect x="310" y="90" width="110" height="60" rx="5" class="control-plane"/>
+  <text x="365" y="115" text-anchor="middle" class="label">Projections</text>
+  <text x="365" y="130" text-anchor="middle" class="sublabel">Views</text>
+
+  <!-- Scheduler -->
+  <rect x="50" y="170" width="110" height="60" rx="5" class="control-plane"/>
+  <text x="105" y="195" text-anchor="middle" class="label">Scheduler</text>
+  <text x="105" y="210" text-anchor="middle" class="sublabel">Placement</text>
+
+  <!-- Reconcilers -->
+  <rect x="180" y="170" width="110" height="60" rx="5" class="control-plane"/>
+  <text x="235" y="195" text-anchor="middle" class="label">Reconcilers</text>
+  <text x="235" y="210" text-anchor="middle" class="sublabel">Convergence</text>
+
+  <!-- Change Stream -->
+  <rect x="310" y="170" width="110" height="60" rx="5" class="control-plane"/>
+  <text x="365" y="195" text-anchor="middle" class="label">Change Stream</text>
+  <text x="365" y="210" text-anchor="middle" class="sublabel">Event delivery</text>
+
+  <!-- Secrets Manager -->
+  <rect x="50" y="250" width="110" height="60" rx="5" class="control-plane"/>
+  <text x="105" y="275" text-anchor="middle" class="label">Secrets Mgr</text>
+  <text x="105" y="290" text-anchor="middle" class="sublabel">Encrypted store</text>
+
+  <!-- IPAM -->
+  <rect x="180" y="250" width="110" height="60" rx="5" class="control-plane"/>
+  <text x="235" y="275" text-anchor="middle" class="label">IPAM</text>
+  <text x="235" y="290" text-anchor="middle" class="sublabel">IPv6 allocation</text>
+
+  <!-- Data Plane Section -->
+  <rect x="30" y="350" width="400" height="200" rx="10" class="section-bg" style="fill:#388e3c; stroke:#388e3c;"/>
+  <rect x="40" y="355" width="100" height="25" rx="3" style="fill:#388e3c;"/>
+  <text x="90" y="372" text-anchor="middle" class="section-title">Data Plane</text>
+
+  <!-- Node Agent -->
+  <rect x="50" y="390" width="110" height="60" rx="5" class="data-plane"/>
+  <text x="105" y="415" text-anchor="middle" class="label">Node Agent</text>
+  <text x="105" y="430" text-anchor="middle" class="sublabel">Host daemon</text>
+
+  <!-- Image Cache -->
+  <rect x="180" y="390" width="110" height="60" rx="5" class="data-plane"/>
+  <text x="235" y="415" text-anchor="middle" class="label">Image Cache</text>
+  <text x="235" y="430" text-anchor="middle" class="sublabel">OCI layers</text>
+
+  <!-- VM Manager -->
+  <rect x="310" y="390" width="110" height="60" rx="5" class="data-plane"/>
+  <text x="365" y="415" text-anchor="middle" class="label">VM Manager</text>
+  <text x="365" y="430" text-anchor="middle" class="sublabel">Firecracker</text>
+
+  <!-- MicroVMs -->
+  <rect x="50" y="470" width="370" height="60" rx="5" class="data-plane"/>
+  <text x="235" y="500" text-anchor="middle" class="label">MicroVM Instances (Firecracker)</text>
+  <text x="235" y="515" text-anchor="middle" class="sublabel">Guest init + Workload + Secrets mount + Volume mount</text>
+
+  <!-- Edge Section -->
+  <rect x="470" y="50" width="200" height="200" rx="10" class="section-bg" style="fill:#f57c00; stroke:#f57c00;"/>
+  <rect x="480" y="55" width="60" height="25" rx="3" style="fill:#f57c00;"/>
+  <text x="510" y="72" text-anchor="middle" class="section-title">Edge</text>
+
+  <!-- L4 Proxy -->
+  <rect x="490" y="90" width="160" height="60" rx="5" class="edge"/>
+  <text x="570" y="115" text-anchor="middle" class="label">L4 Ingress Proxy</text>
+  <text x="570" y="130" text-anchor="middle" class="sublabel">SNI + PROXY v2</text>
+
+  <!-- Route Table -->
+  <rect x="490" y="170" width="160" height="60" rx="5" class="edge"/>
+  <text x="570" y="195" text-anchor="middle" class="label">Route Table</text>
+  <text x="570" y="210" text-anchor="middle" class="sublabel">Backend mapping</text>
+
+  <!-- Storage Section -->
+  <rect x="470" y="280" width="200" height="120" rx="10" class="section-bg" style="fill:#c2185b; stroke:#c2185b;"/>
+  <rect x="480" y="285" width="80" height="25" rx="3" style="fill:#c2185b;"/>
+  <text x="520" y="302" text-anchor="middle" class="section-title">Storage</text>
+
+  <!-- Volumes -->
+  <rect x="490" y="320" width="160" height="60" rx="5" class="storage"/>
+  <text x="570" y="345" text-anchor="middle" class="label">Local Volumes</text>
+  <text x="570" y="360" text-anchor="middle" class="sublabel">Async backup</text>
+
+  <!-- Overlay Network -->
+  <rect x="700" y="150" width="160" height="80" rx="5" style="fill:#e1bee7; stroke:#7b1fa2; stroke-width:2;"/>
+  <text x="780" y="185" text-anchor="middle" class="label">WireGuard Mesh</text>
+  <text x="780" y="200" text-anchor="middle" class="sublabel">IPv6 overlay</text>
+
+  <!-- Arrows -->
+  <path d="M160,120 L175,120" class="arrow"/>
+  <path d="M290,120 L305,120" class="arrow"/>
+  <path d="M105,150 L105,165" class="arrow"/>
+  <path d="M235,150 L235,165" class="arrow"/>
+  <path d="M365,150 L365,165" class="arrow"/>
+  <path d="M420,195 L485,195" class="arrow"/>
+  <text x="450" y="188" class="arrow-label">routes</text>
+  <path d="M365,230 L365,385" class="arrow"/>
+  <text x="375" y="310" class="arrow-label">specs</text>
+  <path d="M105,310 L105,385" class="arrow"/>
+  <text x="115" y="350" class="arrow-label">secrets</text>
+  <path d="M160,420 L175,420" class="arrow"/>
+  <path d="M290,420 L305,420" class="arrow"/>
+  <path d="M365,450 L365,465" class="arrow"/>
+  <path d="M570,230 L235,465" class="arrow"/>
+  <text x="400" y="340" class="arrow-label">traffic</text>
+  <path d="M650,195 L695,195" class="arrow"/>
+  <path d="M420,500 L695,220" class="arrow"/>
+  <text x="560" y="360" class="arrow-label">overlay</text>
+  <path d="M570,150 L570,165" class="arrow"/>
+  <path d="M490,380 L235,465" class="arrow"/>
+  <text x="350" y="430" class="arrow-label">mount</text>
+
+  <!-- Legend -->
+  <rect x="700" y="450" width="160" height="150" rx="5" style="fill:#fafafa; stroke:#ddd;"/>
+  <text x="780" y="475" text-anchor="middle" class="label">Legend</text>
+  <rect x="715" y="490" width="20" height="15" class="control-plane"/>
+  <text x="745" y="502" class="sublabel">Control Plane</text>
+  <rect x="715" y="515" width="20" height="15" class="data-plane"/>
+  <text x="745" y="527" class="sublabel">Data Plane</text>
+  <rect x="715" y="540" width="20" height="15" class="edge"/>
+  <text x="745" y="552" class="sublabel">Edge</text>
+  <rect x="715" y="565" width="20" height="15" class="storage"/>
+  <text x="745" y="577" class="sublabel">Storage</text>
+</svg>

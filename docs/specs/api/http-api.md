@@ -454,3 +454,45 @@ Every resource returned should include:
 - Exec transport: WebSocket vs server-sent events vs gRPC tunnel.
 - Whether to expose secrets material read at all in v1.
 - Hostname uniqueness scope: global vs per org (recommendation: global across platform, enforced by route creation).
+
+## Implementation plan
+
+### Current code status
+- **API skeleton**: Basic HTTP server exists in `services/control-plane/src/api/`.
+- **Auth endpoints**: Device flow partially implemented.
+- **Resource endpoints**: Org/app/env CRUD scaffolded; not complete.
+- **OpenAPI spec**: Draft exists at `docs/specs/api/openapi.yaml`.
+
+### Remaining work
+| Task | Owner | Milestone | Status |
+|------|-------|-----------|--------|
+| Auth endpoints (device flow, token, refresh, revoke) | Team Control | M1 | Partial |
+| Org/project/app/env CRUD endpoints | Team Control | M1 | Partial |
+| Release creation endpoint (Pattern A) | Team Control | M2 | Not started |
+| Deploy and rollback endpoints | Team Control | M2 | Not started |
+| Scale endpoints (GET/PUT) | Team Control | M2 | Not started |
+| Instance list endpoint (runtime view) | Team Control | M1 | Not started |
+| Route CRUD endpoints | Team Control | M4 | Not started |
+| Secrets PUT endpoint with versioning | Team Control | M5 | Not started |
+| Volume and attachment endpoints | Team Control | M1 | Not started |
+| Logs streaming endpoint | Team Control | M7 | Not started |
+| Exec grant and session endpoints | Team Control | M7 | Not started |
+| Events tail endpoint | Team Control | M7 | Not started |
+| Idempotency key handling middleware | Team Control | M1 | Not started |
+| Pagination and cursor implementation | Team Control | M1 | Not started |
+| Error model standardization | Team Control | M1 | Not started |
+| OpenAPI spec alignment with implementation | Team Control | M2 | Not started |
+
+### Dependencies
+- Auth spec (`auth.md`) must be finalized for token flows.
+- Event model must be complete for events endpoint.
+- Materialized views must be populated for list endpoints.
+
+### Acceptance criteria
+1. All v1 endpoints documented in OpenAPI and implemented.
+2. Idempotency keys work for deploy, route, volume, secrets endpoints.
+3. Pagination works consistently across all list endpoints.
+4. Error responses match documented error model with stable codes.
+5. CLI can complete full deploy flow using only HTTP API.
+6. OpenAPI spec validates against implementation (CI check).
+7. Rate limiting enforced per org and per token.

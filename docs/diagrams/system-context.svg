@@ -1,0 +1,110 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600">
+  <style>
+    .title { font: bold 18px sans-serif; fill: #333; }
+    .label { font: 14px sans-serif; fill: #333; }
+    .sublabel { font: 12px sans-serif; fill: #666; }
+    .actor { fill: #e8f4fd; stroke: #2196f3; stroke-width: 2; }
+    .system { fill: #fff3e0; stroke: #ff9800; stroke-width: 2; }
+    .external { fill: #f3e5f5; stroke: #9c27b0; stroke-width: 2; }
+    .arrow { stroke: #666; stroke-width: 1.5; fill: none; marker-end: url(#arrowhead); }
+    .arrow-label { font: 11px sans-serif; fill: #666; }
+  </style>
+  
+  <defs>
+    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#666"/>
+    </marker>
+  </defs>
+
+  <text x="400" y="30" text-anchor="middle" class="title">System Context: plfm-vt PaaS Platform</text>
+
+  <!-- Developer Actor -->
+  <rect x="50" y="80" width="120" height="80" rx="5" class="actor"/>
+  <text x="110" y="115" text-anchor="middle" class="label">Developer</text>
+  <text x="110" y="135" text-anchor="middle" class="sublabel">[Person]</text>
+  <text x="110" y="150" text-anchor="middle" class="sublabel">Deploys apps</text>
+
+  <!-- CLI -->
+  <rect x="250" y="80" width="120" height="80" rx="5" class="system"/>
+  <text x="310" y="115" text-anchor="middle" class="label">CLI</text>
+  <text x="310" y="135" text-anchor="middle" class="sublabel">[ghostctl/vt]</text>
+  <text x="310" y="150" text-anchor="middle" class="sublabel">Primary interface</text>
+
+  <!-- Control Plane -->
+  <rect x="450" y="80" width="140" height="80" rx="5" class="system"/>
+  <text x="520" y="115" text-anchor="middle" class="label">Control Plane</text>
+  <text x="520" y="135" text-anchor="middle" class="sublabel">[Rust/Go]</text>
+  <text x="520" y="150" text-anchor="middle" class="sublabel">API + Scheduler</text>
+
+  <!-- Web Terminal -->
+  <rect x="50" y="220" width="120" height="80" rx="5" class="system"/>
+  <text x="110" y="255" text-anchor="middle" class="label">Web Terminal</text>
+  <text x="110" y="275" text-anchor="middle" class="sublabel">[WASM]</text>
+  <text x="110" y="290" text-anchor="middle" class="sublabel">Browser CLI</text>
+
+  <!-- Node Agent -->
+  <rect x="250" y="220" width="120" height="80" rx="5" class="system"/>
+  <text x="310" y="255" text-anchor="middle" class="label">Node Agent</text>
+  <text x="310" y="275" text-anchor="middle" class="sublabel">[Rust]</text>
+  <text x="310" y="290" text-anchor="middle" class="sublabel">VM lifecycle</text>
+
+  <!-- Edge Ingress -->
+  <rect x="450" y="220" width="140" height="80" rx="5" class="system"/>
+  <text x="520" y="255" text-anchor="middle" class="label">Edge Ingress</text>
+  <text x="520" y="275" text-anchor="middle" class="sublabel">[L4 Proxy]</text>
+  <text x="520" y="290" text-anchor="middle" class="sublabel">SNI routing</text>
+
+  <!-- Firecracker VMs -->
+  <rect x="250" y="360" width="120" height="80" rx="5" class="system"/>
+  <text x="310" y="395" text-anchor="middle" class="label">MicroVMs</text>
+  <text x="310" y="415" text-anchor="middle" class="sublabel">[Firecracker]</text>
+  <text x="310" y="430" text-anchor="middle" class="sublabel">Workloads</text>
+
+  <!-- OCI Registry -->
+  <rect x="630" y="80" width="120" height="80" rx="5" class="external"/>
+  <text x="690" y="115" text-anchor="middle" class="label">OCI Registry</text>
+  <text x="690" y="135" text-anchor="middle" class="sublabel">[External]</text>
+  <text x="690" y="150" text-anchor="middle" class="sublabel">Image storage</text>
+
+  <!-- End Users -->
+  <rect x="630" y="220" width="120" height="80" rx="5" class="actor"/>
+  <text x="690" y="255" text-anchor="middle" class="label">End Users</text>
+  <text x="690" y="275" text-anchor="middle" class="sublabel">[Person]</text>
+  <text x="690" y="290" text-anchor="middle" class="sublabel">Access apps</text>
+
+  <!-- Arrows -->
+  <path d="M170,120 L245,120" class="arrow"/>
+  <text x="207" y="110" class="arrow-label">uses</text>
+
+  <path d="M370,120 L445,120" class="arrow"/>
+  <text x="407" y="110" class="arrow-label">API calls</text>
+
+  <path d="M590,120 L625,120" class="arrow"/>
+  <text x="607" y="110" class="arrow-label">pulls</text>
+
+  <path d="M110,160 L110,215" class="arrow"/>
+  <text x="120" y="190" class="arrow-label">alt</text>
+
+  <path d="M520,160 L520,215" class="arrow"/>
+  <text x="530" y="190" class="arrow-label">routes</text>
+
+  <path d="M520,160 L350,220" class="arrow"/>
+  <text x="420" y="185" class="arrow-label">schedules</text>
+
+  <path d="M310,300 L310,355" class="arrow"/>
+  <text x="320" y="330" class="arrow-label">manages</text>
+
+  <path d="M590,260 L310,400" class="arrow"/>
+  <text x="440" y="320" class="arrow-label">traffic</text>
+
+  <path d="M690,220 L590,260" class="arrow"/>
+  <text x="645" y="235" class="arrow-label">connects</text>
+
+  <!-- Legend -->
+  <rect x="50" y="500" width="20" height="20" class="actor"/>
+  <text x="80" y="515" class="sublabel">Person/Actor</text>
+  <rect x="200" y="500" width="20" height="20" class="system"/>
+  <text x="230" y="515" class="sublabel">Platform Component</text>
+  <rect x="400" y="500" width="20" height="20" class="external"/>
+  <text x="430" y="515" class="sublabel">External System</text>
+</svg>

@@ -358,3 +358,33 @@ The runtime implementation must ship automated tests that:
 - Detailed guest networking config and IPAM integration: `docs/specs/runtime/networking-inside-vm.md`
 - Volume device discovery conventions: `docs/specs/runtime/volume-mounts.md`
 - Host hardening: `docs/specs/runtime/limits-and-isolation.md`
+
+## Implementation plan
+
+### Current code status
+- **Guest init**: Implemented in `services/guest-init/` (Rust). Handles vsock config handshake, overlay root setup, secrets materialization, and workload exec.
+- **Node agent VM lifecycle**: Implemented in `services/node-agent/src/actors/` with `InstanceActor` managing Firecracker process lifecycle.
+- **Vsock protocol**: Config handshake message schema implemented; exec sessions in progress.
+
+### Remaining work
+| Task | Owner | Milestone | Status |
+|------|-------|-----------|--------|
+| Kernel selection and boot args standardization | Team Runtime | M3 | Not started |
+| Root disk build from OCI layers (overlay strategy) | Team Runtime | M3 | In progress |
+| Scratch disk provisioning per instance | Team Runtime | M3 | In progress |
+| Volume device ordering and mount mapping | Team Runtime | M3 | Not started |
+| Reserved path enforcement validation | Team Runtime | M3 | Not started |
+| Compliance tests for boot contract | Team Runtime | M3 | Not started |
+
+### Dependencies
+- Image fetch and cache pipeline (`image-fetch-and-cache.md`) must complete before root disk builds.
+- Guest init delivery mechanism (`guest-init-delivery.md`) must be finalized.
+- WorkloadSpec schema (`workload-spec.md`) must include all fields referenced by guest init.
+
+### Acceptance criteria
+1. MicroVM boots successfully with overlay root from OCI-derived root disk.
+2. Secrets file exists at `/run/secrets/platform.env` with correct permissions.
+3. Volumes mount at specified paths; reserved paths are rejected.
+4. Workload entrypoint runs and exit codes propagate to agent.
+5. Vsock config handshake failure produces clear error within 5 seconds.
+6. All compliance tests pass in CI.

@@ -224,3 +224,39 @@ Materialized views:
 ## Open questions (v1 decisions to confirm)
 - Whether volume creation always chooses a home node (recommended), or supports unplaced volumes (not recommended for v1).
 - Whether detaching an in-use volume is rejected (recommended) or triggers automatic drain (possible, but riskier).
+
+## Implementation plan
+
+### Current code status
+- **Volume events**: Event types defined in `docs/specs/state/event-types.md`.
+- **Volume views**: Schema defined; materialization not implemented.
+- **Node agent volume handling**: Placeholder exists in agent actors; device attach not implemented.
+
+### Remaining work
+| Task | Owner | Milestone | Status |
+|------|-------|-----------|--------|
+| Volume resource API endpoints | Team Control | M1 | Not started |
+| Volume creation with home_node_id selection | Team Control | M1 | Not started |
+| LVM thin pool provisioning on nodes | Team Runtime | M3 | Not started |
+| Volume attachment API and validation | Team Control | M1 | Not started |
+| Scheduler locality constraint enforcement | Team Control | M1 | Not started |
+| Agent device attach and WorkloadSpec mounts | Team Runtime | M3 | Not started |
+| Guest init volume mount handling | Team Runtime | M3 | Partial |
+| Volume state machine transitions | Team Control | M1 | Not started |
+| Exclusive writer enforcement | Team Control | M1 | Not started |
+| Volume deletion safety checks | Team Control | M1 | Not started |
+| Metrics: attach latency, pool usage, failures | Team Runtime | M7 | Not started |
+
+### Dependencies
+- Scheduler placement spec must enforce volume locality.
+- Guest init must handle volume mount paths from WorkloadSpec.
+- Event types must include `home_node_id` in volume creation.
+
+### Acceptance criteria
+1. Volume creation selects a home node and provisions storage.
+2. Attachments bind volumes to env/process with mount path.
+3. Scheduler places instances only on volume home node.
+4. Agent attaches device and guest init mounts at specified path.
+5. Concurrent attach to same volume fails with `volume_in_use`.
+6. Deleting attached volume fails unless forced by operator.
+7. Volume state transitions are reflected in views within 5 seconds.

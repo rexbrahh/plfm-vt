@@ -44,7 +44,7 @@ Status key:
 | docs/architecture/04-state-model-and-reconciliation.md | draft | TBD | 2025-12-16 | Event log, projections, reconcilers |
 | docs/architecture/05-multi-tenancy-and-identity.md | draft | TBD | 2025-12-16 | Org, project, app, env, scopes |
 | docs/architecture/06-failure-model-and-degraded-modes.md | draft | TBD | 2025-12-16 | What fails and how we degrade |
-| docs/architecture/07-actors-and-supervision.md | draft | TBD | 2025-12-19 | Actor model and supervision trees for reconciliation |
+| docs/architecture/10-actors-and-supervision.md | draft | TBD | 2025-12-19 | Actor model and supervision trees for reconciliation |
 | docs/architecture/07-scaling-plan-multi-host.md | draft | TBD | 2025-12-16 | Multi-node growth plan |
 | docs/architecture/08-security-architecture.md | draft | TBD | 2025-12-16 | Threat model mapping to components |
 | docs/architecture/09-observability-architecture.md | draft | TBD | 2025-12-16 | Logs, metrics, traces, alerting |
@@ -52,10 +52,10 @@ Status key:
 ## Diagrams
 | Path | Status | Owner | Last reviewed | Notes |
 |---|---|---:|---:|---|
-| docs/diagrams/system-context.svg | planned | TBD | N/A | System context diagram |
-| docs/diagrams/component-architecture.svg | planned | TBD | N/A | Component diagram |
-| docs/diagrams/state-flow-events.svg | planned | TBD | N/A | State and events flow |
-| docs/diagrams/network-overlay-ingress.svg | planned | TBD | N/A | Overlay and ingress path |
+| docs/diagrams/system-context.svg | stub | TBD | 2025-12-20 | System context diagram |
+| docs/diagrams/component-architecture.svg | stub | TBD | 2025-12-20 | Component diagram |
+| docs/diagrams/state-flow-events.svg | stub | TBD | 2025-12-20 | State and events flow |
+| docs/diagrams/network-overlay-ingress.svg | stub | TBD | 2025-12-20 | Overlay and ingress path |
 
 ## Core specs (authoritative)
 

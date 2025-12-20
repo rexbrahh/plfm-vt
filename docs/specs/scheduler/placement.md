@@ -271,3 +271,39 @@ Details are in `drain-evict-reschedule.md`.
   - v1 recommendation: create new instances, drain old instances (blue/green per process type).
 - Whether to allow process types with volumes to have replicas > 1:
   - v1 recommendation: forbid (max 1) unless you later design multi-reader or sharded volumes.
+
+## Implementation plan
+
+### Current code status
+- **Scheduler skeleton**: Basic scheduler structure exists in `services/control-plane/src/scheduler/`.
+- **Materialized views**: Core views (`nodes_view`, `instances_desired_view`) defined but not fully populated.
+- **Instance allocation events**: Event schema exists; emission logic in progress.
+
+### Remaining work
+| Task | Owner | Milestone | Status |
+|------|-------|-----------|--------|
+| Node eligibility filtering (state, capacity, heartbeat) | Team Control | M1 | Not started |
+| Memory hard cap enforcement | Team Control | M1 | Not started |
+| Volume locality constraint enforcement | Team Control | M1 | Not started |
+| Volume exclusivity validation (max 1 replica with volumes) | Team Control | M1 | Not started |
+| IPAM integration for overlay_ipv6 allocation | Team Control | M1 | Not started |
+| CPU soft scoring | Team Control | M1 | Not started |
+| Anti-affinity spread scoring | Team Control | M1 | Not started |
+| Deterministic tie-breaking (lexicographic node_id) | Team Control | M1 | Not started |
+| Unschedulable instance reason surfacing | Team Control | M1 | Not started |
+| Secrets-missing placement gate | Team Control | M5 | Not started |
+| Scheduler reconciliation loop integration | Team Control | M1 | Not started |
+
+### Dependencies
+- Materialized views (`nodes_view`, `volumes_view`, `volume_attachments_view`) must be populated.
+- IPAM service must be implemented for overlay address allocation.
+- WorkloadSpec must include memory and CPU resource requirements.
+
+### Acceptance criteria
+1. Instances are placed only on nodes with sufficient memory.
+2. Instances requiring volumes are placed only on the volume's home node.
+3. Process types with volumes enforce max 1 replica.
+4. IPAM allocates unique overlay IPv6 per instance.
+5. Unschedulable instances surface clear reason codes in env status.
+6. Placement is deterministic: same inputs produce same outputs.
+7. Placement algorithm completes within 100ms for 100 instances.

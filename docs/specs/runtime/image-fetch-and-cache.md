@@ -282,3 +282,37 @@ Agent logs:
 - Optional image signing verification (cosign) and policy enforcement.
 - Shared registry mirror and prefetch strategies.
 - Whether to support lazy layer fetching (likely not needed in v1).
+
+## Implementation plan
+
+### Current code status
+- **ImagePullActor**: Implemented in `services/node-agent/src/actors/image_pull.rs`. Handles `EnsurePulled` messages and tracks pull state.
+- **OCI client**: Basic OCI manifest and blob fetching implemented.
+- **Cache directory structure**: Implemented with content-addressed blob storage.
+- **Integration with supervisor**: `NodeSupervisor` now requests image pulls before instance boot via `pending_instances` queue.
+
+### Remaining work
+| Task | Owner | Milestone | Status |
+|------|-------|-----------|--------|
+| Root disk build pipeline (OCI layers -> ext4) | Team Runtime | M3 | Not started |
+| Size limit enforcement (10 GiB compressed, 50 GiB uncompressed) | Team Runtime | M3 | Not started |
+| Per-layer and total pull timeouts | Team Runtime | M3 | Partial |
+| Integrity verification (digest matching) | Team Runtime | M3 | Partial |
+| LRU eviction policy implementation | Team Runtime | M3 | Not started |
+| Refcount tracking for pinned artifacts | Team Runtime | M3 | Not started |
+| Registry auth (credentials from control plane) | Team Runtime | M3 | Not started |
+| Metrics: pull latency, cache hit/miss, disk pressure | Team Runtime | M7 | Not started |
+
+### Dependencies
+- WorkloadSpec must include `image.resolved_digest`, `image.os`, `image.arch`.
+- Firecracker boot spec must define root disk format expectations.
+- Control plane must resolve image tags to digests before sending to agents.
+
+### Acceptance criteria
+1. Agent pulls OCI image by digest and builds ext4 root disk.
+2. Subsequent instances reuse cached root disk (cache hit).
+3. Images exceeding size limits fail with `image_too_large` error.
+4. Pull timeouts produce `image_pull_timeout` error.
+5. Digest mismatch fails immediately without caching corrupt artifacts.
+6. Eviction never removes in-use root disks.
+7. Metrics visible in agent Prometheus endpoint.

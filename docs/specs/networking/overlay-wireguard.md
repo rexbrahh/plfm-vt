@@ -261,3 +261,37 @@ Automated or semi-automated tests must verify:
 ## Open questions (explicitly deferred)
 - Transition from full mesh to hub topology (planned v2). This requires a new spec and likely an ADR update.
 - Whether to route per-instance prefixes via nodes (requires IPAM spec alignment).
+
+## Implementation plan
+
+### Current code status
+- **Node enrollment**: Spec reviewed in `docs/specs/networking/node-enrollment.md`. Implementation not started.
+- **WireGuard interface management**: Not yet implemented in node agent.
+- **Peer config distribution**: Control plane event model exists; agent consumption not implemented.
+
+### Remaining work
+| Task | Owner | Milestone | Status |
+|------|-------|-----------|--------|
+| Node enrollment API (`EnrollNode` endpoint) | Team Control | M1 | Not started |
+| WireGuard keypair generation in agent | Team Runtime | M3 | Not started |
+| wg0 interface setup and management | Team Runtime | M3 | Not started |
+| Peer set reconciliation from control plane events | Team Runtime | M3 | Not started |
+| AllowedIPs enforcement and validation | Team Runtime | M3 | Not started |
+| Key rotation procedure | Team Control + Runtime | M3 | Not started |
+| Emergency revocation runbook | Team Runtime | M3 | Not started |
+| MTU and ICMPv6 host firewall defaults | Team Runtime | M3 | Not started |
+| Overlay connectivity health checks | Team Runtime | M7 | Not started |
+| Metrics: peer count, handshake age, bytes per peer | Team Runtime | M7 | Not started |
+
+### Dependencies
+- Node enrollment spec (`node-enrollment.md`) must be finalized and reviewed.
+- IPAM spec (`ipam.md`) must define overlay address allocation.
+- Control plane must implement peer set event distribution.
+
+### Acceptance criteria
+1. Two nodes establish WireGuard handshake and exchange IPv6 packets.
+2. AllowedIPs prevent routing spoofing between peers.
+3. Adding/removing a node updates peer sets across all nodes within 60 seconds.
+4. Key rotation completes without connectivity loss.
+5. Control plane unavailability does not break existing overlay connectivity.
+6. Compliance tests for handshake, spoofing prevention, and key rotation pass.
