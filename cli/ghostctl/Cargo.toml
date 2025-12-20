@@ -46,3 +46,14 @@ directories = { workspace = true }
 # Output formatting
 tabled = { workspace = true }
 colored = { workspace = true }
+
+# WebSocket for exec streaming
+tokio-tungstenite = { version = "0.21", features = ["native-tls"] }
+futures-util = "0.3"
+
+# Terminal handling
+crossterm = "0.27"
+libc = "0.2"
+
+# Ctrl+C handling
+ctrlc = "3.4"

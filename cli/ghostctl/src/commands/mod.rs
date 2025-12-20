@@ -104,7 +104,7 @@ enum Commands {
     /// View application logs.
     Logs(logs::LogsCommand),
 
-    /// Create an exec session grant for an instance.
+    /// Execute a command in a running instance.
     Exec(exec::ExecCommand),
 
     /// Validate and inspect local manifests.
