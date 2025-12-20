@@ -121,11 +121,7 @@ impl SandboxManager {
         let chroot = self.config.chroot_dir();
 
         // Create directory structure
-        let dirs = [
-            chroot.join("dev"),
-            chroot.join("run"),
-            chroot.join("tmp"),
-        ];
+        let dirs = [chroot.join("dev"), chroot.join("run"), chroot.join("tmp")];
 
         for dir in &dirs {
             fs::create_dir_all(dir)?;
@@ -270,7 +266,6 @@ pub fn link_to_sandbox<P: AsRef<Path>, Q: AsRef<Path>>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::env::temp_dir;
 
     #[test]
     fn test_jailer_config_paths() {
@@ -301,8 +296,7 @@ mod tests {
 
     #[test]
     fn test_cpu_weight_clamping() {
-        let config = JailerConfig::new("test", PathBuf::from("/tmp"))
-            .with_cpu_weight(50000); // Way too high
+        let config = JailerConfig::new("test", PathBuf::from("/tmp")).with_cpu_weight(50000); // Way too high
 
         assert_eq!(config.cpu_weight, Some(10000)); // Should be clamped
     }

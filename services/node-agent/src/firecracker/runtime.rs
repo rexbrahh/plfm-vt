@@ -18,11 +18,11 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use crate::client::InstancePlan;
-use crate::network::{TapConfig, TapDevice};
+use crate::network::TapDevice;
 use crate::runtime::{Runtime, VmHandle};
 
 use super::api::FirecrackerClient;
-use super::config::{BootSource, MachineConfig, NetworkInterface};
+use super::config::{BootSource, MachineConfig};
 use super::jailer::SandboxManager;
 
 /// Default timeout for Firecracker API operations.
@@ -126,10 +126,7 @@ impl FirecrackerRuntime {
     }
 
     /// Start Firecracker process (without jailer).
-    async fn start_firecracker_direct(
-        &self,
-        instance_id: &str,
-    ) -> Result<(Child, PathBuf)> {
+    async fn start_firecracker_direct(&self, instance_id: &str) -> Result<(Child, PathBuf)> {
         let instance_dir = self.instance_dir(instance_id);
         std::fs::create_dir_all(&instance_dir)?;
 
@@ -247,9 +244,9 @@ impl Runtime for FirecrackerRuntime {
         info!(instance_id = %instance_id, "Stopping Firecracker VM");
 
         let mut instances = self.instances.write().await;
-        let state = instances.remove(instance_id).ok_or_else(|| {
-            anyhow!("Instance not found: {}", instance_id)
-        })?;
+        let state = instances
+            .remove(instance_id)
+            .ok_or_else(|| anyhow!("Instance not found: {}", instance_id))?;
 
         // Try graceful shutdown first
         match state.client.send_ctrl_alt_del().await {
@@ -294,9 +291,9 @@ impl Runtime for FirecrackerRuntime {
 
     async fn check_vm_health(&self, handle: &VmHandle) -> Result<bool> {
         let instances = self.instances.read().await;
-        let state = instances.get(&handle.instance_id).ok_or_else(|| {
-            anyhow!("Instance not found: {}", handle.instance_id)
-        })?;
+        let state = instances
+            .get(&handle.instance_id)
+            .ok_or_else(|| anyhow!("Instance not found: {}", handle.instance_id))?;
 
         // Try to get info from Firecracker API
         match state.client.get_instance_info().await {

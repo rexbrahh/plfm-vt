@@ -161,7 +161,10 @@ impl ExecCommand {
                 if let Some((key, value)) = var.split_once('=') {
                     map.insert(key.to_string(), value.to_string());
                 } else {
-                    anyhow::bail!("Invalid environment variable format: {}. Expected KEY=VALUE", var);
+                    anyhow::bail!(
+                        "Invalid environment variable format: {}. Expected KEY=VALUE",
+                        var
+                    );
                 }
             }
             Some(map)
@@ -188,7 +191,7 @@ impl ExecCommand {
         let response: ExecGrantResponse = client
             .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
             .await
-            .map_err(|e| {
+            .inspect_err(|e| {
                 // Map API errors to appropriate exit codes
                 let msg = e.to_string();
                 if msg.contains("instance_not_ready") {
@@ -198,7 +201,6 @@ impl ExecCommand {
                 } else if msg.contains("rate_limit") || msg.contains("429") {
                     std::process::exit(EXIT_RATE_LIMITED);
                 }
-                e
             })?;
 
         // If grant-only mode, just print the grant and exit
@@ -243,19 +245,15 @@ impl ExecCommand {
     ) -> Result<i32> {
         // Build WebSocket URL
         let base_url = ctx.config.api_url.trim_end_matches('/');
-        let ws_url = if base_url.starts_with("https://") {
+        let ws_url = if let Some(base) = base_url.strip_prefix("https://") {
             format!(
                 "wss://{}{}?token={}",
-                &base_url[8..],
-                grant.connect_url,
-                grant.session_token
+                base, grant.connect_url, grant.session_token
             )
-        } else if base_url.starts_with("http://") {
+        } else if let Some(base) = base_url.strip_prefix("http://") {
             format!(
                 "ws://{}{}?token={}",
-                &base_url[7..],
-                grant.connect_url,
-                grant.session_token
+                base, grant.connect_url, grant.session_token
             )
         } else {
             anyhow::bail!("Invalid API URL format: {}", base_url);
@@ -263,11 +261,8 @@ impl ExecCommand {
 
         // Connect with timeout
         let connect_timeout = std::time::Duration::from_secs(30);
-        let ws_result = tokio::time::timeout(
-            connect_timeout,
-            tokio_tungstenite::connect_async(&ws_url),
-        )
-        .await;
+        let ws_result =
+            tokio::time::timeout(connect_timeout, tokio_tungstenite::connect_async(&ws_url)).await;
 
         let (ws_stream, _) = match ws_result {
             Ok(Ok(stream)) => stream,
@@ -276,7 +271,10 @@ impl ExecCommand {
             }
             Err(_) => {
                 // Timeout elapsed
-                eprintln!("Connection timeout after {} seconds", connect_timeout.as_secs());
+                eprintln!(
+                    "Connection timeout after {} seconds",
+                    connect_timeout.as_secs()
+                );
                 std::process::exit(EXIT_CONNECT_TIMEOUT);
             }
         };
@@ -397,7 +395,7 @@ impl ExecCommand {
             tokio::select! {
                 // Handle outgoing messages
                 Some(frame) = rx.recv() => {
-                    if ws_write.send(Message::Binary(frame)).await.is_err() {
+                    if ws_write.send(Message::Binary(frame.into())).await.is_err() {
                         break;
                     }
                 }
@@ -469,7 +467,7 @@ impl ExecCommand {
         if let Ok(json) = serde_json::to_vec(&close_msg) {
             let mut frame = vec![FRAME_CONTROL];
             frame.extend(json);
-            let _ = ws_write.send(Message::Binary(frame)).await;
+            let _ = ws_write.send(Message::Binary(frame.into())).await;
         }
         let _ = ws_write.close().await;
 
@@ -510,7 +508,10 @@ mod tests {
 
     #[test]
     fn test_control_message_serialization() {
-        let resize = ControlMessage::Resize { cols: 120, rows: 40 };
+        let resize = ControlMessage::Resize {
+            cols: 120,
+            rows: 40,
+        };
         let json = serde_json::to_string(&resize).unwrap();
         assert!(json.contains("\"type\":\"resize\""));
         assert!(json.contains("\"cols\":120"));

@@ -15,6 +15,8 @@
 //! - Firecracker boot contract: `docs/specs/runtime/firecracker-boot.md`
 //! - Limits and isolation: `docs/specs/runtime/limits-and-isolation.md`
 
+#![allow(dead_code)]
+
 mod api;
 mod config;
 mod jailer;

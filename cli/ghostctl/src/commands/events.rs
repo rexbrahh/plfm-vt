@@ -89,12 +89,12 @@ struct EventRow {
     event_type: String,
 
     #[tabled(rename = "Agg Type")]
-    #[tabled(display_with = "display_option")]
+    #[tabled(display = "display_option")]
     #[serde(default)]
     aggregate_type: Option<String>,
 
     #[tabled(rename = "Agg ID")]
-    #[tabled(display_with = "display_option")]
+    #[tabled(display = "display_option")]
     #[serde(default)]
     aggregate_id: Option<String>,
 }

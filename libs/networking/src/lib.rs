@@ -208,9 +208,8 @@ impl WgPublicKey {
     /// Create from a base64-encoded string.
     pub fn from_base64(s: &str) -> Result<Self, NetworkError> {
         // Validate base64 format and length
-        let decoded = base64_decode(s).map_err(|_| {
-            NetworkError::InvalidKey(format!("invalid base64: {}", s))
-        })?;
+        let decoded = base64_decode(s)
+            .map_err(|_| NetworkError::InvalidKey(format!("invalid base64: {}", s)))?;
 
         if decoded.len() != 32 {
             return Err(NetworkError::InvalidKey(format!(
@@ -366,7 +365,7 @@ pub const MTU_DEFAULT_ETHERNET: u16 = 1500;
 
 /// Validate an MTU value.
 pub fn validate_mtu(mtu: u16) -> Result<u16, NetworkError> {
-    if mtu < MTU_MIN_IPV6 || mtu > MTU_MAX_JUMBO {
+    if !(MTU_MIN_IPV6..=MTU_MAX_JUMBO).contains(&mtu) {
         return Err(NetworkError::InvalidMtu {
             value: mtu,
             min: MTU_MIN_IPV6,

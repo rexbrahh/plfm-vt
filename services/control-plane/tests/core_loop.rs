@@ -8,7 +8,7 @@ use plfm_control_plane::{
     state::AppState,
 };
 use plfm_id::NodeId;
-use testcontainers::{clients, GenericImage};
+use testcontainers::{core::IntoContainerPort, runners::AsyncRunner, GenericImage, ImageExt};
 use tokio::net::TcpListener;
 use tokio::sync::watch;
 
@@ -57,16 +57,19 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         .with_test_writer()
         .try_init();
 
-    let docker = clients::Cli::default();
-    let postgres = docker.run(
-        GenericImage::new("postgres", "16-alpine")
-            .with_env_var("POSTGRES_USER", "plfm")
-            .with_env_var("POSTGRES_PASSWORD", "plfm_test")
-            .with_env_var("POSTGRES_DB", "plfm")
-            .with_exposed_port(5432),
-    );
+    let postgres = GenericImage::new("postgres", "16-alpine")
+        .with_exposed_port(5432.tcp())
+        .with_env_var("POSTGRES_USER", "plfm")
+        .with_env_var("POSTGRES_PASSWORD", "plfm_test")
+        .with_env_var("POSTGRES_DB", "plfm")
+        .start()
+        .await
+        .expect("failed to start postgres container");
 
-    let port = postgres.get_host_port_ipv4(5432);
+    let port = postgres
+        .get_host_port_ipv4(5432.tcp())
+        .await
+        .expect("failed to resolve postgres host port");
     let database_url = format!("postgres://plfm:plfm_test@127.0.0.1:{port}/plfm");
     wait_for_postgres(&database_url).await;
 

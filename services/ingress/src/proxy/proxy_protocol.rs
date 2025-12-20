@@ -162,16 +162,17 @@ fn extract_v4_from_v6(addr: Ipv6Addr) -> Option<Ipv4Addr> {
     let octets = addr.octets();
 
     // IPv4-mapped: first 10 bytes zero, bytes 10-11 are 0xff
-    if octets[..10].iter().all(|&b| b == 0)
-        && octets[10] == 0xff
-        && octets[11] == 0xff
-    {
-        return Some(Ipv4Addr::new(octets[12], octets[13], octets[14], octets[15]));
+    if octets[..10].iter().all(|&b| b == 0) && octets[10] == 0xff && octets[11] == 0xff {
+        return Some(Ipv4Addr::new(
+            octets[12], octets[13], octets[14], octets[15],
+        ));
     }
 
     // IPv4-compatible: first 12 bytes zero (deprecated but still handled)
     if octets[..12].iter().all(|&b| b == 0) {
-        return Some(Ipv4Addr::new(octets[12], octets[13], octets[14], octets[15]));
+        return Some(Ipv4Addr::new(
+            octets[12], octets[13], octets[14], octets[15],
+        ));
     }
 
     None
@@ -189,7 +190,7 @@ pub fn parse_proxy_v2(data: &[u8]) -> Option<(ProxyProtocolV2, usize)> {
     }
 
     // Check signature
-    if &data[..12] != PROXY_V2_SIGNATURE {
+    if data[..12] != PROXY_V2_SIGNATURE {
         return None;
     }
 

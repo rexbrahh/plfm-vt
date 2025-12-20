@@ -65,7 +65,7 @@ impl InstancePhase {
 }
 
 /// Node-level state.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct NodeState {
     /// Current plan version.
     pub plan_version: i64,
@@ -73,16 +73,6 @@ pub struct NodeState {
     pub event_cursor: Option<String>,
     /// Last heartbeat timestamp (Unix seconds).
     pub last_heartbeat: i64,
-}
-
-impl Default for NodeState {
-    fn default() -> Self {
-        Self {
-            plan_version: 0,
-            event_cursor: None,
-            last_heartbeat: 0,
-        }
-    }
 }
 
 /// Instance record in the state store.
@@ -209,9 +199,12 @@ impl StateStore {
     }
 
     /// Get an instance record.
-    pub fn get_instance(&self, instance_id: &str) -> Result<Option<InstanceRecord>, StateStoreError> {
+    pub fn get_instance(
+        &self,
+        instance_id: &str,
+    ) -> Result<Option<InstanceRecord>, StateStoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT instance_id, phase, spec_revision, boot_id, socket_path, rootdisk_digest, created_at, updated_at 
+            "SELECT instance_id, phase, spec_revision, boot_id, socket_path, rootdisk_digest, created_at, updated_at
              FROM instances WHERE instance_id = ?1",
         )?;
 
@@ -288,7 +281,7 @@ impl StateStore {
     /// List all instances.
     pub fn list_instances(&self) -> Result<Vec<InstanceRecord>, StateStoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT instance_id, phase, spec_revision, boot_id, socket_path, rootdisk_digest, created_at, updated_at 
+            "SELECT instance_id, phase, spec_revision, boot_id, socket_path, rootdisk_digest, created_at, updated_at
              FROM instances ORDER BY created_at",
         )?;
 
@@ -319,7 +312,7 @@ impl StateStore {
         phase: InstancePhase,
     ) -> Result<Vec<InstanceRecord>, StateStoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT instance_id, phase, spec_revision, boot_id, socket_path, rootdisk_digest, created_at, updated_at 
+            "SELECT instance_id, phase, spec_revision, boot_id, socket_path, rootdisk_digest, created_at, updated_at
              FROM instances WHERE phase = ?1 ORDER BY created_at",
         )?;
 

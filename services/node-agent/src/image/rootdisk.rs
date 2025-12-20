@@ -81,14 +81,13 @@ impl RootDiskBuilder {
     /// Build a root disk from OCI layers.
     ///
     /// Returns the path to the created ext4 image.
-    pub fn build(
-        &self,
-        digest: &str,
-        layer_paths: &[PathBuf],
-    ) -> Result<PathBuf, RootDiskError> {
+    pub fn build(&self, digest: &str, layer_paths: &[PathBuf]) -> Result<PathBuf, RootDiskError> {
         let sanitized_digest = sanitize_digest(digest);
         let unpack_path = self.config.unpack_dir.join(&sanitized_digest);
-        let rootdisk_path = self.config.rootdisk_dir.join(format!("{}.ext4", sanitized_digest));
+        let rootdisk_path = self
+            .config
+            .rootdisk_dir
+            .join(format!("{}.ext4", sanitized_digest));
 
         // Check if already built
         if rootdisk_path.exists() {
@@ -164,16 +163,14 @@ impl RootDiskBuilder {
         let reader = BufReader::new(file);
 
         // Try gzip first, fall back to raw tar
-        let result = if is_gzip(layer_path)? {
+        if is_gzip(layer_path)? {
             let decoder = GzDecoder::new(reader);
             let mut archive = Archive::new(decoder);
             self.extract_archive(&mut archive, dest)
         } else {
             let mut archive = Archive::new(reader);
             self.extract_archive(&mut archive, dest)
-        };
-
-        result
+        }
     }
 
     /// Extract a tar archive handling whiteouts.
@@ -187,19 +184,18 @@ impl RootDiskBuilder {
             let path = entry.path()?;
 
             // Check for path traversal
-            if path.components().any(|c| c == std::path::Component::ParentDir) {
+            if path
+                .components()
+                .any(|c| c == std::path::Component::ParentDir)
+            {
                 warn!(path = %path.display(), "Skipping path with parent directory");
                 continue;
             }
 
-            let file_name = path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
             // Handle whiteout files
-            if file_name.starts_with(".wh.") {
-                let target_name = &file_name[4..]; // Remove ".wh." prefix
+            if let Some(target_name) = file_name.strip_prefix(".wh.") {
                 if target_name == ".wh..opq" {
                     // Opaque whiteout - remove entire directory contents
                     if let Some(parent) = path.parent() {
@@ -243,10 +239,10 @@ impl RootDiskBuilder {
         dest: &Path,
         size: u64,
     ) -> Result<(), RootDiskError> {
-        let temp_path = self.config.tmp_dir.join(format!(
-            "rootdisk-{}.ext4",
-            std::process::id()
-        ));
+        let temp_path = self
+            .config
+            .tmp_dir
+            .join(format!("rootdisk-{}.ext4", std::process::id()));
 
         // Create sparse file
         let file = File::create(&temp_path)?;
@@ -267,7 +263,10 @@ impl RootDiskBuilder {
         }
 
         // Mount and copy
-        let mount_dir = self.config.tmp_dir.join(format!("mount-{}", std::process::id()));
+        let mount_dir = self
+            .config
+            .tmp_dir
+            .join(format!("mount-{}", std::process::id()));
         fs::create_dir_all(&mount_dir)?;
 
         let status = Command::new("mount")
@@ -326,7 +325,7 @@ pub struct RootDiskMeta {
 
 /// Sanitize a digest for use in file paths.
 fn sanitize_digest(digest: &str) -> String {
-    digest.replace(':', "_").replace('/', "_")
+    digest.replace([':', '/'], "_")
 }
 
 /// Check if a file is gzip compressed.
@@ -363,10 +362,7 @@ mod tests {
 
     #[test]
     fn test_sanitize_digest() {
-        assert_eq!(
-            sanitize_digest("sha256:abc123"),
-            "sha256_abc123"
-        );
+        assert_eq!(sanitize_digest("sha256:abc123"), "sha256_abc123");
     }
 
     #[test]

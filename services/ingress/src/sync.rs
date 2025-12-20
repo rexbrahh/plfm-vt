@@ -25,9 +25,7 @@ use tracing::{debug, info, warn};
 
 use crate::config::Config;
 use crate::persistence::{PersistedRoute, StatePersistence};
-use crate::proxy::{
-    Backend, BackendSelector, ProtocolHint, ProxyProtocol, Route, RouteTable,
-};
+use crate::proxy::{Backend, BackendSelector, ProtocolHint, ProxyProtocol, Route, RouteTable};
 
 #[derive(Debug, Deserialize)]
 struct EventsResponse {
@@ -174,10 +172,7 @@ fn route_state_to_proxy_route(state: &RouteState) -> Route {
 }
 
 /// Update the shared route table from internal state.
-async fn update_proxy_route_table(
-    routes: &BTreeMap<String, RouteState>,
-    route_table: &RouteTable,
-) {
+async fn update_proxy_route_table(routes: &BTreeMap<String, RouteState>, route_table: &RouteTable) {
     let proxy_routes: Vec<Route> = routes.values().map(route_state_to_proxy_route).collect();
     route_table.update(proxy_routes).await;
 }
@@ -356,7 +351,10 @@ pub async fn run_route_sync_loop(
     let mut routes: BTreeMap<String, RouteState> = BTreeMap::new();
 
     // Initialize persistence if configured
-    let persistence = config.state_file.as_ref().map(|path| StatePersistence::new(path.clone()));
+    let persistence = config
+        .state_file
+        .as_ref()
+        .map(|path| StatePersistence::new(path.clone()));
 
     // Load initial state from persistence (if available)
     let mut cursor = if let Some(ref p) = persistence {
@@ -366,7 +364,7 @@ pub async fn run_route_sync_loop(
                 for (id, persisted_route) in &state.routes {
                     routes.insert(id.clone(), RouteState::from_persisted(persisted_route));
                 }
-                
+
                 // Update route table with restored state
                 if !routes.is_empty() {
                     update_proxy_route_table(&routes, &route_table).await;
@@ -376,7 +374,7 @@ pub async fn run_route_sync_loop(
                         "Restored routes from persisted state"
                     );
                 }
-                
+
                 state.cursor
             }
             Err(e) => {
@@ -456,7 +454,7 @@ pub async fn run_route_sync_loop(
                 .iter()
                 .map(|(id, r)| (id.clone(), r.to_persisted()))
                 .collect();
-            
+
             if let Err(e) = p.save_with_cursor(&persisted_routes, cursor) {
                 warn!(error = %e, "Failed to persist state");
             }
@@ -534,7 +532,6 @@ struct InstancesResponse {
 #[derive(Debug, Deserialize)]
 struct InstanceItem {
     id: String,
-    status: Option<String>,
     #[serde(default)]
     overlay_ipv6: Option<String>,
 }

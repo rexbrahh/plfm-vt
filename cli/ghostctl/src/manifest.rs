@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use jsonschema::{Draft, JSONSchema};
+use jsonschema::Draft;
 use sha2::{Digest, Sha256};
 
 const MANIFEST_SCHEMA_V1_JSON: &str = include_str!(concat!(
@@ -42,21 +42,22 @@ pub fn manifest_hash_from_toml_str(contents: &str) -> Result<String> {
 pub fn validate_manifest_toml_str(contents: &str) -> Result<Vec<ManifestValidationError>> {
     let schema: serde_json::Value = serde_json::from_str(MANIFEST_SCHEMA_V1_JSON)
         .context("failed to parse embedded manifest schema")?;
-    let compiled = JSONSchema::options()
+    let compiled = jsonschema::options()
         .with_draft(Draft::Draft202012)
-        .compile(&schema)
+        .build(&schema)
         .map_err(|e| anyhow::anyhow!("failed to compile embedded manifest schema: {e}"))?;
 
     let instance = manifest_json_from_toml_str(contents)?;
 
-    let Err(errors) = compiled.validate(&instance) else {
+    if compiled.is_valid(&instance) {
         return Ok(Vec::new());
     };
 
-    let mut out: Vec<ManifestValidationError> = errors
+    let mut out: Vec<ManifestValidationError> = compiled
+        .iter_errors(&instance)
         .map(|e| ManifestValidationError {
-            instance_path: e.instance_path.to_string(),
-            schema_path: e.schema_path.to_string(),
+            instance_path: e.instance_path().to_string(),
+            schema_path: e.schema_path().to_string(),
         })
         .collect();
 

@@ -100,7 +100,6 @@ fn actor_from_authorization_header(
     Ok(Some((ActorType::User, format!("usr_{short}"), None)))
 }
 
-#[axum::async_trait]
 impl<S> FromRequestParts<S> for RequestContext
 where
     S: Send + Sync,

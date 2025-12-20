@@ -61,15 +61,15 @@ struct NodeResponse {
     #[tabled(rename = "State")]
     state: String,
 
-    #[tabled(rename = "IPv6", display_with = "display_option")]
+    #[tabled(rename = "IPv6", display = "display_option")]
     #[serde(default)]
     public_ipv6: Option<String>,
 
-    #[tabled(rename = "IPv4", display_with = "display_option")]
+    #[tabled(rename = "IPv4", display = "display_option")]
     #[serde(default)]
     public_ipv4: Option<String>,
 
-    #[tabled(rename = "MTU", display_with = "display_option_i32")]
+    #[tabled(rename = "MTU", display = "display_option_i32")]
     #[serde(default)]
     mtu: Option<i32>,
 

@@ -72,19 +72,19 @@ struct InstanceResponse {
     #[tabled(rename = "Status")]
     status: String,
 
-    #[tabled(rename = "Node", display_with = "display_option")]
+    #[tabled(rename = "Node", display = "display_option")]
     #[serde(default)]
     node_id: Option<String>,
 
-    #[tabled(rename = "Gen", display_with = "display_option_i32")]
+    #[tabled(rename = "Gen", display = "display_option_i32")]
     #[serde(default)]
     generation: Option<i32>,
 
-    #[tabled(rename = "Last Transition", display_with = "display_option")]
+    #[tabled(rename = "Last Transition", display = "display_option")]
     #[serde(default)]
     last_transition_at: Option<String>,
 
-    #[tabled(rename = "Failure", display_with = "display_option")]
+    #[tabled(rename = "Failure", display = "display_option")]
     #[serde(default)]
     failure_reason: Option<String>,
 

@@ -135,13 +135,13 @@ struct DeployResponse {
     #[tabled(rename = "Release ID")]
     release_id: String,
 
-    #[tabled(rename = "Processes", display_with = "display_process_types")]
+    #[tabled(rename = "Processes", display = "display_process_types")]
     process_types: Vec<String>,
 
     #[tabled(rename = "Status")]
     status: String,
 
-    #[tabled(rename = "Message", display_with = "display_option")]
+    #[tabled(rename = "Message", display = "display_option")]
     #[serde(default)]
     message: Option<String>,
 
@@ -243,10 +243,7 @@ async fn wait_for_deploy(
 
         // Print status updates (only in table mode, and only when status changes)
         if matches!(format, OutputFormat::Table) && response.status != last_status {
-            print_info(&format!(
-                "Deploy {} status: {}",
-                deploy_id, response.status
-            ));
+            print_info(&format!("Deploy {} status: {}", deploy_id, response.status));
             last_status = response.status.clone();
         }
 
@@ -424,7 +421,10 @@ async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
     match ctx.format {
         OutputFormat::Json if !args.wait => print_single(&response, ctx.format),
         OutputFormat::Table => {
-            print_success(&format!("Created rollback {} for env {}", deploy_id, env_id));
+            print_success(&format!(
+                "Created rollback {} for env {}",
+                deploy_id, env_id
+            ));
         }
         _ => {}
     }

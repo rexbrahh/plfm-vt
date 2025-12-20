@@ -153,14 +153,20 @@ impl Listener {
                     let permit = match self.conn_semaphore.clone().try_acquire_owned() {
                         Ok(permit) => permit,
                         Err(_) => {
-                            self.stats.connections_rejected.fetch_add(1, Ordering::Relaxed);
+                            self.stats
+                                .connections_rejected
+                                .fetch_add(1, Ordering::Relaxed);
                             warn!(peer_addr = %peer_addr, "Connection rejected: max connections reached");
                             continue;
                         }
                     };
 
-                    self.stats.connections_accepted.fetch_add(1, Ordering::Relaxed);
-                    self.stats.connections_active.fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .connections_accepted
+                        .fetch_add(1, Ordering::Relaxed);
+                    self.stats
+                        .connections_active
+                        .fetch_add(1, Ordering::Relaxed);
 
                     let listener = Arc::clone(&self);
                     let stats = Arc::clone(&self.stats);
@@ -202,14 +208,19 @@ impl Listener {
 
         // Determine if we need SNI inspection based on routes for this port
         let routes = self.route_table.routes_for_port(local_addr.port()).await;
-        let needs_sni = routes.iter().any(|r| r.protocol == ProtocolHint::TlsPassthrough);
+        let needs_sni = routes
+            .iter()
+            .any(|r| r.protocol == ProtocolHint::TlsPassthrough);
 
         // Buffer for SNI inspection (will be forwarded to backend)
         let mut sniff_buffer = Vec::new();
         let sni: Option<String>;
 
         if needs_sni {
-            let (result, _bytes_read) = self.sni_inspector.inspect(&mut client, &mut sniff_buffer).await;
+            let (result, _bytes_read) = self
+                .sni_inspector
+                .inspect(&mut client, &mut sniff_buffer)
+                .await;
 
             match &result {
                 SniResult::Found(hostname) => {
@@ -234,7 +245,7 @@ impl Listener {
                 }
                 SniResult::IoError(e) => {
                     self.stats.sni_failed.fetch_add(1, Ordering::Relaxed);
-                    return Err(io::Error::new(io::ErrorKind::Other, e.clone()));
+                    return Err(io::Error::other(e.clone()));
                 }
                 SniResult::Malformed => {
                     self.stats.sni_failed.fetch_add(1, Ordering::Relaxed);
@@ -311,8 +322,12 @@ impl Listener {
         let (bytes_to_backend, bytes_from_backend) =
             proxy_bidirectional(&mut client, &mut backend, self.config.idle_timeout).await?;
 
-        self.stats.bytes_to_backend.fetch_add(bytes_to_backend, Ordering::Relaxed);
-        self.stats.bytes_from_backend.fetch_add(bytes_from_backend, Ordering::Relaxed);
+        self.stats
+            .bytes_to_backend
+            .fetch_add(bytes_to_backend, Ordering::Relaxed);
+        self.stats
+            .bytes_from_backend
+            .fetch_add(bytes_from_backend, Ordering::Relaxed);
 
         debug!(
             bytes_to_backend = bytes_to_backend,

@@ -22,9 +22,9 @@ mod sync;
 
 // Re-export proxy types for external use
 pub use proxy::{
-    Backend, BackendPool, BackendSelector, Listener, ListenerConfig, ProtocolHint,
-    ProxyProtocol, ProxyProtocolV2, Route, RouteTable, RoutingDecision, SharedRouteTable,
-    SniConfig, SniInspector, SniResult,
+    Backend, BackendPool, BackendSelector, Listener, ListenerConfig, ProtocolHint, ProxyProtocol,
+    ProxyProtocolV2, Route, RouteTable, RoutingDecision, SharedRouteTable, SniConfig, SniInspector,
+    SniResult,
 };
 
 #[tokio::main]
@@ -55,8 +55,9 @@ async fn main() -> Result<()> {
         let mut listener_handles = Vec::new();
 
         for binding in &config.listeners {
-            let listener_config = ListenerConfig::new(binding.bind_addr);
-            
+            let mut listener_config = ListenerConfig::new(binding.bind_addr);
+            listener_config.max_connections = binding.max_connections;
+
             match Listener::bind(
                 listener_config,
                 Arc::clone(&route_table),

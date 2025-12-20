@@ -25,8 +25,6 @@ pub struct ImageCacheConfig {
     pub low_water_mark: f64,
     /// Root disk directory.
     pub rootdisk_dir: PathBuf,
-    /// Blob directory.
-    pub blob_dir: PathBuf,
 }
 
 impl Default for ImageCacheConfig {
@@ -36,7 +34,6 @@ impl Default for ImageCacheConfig {
             high_water_mark: 0.9,
             low_water_mark: 0.7,
             rootdisk_dir: PathBuf::from("/var/lib/plfm-agent/rootdisks"),
-            blob_dir: PathBuf::from("/var/lib/plfm-agent/oci/blobs"),
         }
     }
 }
@@ -61,8 +58,6 @@ pub struct ImageCache {
     config: ImageCacheConfig,
     /// Cached root disks keyed by digest.
     rootdisks: RwLock<HashMap<String, CacheEntry>>,
-    /// Cached blobs keyed by digest.
-    blobs: RwLock<HashMap<String, CacheEntry>>,
     /// Statistics.
     stats: CacheStats,
 }
@@ -82,7 +77,6 @@ impl ImageCache {
         Self {
             config,
             rootdisks: RwLock::new(HashMap::new()),
-            blobs: RwLock::new(HashMap::new()),
             stats: CacheStats::default(),
         }
     }
@@ -288,11 +282,7 @@ mod tests {
 
         // Register a root disk
         cache
-            .register_rootdisk(
-                "sha256:abc123",
-                PathBuf::from("/tmp/test.ext4"),
-                1024,
-            )
+            .register_rootdisk("sha256:abc123", PathBuf::from("/tmp/test.ext4"), 1024)
             .await;
 
         // Acquire should succeed

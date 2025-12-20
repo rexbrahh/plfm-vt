@@ -75,7 +75,7 @@ impl Secrets {
     }
 
     /// Create from an iterator of key-value pairs.
-    pub fn from_iter<I, K, V>(iter: I) -> Result<Self, SecretsError>
+    pub fn try_from_iter<I, K, V>(iter: I) -> Result<Self, SecretsError>
     where
         I: IntoIterator<Item = (K, V)>,
         K: Into<String>,
@@ -345,10 +345,12 @@ fn parse_line(line_num: usize, line: &str, secrets: &mut Secrets) -> Result<(), 
     let key = key.trim();
     let value = unescape_value(value);
 
-    secrets.set(key, value).map_err(|e| SecretsError::ParseError {
-        line: line_num,
-        reason: e.to_string(),
-    })?;
+    secrets
+        .set(key, value)
+        .map_err(|e| SecretsError::ParseError {
+            line: line_num,
+            reason: e.to_string(),
+        })?;
 
     Ok(())
 }
@@ -438,6 +440,9 @@ mod tests {
     fn test_unsupported_version() {
         let content = "# plfm-secrets v999\nFOO=bar\n";
         let result = Secrets::parse(content);
-        assert!(matches!(result, Err(SecretsError::UnsupportedVersion { .. })));
+        assert!(matches!(
+            result,
+            Err(SecretsError::UnsupportedVersion { .. })
+        ));
     }
 }

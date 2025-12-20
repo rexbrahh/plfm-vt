@@ -9,6 +9,8 @@
 //! - Proxy NDP or routing for instance overlay IPv6
 //! - MTU matching overlay (1420 default)
 
+#![allow(dead_code)]
+
 mod tap;
 
 pub use tap::{TapConfig, TapDevice, TapError};

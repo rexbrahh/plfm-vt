@@ -88,7 +88,7 @@ struct AppResponse {
     #[tabled(rename = "Name")]
     name: String,
 
-    #[tabled(rename = "Description", display_with = "display_option")]
+    #[tabled(rename = "Description", display = "display_option")]
     #[serde(default)]
     description: Option<String>,
 
