@@ -2,13 +2,7 @@
 //!
 //! These tests verify the actor framework and supervisor behavior.
 
-use std::sync::Arc;
-
-use plfm_node_agent::actors::{Actor, ActorContext, ActorError, ActorHandle};
 use plfm_node_agent::client::{InstancePlan, InstanceResources};
-
-use async_trait::async_trait;
-use tokio::sync::mpsc;
 
 /// Helper to create a test InstancePlan
 fn test_plan(id: &str) -> InstancePlan {
