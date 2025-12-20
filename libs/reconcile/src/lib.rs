@@ -212,7 +212,9 @@ impl RollingStrategy {
 
         // How many old instances can we drain?
         let min_available = desired_count.saturating_sub(self.max_unavailable);
-        let currently_available = matching_ready;
+        // Availability is satisfied by any ready instance (matching or old).
+        // Once we have more than `min_available` ready instances overall, we can safely drain old.
+        let currently_available = matching_ready.saturating_add(old_running);
         let can_drain = currently_available.saturating_sub(min_available);
         let old_to_drain = can_drain.min(old_running);
 
