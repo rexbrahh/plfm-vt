@@ -379,7 +379,7 @@ impl Supervisor {
     pub async fn stop_all(&mut self) {
         info!(count = self.children.len(), "Stopping all actors");
 
-        for (_, child) in &self.children {
+        for child in self.children.values() {
             child.actor_ref.stop();
         }
 

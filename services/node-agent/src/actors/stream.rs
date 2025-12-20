@@ -51,7 +51,7 @@ pub enum ConnectionState {
 }
 
 /// Persisted state for recovery.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct StreamActorState {
     /// Last event cursor position.
     pub last_event_cursor: u64,
@@ -61,16 +61,6 @@ pub struct StreamActorState {
 
     /// Consecutive connection failures.
     pub consecutive_failures: u32,
-}
-
-impl Default for StreamActorState {
-    fn default() -> Self {
-        Self {
-            last_event_cursor: 0,
-            last_connected_at: None,
-            consecutive_failures: 0,
-        }
-    }
 }
 
 // =============================================================================
