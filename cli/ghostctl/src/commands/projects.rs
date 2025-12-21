@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_single, print_success, OutputFormat};
+use crate::output::{print_output, print_receipt, print_single, OutputFormat, ReceiptNextStep};
 
 use super::CommandContext;
 
@@ -125,15 +125,42 @@ async fn create_project(ctx: CommandContext, args: CreateProjectArgs) -> Result<
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Created project '{}' ({}) in org {}",
-                response.name, response.id, org_id
-            ));
-        }
-    }
+    let project_id = response.id.clone();
+    let project_name = response.name.clone();
+    let org_id_str = org_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt projects get {}", project_id.clone()),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt apps create --org {} <app-name>", org_id_str.clone()),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!("vt events tail --org {}", org_id_str.clone()),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Created project '{}' ({}) in org {}",
+            project_name,
+            project_id.as_str(),
+            org_id_str.as_str()
+        ),
+        "accepted",
+        "projects.create",
+        "project",
+        &response,
+        serde_json::json!({
+            "project_id": project_id,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }

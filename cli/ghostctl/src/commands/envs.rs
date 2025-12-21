@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_single, print_success, OutputFormat};
+use crate::output::{
+    print_output, print_receipt, print_single, print_success, OutputFormat, ReceiptNextStep,
+};
 
 use super::CommandContext;
 
@@ -143,15 +145,60 @@ async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Created environment '{}' ({}) in {}/{}",
-                response.name, response.id, org, app
-            ));
-        }
-    }
+    let env_id = response.id.clone();
+    let env_name = response.name.clone();
+    let org_id_str = org.to_string();
+    let app_id_str = app.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} envs get {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} secrets confirm --none --env {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} deploy --env {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id.clone()
+            ),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Created environment '{}' ({}) in {}/{}",
+            env_name,
+            env_id.as_str(),
+            org_id_str.as_str(),
+            app_id_str.as_str()
+        ),
+        "accepted",
+        "envs.create",
+        "env",
+        &response,
+        serde_json::json!({
+            "env_id": env_id,
+            "app_id": app_id_str,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }

@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_single, print_success, OutputFormat};
+use crate::output::{
+    print_output, print_receipt, print_receipt_no_resource, print_single, print_success,
+    OutputFormat, ReceiptNextStep,
+};
 
 use super::CommandContext;
 
@@ -203,11 +206,6 @@ struct UpdateMemberRequest {
     expected_version: i32,
 }
 
-#[derive(Debug, Serialize)]
-struct DeleteResponse {
-    ok: bool,
-}
-
 impl MembersCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         match self.command {
@@ -256,15 +254,40 @@ async fn add_member(ctx: CommandContext, args: AddMemberArgs) -> Result<()> {
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Added member '{}' ({}) to org {} as {}",
-                response.email, response.id, org_id, response.role
-            ));
-        }
-    }
+    let org_id_str = org_id.to_string();
+    let member_id = response.id.clone();
+    let member_email = response.email.clone();
+    let member_role = response.role.clone();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt orgs members list --org {}", org_id_str.clone()),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!("vt events tail --org {}", org_id_str.clone()),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Added member '{}' ({}) to org {} as {}",
+            member_email,
+            member_id.as_str(),
+            org_id_str.as_str(),
+            member_role
+        ),
+        "accepted",
+        "orgs.members.add",
+        "member",
+        &response,
+        serde_json::json!({
+            "org_id": org_id_str,
+            "member_id": member_id
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -291,15 +314,40 @@ async fn update_member(ctx: CommandContext, args: UpdateMemberArgs) -> Result<()
         .patch_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Updated member '{}' ({}) in org {} to {}",
-                response.email, response.id, org_id, response.role
-            ));
-        }
-    }
+    let org_id_str = org_id.to_string();
+    let member_id = response.id.clone();
+    let member_email = response.email.clone();
+    let member_role = response.role.clone();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt orgs members list --org {}", org_id_str.clone()),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!("vt events tail --org {}", org_id_str.clone()),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Updated member '{}' ({}) in org {} to {}",
+            member_email,
+            member_id.as_str(),
+            org_id_str.as_str(),
+            member_role
+        ),
+        "accepted",
+        "orgs.members.update",
+        "member",
+        &response,
+        serde_json::json!({
+            "org_id": org_id_str,
+            "member_id": member_id
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -326,18 +374,30 @@ async fn remove_member(ctx: CommandContext, args: RemoveMemberArgs) -> Result<()
         .delete_with_idempotency_key(&path, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            let response = DeleteResponse { ok: true };
-            print_single(&response, ctx.format);
-        }
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Removed member {} from org {}",
-                args.member_id, org_id
-            ));
-        }
-    }
+    let org_id_str = org_id.to_string();
+    let member_id = args.member_id.clone();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt orgs members list --org {}", org_id_str.clone()),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!("vt events tail --org {}", org_id_str.clone()),
+        },
+    ];
+
+    print_receipt_no_resource(
+        ctx.format,
+        &format!("Removed member {} from org {}", member_id, org_id_str),
+        "accepted",
+        "orgs.members.remove",
+        serde_json::json!({
+            "org_id": org_id_str,
+            "member_id": member_id
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -368,15 +428,33 @@ async fn create_org(ctx: CommandContext, args: CreateOrgArgs) -> Result<()> {
         .post_with_idempotency_key(path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Created organization '{}' ({})",
-                response.name, response.id
-            ));
-        }
-    }
+    let org_id = response.id.clone();
+    let org_name = response.name.clone();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt orgs get {}", org_id.clone()),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt projects create --org {} <project-name>", org_id.clone()),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!("vt events tail --org {}", org_id.clone()),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!("Created organization '{}' ({})", org_name, org_id.as_str()),
+        "accepted",
+        "orgs.create",
+        "org",
+        &response,
+        serde_json::json!({ "org_id": org_id }),
+        &next,
+    );
 
     Ok(())
 }

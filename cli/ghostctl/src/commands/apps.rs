@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_single, print_success, OutputFormat};
+use crate::output::{
+    print_output, print_receipt, print_single, print_success, OutputFormat, ReceiptNextStep,
+};
 
 use super::CommandContext;
 
@@ -153,15 +155,55 @@ async fn create_app(ctx: CommandContext, args: CreateAppArgs) -> Result<()> {
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Created application '{}' ({}) in org {}",
-                response.name, response.id, org
-            ));
-        }
-    }
+    let app_id = response.id.clone();
+    let app_name = response.name.clone();
+    let org_id_str = org.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} envs create prod",
+                org_id_str.clone(),
+                app_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} apps get {}",
+                org_id_str.clone(),
+                app_id.clone(),
+                app_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!(
+                "vt events tail --org {} --app {}",
+                org_id_str.clone(),
+                app_id.clone()
+            ),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Created application '{}' ({}) in org {}",
+            app_name,
+            app_id.as_str(),
+            org_id_str.as_str()
+        ),
+        "accepted",
+        "apps.create",
+        "app",
+        &response,
+        serde_json::json!({
+            "app_id": app_id,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }

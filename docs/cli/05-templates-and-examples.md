@@ -1,5 +1,8 @@
-````md
 # Templates and examples
+
+Status: draft
+Owner: TBD
+Last reviewed: 2025-12-20
 
 This document is a grab bag of copy paste templates and real workflows for common tasks.
 
@@ -16,7 +19,7 @@ Conventions:
 
 `vt.toml`:
 ```toml
-manifest_version = 1
+schema_version = "v1"
 
 [app]
 name = "hello"
@@ -26,14 +29,15 @@ type = "dockerfile"
 context = "."
 dockerfile = "Dockerfile"
 
-[resources]
-cpu = "shared-1x"
-memory = "512mb"
+[processes.web]
+[processes.web.resources]
+cpu = 1.0
+memory = "512Mi"
 
-[[ports]]
+[[processes.web.ports]]
 internal = 8080
 protocol = "tcp"
-````
+```
 
 Commands:
 
@@ -45,8 +49,8 @@ vt secrets confirm --none
 vt releases create
 vt deploy --env prod --wait
 
-vt status
-vt logs tail
+vt status --env prod
+vt logs tail --env prod
 ```
 
 ### 2) Prebuilt image app (CI builds the image)
@@ -54,20 +58,20 @@ vt logs tail
 `vt.toml`:
 
 ```toml
-manifest_version = 1
+schema_version = "v1"
 
 [app]
 name = "hello"
 
-[build]
-type = "image"
-image = "ghcr.io/acme/hello:1.2.3"
+[image]
+ref = "ghcr.io/acme/hello:1.2.3"
 
-[resources]
-cpu = "shared-1x"
-memory = "512mb"
+[processes.web]
+[processes.web.resources]
+cpu = 1.0
+memory = "512Mi"
 
-[[ports]]
+[[processes.web.ports]]
 internal = 8080
 protocol = "tcp"
 ```
@@ -131,13 +135,20 @@ You can manage endpoints declaratively in the manifest or imperatively via `vt e
 `vt.toml`:
 
 ```toml
-[[ports]]
+schema_version = "v1"
+
+[processes.web]
+[processes.web.resources]
+cpu = 1.0
+memory = "512Mi"
+
+[[processes.web.ports]]
+name = "http"
 internal = 8080
-protocol = "tcp"
 
 [[endpoints]]
 listen_port = 443
-target_port = 8080
+target_port = "http"
 protocol = "tcp"
 ```
 
@@ -188,7 +199,7 @@ Add a mount intent to the manifest:
 `vt.toml`:
 
 ```toml
-[[mounts]]
+[[processes.web.mounts]]
 volume = "data"
 path = "/data"
 ```
@@ -222,7 +233,7 @@ vt snapshots restore --env prod <snapshot-id> --to-volume new
 This is useful for review, promotion, or CI pipelines.
 
 ```bash
-vt releases create --env staging
+vt releases create
 vt releases list
 vt releases describe <release-id>
 ```
@@ -280,7 +291,7 @@ vt doctor --json
 Example pattern (exact JSON fields are platform-defined, but this shows the intent):
 
 ```bash
-rel_id="$(vt releases create --env prod --json | jq -r '.receipt.release.id')"
+rel_id="$(vt releases create --json | jq -r '.receipt.release.id')"
 vt releases describe "$rel_id" --json | jq .
 ```
 
@@ -296,7 +307,7 @@ vt secrets status --env prod >/dev/null || {
   exit 5
 }
 
-rel_id="$(vt releases create --env prod --json | jq -r '.receipt.release.id')"
+rel_id="$(vt releases create --json | jq -r '.receipt.release.id')"
 
 vt deploy --env prod --release "$rel_id" --wait --wait-timeout 10m
 
@@ -383,7 +394,4 @@ Look at reconciliation and runtime:
 vt events tail --env prod
 vt logs tail --env prod
 vt status --env prod
-```
-
-```
 ```

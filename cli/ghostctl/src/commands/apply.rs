@@ -14,7 +14,7 @@ use tokio::time::{sleep, Instant};
 
 use crate::client::ApiClient;
 use crate::manifest::ManifestValidationError;
-use crate::output::{print_info, print_single, print_success, OutputFormat};
+use crate::output::{print_info, print_receipt, print_single, OutputFormat, ReceiptNextStep};
 
 use super::CommandContext;
 
@@ -65,6 +65,7 @@ struct CreateReleaseRequest {
     image_digest: String,
     manifest_schema_version: i32,
     manifest_hash: String,
+    command: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -96,6 +97,16 @@ struct ApplyPlan {
     app_id: String,
     env_id: String,
     manifest_path: String,
+    manifest_hash: String,
+    image_ref: String,
+    image_digest: String,
+    process_types: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ApplyReceipt {
+    release_id: String,
+    deploy_id: String,
     manifest_hash: String,
     image_ref: String,
     image_digest: String,
@@ -210,6 +221,10 @@ impl ApplyCommand {
 
         let manifest_process_types = process_types_from_manifest(&manifest_json)?;
         let process_types = select_process_types(&manifest_process_types, &self.process_type)?;
+        let primary_process = process_types
+            .first()
+            .ok_or_else(|| anyhow::anyhow!("manifest must include at least one process type"))?;
+        let command = command_from_manifest(&manifest_json, primary_process)?;
 
         if self.dry_run {
             let plan = ApplyPlan {
@@ -258,6 +273,7 @@ impl ApplyCommand {
             image_digest: image_digest.clone(),
             manifest_schema_version: 1,
             manifest_hash: manifest_hash.clone(),
+            command: command.clone(),
         };
         let release_idem = match ctx.idempotency_key.as_deref() {
             Some(key) => key.to_string(),
@@ -295,7 +311,68 @@ impl ApplyCommand {
             .post_with_idempotency_key(&deploy_path, &deploy_req, Some(deploy_idem.as_str()))
             .await?;
 
+        let release_id = release.id.clone();
         let deploy_id = deploy.id.clone();
+
+        let receipt_payload = ApplyReceipt {
+            release_id: release_id.clone(),
+            deploy_id: deploy_id.clone(),
+            manifest_hash: manifest_hash.clone(),
+            image_ref: image_ref.clone(),
+            image_digest: image_digest.clone(),
+            process_types: process_types.clone(),
+        };
+
+        let org_id_str = org_id.to_string();
+        let app_id_str = app_id.to_string();
+        let env_id_str = env_id.to_string();
+        let next = vec![
+            ReceiptNextStep {
+                label: "Next",
+                cmd: format!(
+                    "vt --org {} --app {} --env {} deploys get {}",
+                    org_id_str.clone(),
+                    app_id_str.clone(),
+                    env_id_str.clone(),
+                    deploy_id.clone()
+                ),
+            },
+            ReceiptNextStep {
+                label: "Next",
+                cmd: format!(
+                    "vt --org {} --app {} --env {} instances list",
+                    org_id_str.clone(),
+                    app_id_str.clone(),
+                    env_id_str.clone()
+                ),
+            },
+            ReceiptNextStep {
+                label: "Next",
+                cmd: format!(
+                    "vt --org {} --app {} --env {} logs --follow",
+                    org_id_str.clone(),
+                    app_id_str.clone(),
+                    env_id_str.clone()
+                ),
+            },
+            ReceiptNextStep {
+                label: "Debug",
+                cmd: format!(
+                    "vt events tail --org {} --app {} --env {}",
+                    org_id_str.clone(),
+                    app_id_str.clone(),
+                    env_id_str.clone()
+                ),
+            },
+        ];
+
+        let ids = serde_json::json!({
+            "org_id": org_id_str.clone(),
+            "app_id": app_id_str.clone(),
+            "env_id": env_id_str.clone(),
+            "release_id": release_id,
+            "deploy_id": deploy_id.clone()
+        });
 
         // Parse wait timeout if provided
         let wait_timeout = match self.wait_timeout.as_deref() {
@@ -303,29 +380,6 @@ impl ApplyCommand {
             None => DEFAULT_WAIT_TIMEOUT,
         };
 
-        // Print initial success (before waiting)
-        match ctx.format {
-            OutputFormat::Json if !self.wait => {
-                let out = serde_json::json!({
-                    "manifest_hash": manifest_hash,
-                    "image_ref": image_ref,
-                    "image_digest": image_digest,
-                    "process_types": process_types,
-                    "release_id": release.id,
-                    "deploy_id": deploy_id,
-                });
-                print_single(&out, ctx.format);
-            }
-            OutputFormat::Table => {
-                print_success(&format!(
-                    "Applied manifest (release {}, deploy {})",
-                    release.id, deploy_id
-                ));
-            }
-            _ => {}
-        }
-
-        // Wait for convergence if requested
         if self.wait {
             let final_deploy = wait_for_deploy(
                 &client,
@@ -338,35 +392,38 @@ impl ApplyCommand {
             )
             .await?;
 
-            match ctx.format {
-                OutputFormat::Json => {
-                    let out = serde_json::json!({
-                        "manifest_hash": manifest_hash,
-                        "image_ref": image_ref,
-                        "image_digest": image_digest,
-                        "process_types": process_types,
-                        "release_id": release.id,
-                        "deploy_id": deploy_id,
-                        "status": final_deploy.status,
-                    });
-                    print_single(&out, ctx.format);
-                }
-                OutputFormat::Table => {
-                    print_success(&format!("Deploy {} completed successfully", deploy_id));
-                }
-            }
-        } else {
-            // Only print next steps if not waiting
-            if matches!(ctx.format, OutputFormat::Table) {
-                print_info(&format!(
-                    "Next: vt deploys get {}  # (or vt deploys list)",
-                    deploy_id
-                ));
-                print_info("Next: vt instances list");
-                print_info("Next: vt logs stream");
-                print_info("Debug: vt events tail");
-            }
+            print_receipt(
+                ctx.format,
+                &format!(
+                    "Deploy {} completed with status {}",
+                    deploy_id.as_str(),
+                    final_deploy.status.as_str()
+                ),
+                final_deploy.status.as_str(),
+                "deploys.apply",
+                "apply",
+                &receipt_payload,
+                ids,
+                &next,
+            );
+
+            return Ok(());
         }
+
+        print_receipt(
+            ctx.format,
+            &format!(
+                "Applied manifest (release {}, deploy {})",
+                receipt_payload.release_id.as_str(),
+                deploy_id.as_str()
+            ),
+            "accepted",
+            "deploys.apply",
+            "apply",
+            &receipt_payload,
+            ids,
+            &next,
+        );
 
         Ok(())
     }
@@ -412,6 +469,38 @@ fn process_types_from_manifest(manifest_json: &serde_json::Value) -> Result<Vec<
         anyhow::bail!("manifest [processes] must include at least one process type");
     }
     Ok(out)
+}
+
+fn default_command() -> Vec<String> {
+    vec!["./start".to_string()]
+}
+
+fn command_from_manifest(
+    manifest_json: &serde_json::Value,
+    process_type: &str,
+) -> Result<Vec<String>> {
+    let Some(processes) = manifest_json.get("processes").and_then(|v| v.as_object()) else {
+        anyhow::bail!("manifest missing [processes] section (at least one process type required)");
+    };
+    let Some(process) = processes.get(process_type) else {
+        anyhow::bail!("manifest missing process type '{process_type}'");
+    };
+    let command = process
+        .get("command")
+        .and_then(|value| value.as_array())
+        .map(|command| {
+            command
+                .iter()
+                .filter_map(|entry| entry.as_str().map(str::to_string))
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+
+    if command.is_empty() {
+        Ok(default_command())
+    } else {
+        Ok(command)
+    }
 }
 
 fn select_process_types(

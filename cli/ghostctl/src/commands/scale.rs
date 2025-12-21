@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_single, print_success, OutputFormat};
+use crate::output::{print_output, print_receipt, OutputFormat, ReceiptNextStep};
 
 use super::CommandContext;
 
@@ -128,19 +128,66 @@ impl ScaleCommand {
             .put_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
             .await?;
 
-        match ctx.format {
-            OutputFormat::Json => print_single(&response, ctx.format),
-            OutputFormat::Table => {
-                let version = response.resource_version.unwrap_or(0);
-                print_success(&format!(
-                    "Updated scale for environment {} in {}/{} (resource_version {})",
-                    env_id, org_id, app_id, version
-                ));
+        let org_id_str = org_id.to_string();
+        let app_id_str = app_id.to_string();
+        let env_id_str = env_id.to_string();
+        let version = response.resource_version.unwrap_or(0);
+        let next = vec![
+            ReceiptNextStep {
+                label: "Next",
+                cmd: format!(
+                    "vt --org {} --app {} --env {} status",
+                    org_id_str.clone(),
+                    app_id_str.clone(),
+                    env_id_str.clone()
+                ),
+            },
+            ReceiptNextStep {
+                label: "Next",
+                cmd: format!(
+                    "vt --org {} --app {} --env {} instances list",
+                    org_id_str.clone(),
+                    app_id_str.clone(),
+                    env_id_str.clone()
+                ),
+            },
+            ReceiptNextStep {
+                label: "Debug",
+                cmd: format!(
+                    "vt events tail --org {} --app {} --env {}",
+                    org_id_str.clone(),
+                    app_id_str.clone(),
+                    env_id_str.clone()
+                ),
+            },
+        ];
 
-                let mut rows = response.processes.clone();
-                rows.sort_by(|a, b| a.process_type.cmp(&b.process_type));
-                print_output(&rows, ctx.format);
-            }
+        print_receipt(
+            ctx.format,
+            &format!(
+                "Updated scale for environment {} in {}/{} (resource_version {})",
+                env_id_str.as_str(),
+                org_id_str.as_str(),
+                app_id_str.as_str(),
+                version
+            ),
+            "accepted",
+            "envs.scale",
+            "scale",
+            &response,
+            serde_json::json!({
+                "org_id": org_id_str,
+                "app_id": app_id_str,
+                "env_id": env_id_str,
+                "resource_version": version
+            }),
+            &next,
+        );
+
+        if matches!(ctx.format, OutputFormat::Table) {
+            let mut rows = response.processes.clone();
+            rows.sort_by(|a, b| a.process_type.cmp(&b.process_type));
+            print_output(&rows, ctx.format);
         }
 
         Ok(())

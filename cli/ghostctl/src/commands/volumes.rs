@@ -8,7 +8,10 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_single, print_success, OutputFormat};
+use crate::output::{
+    print_output, print_receipt, print_receipt_no_resource, print_single, OutputFormat,
+    ReceiptNextStep,
+};
 
 use super::CommandContext;
 
@@ -218,11 +221,6 @@ struct CreateVolumeRequest {
 }
 
 #[derive(Debug, Serialize)]
-struct DeleteResponse {
-    ok: bool,
-}
-
-#[derive(Debug, Serialize)]
 struct CreateVolumeAttachmentRequest {
     volume_id: String,
     process_type: String,
@@ -330,15 +328,36 @@ async fn create_volume(ctx: CommandContext, args: CreateVolumeArgs) -> Result<()
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Created volume {} ({} bytes)",
-                response.id, response.size_bytes
-            ));
-        }
-    }
+    let volume_id = response.id.clone();
+    let org_id_str = org_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt --org {} volumes get {}", org_id_str.clone(), volume_id),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt --org {} volumes list", org_id_str.clone()),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Created volume {} ({} bytes)",
+            response.id.as_str(),
+            response.size_bytes
+        ),
+        "accepted",
+        "volumes.create",
+        "volume",
+        &response,
+        serde_json::json!({
+            "volume_id": response.id,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -368,14 +387,24 @@ async fn delete_volume(ctx: CommandContext, args: DeleteVolumeArgs) -> Result<()
     let path = format!("/v1/orgs/{org_id}/volumes/{}", args.volume);
     client.delete_with_idempotency_key(&path, None).await?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            print_single(&DeleteResponse { ok: true }, ctx.format);
-        }
-        OutputFormat::Table => {
-            print_success(&format!("Deleted volume {}", args.volume));
-        }
-    }
+    let org_id_str = org_id.to_string();
+    let volume_id = args.volume.clone();
+    let next = vec![ReceiptNextStep {
+        label: "Next",
+        cmd: format!("vt --org {} volumes list", org_id_str.clone()),
+    }];
+
+    print_receipt_no_resource(
+        ctx.format,
+        &format!("Deleted volume {}", volume_id),
+        "accepted",
+        "volumes.delete",
+        serde_json::json!({
+            "volume_id": volume_id,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -408,15 +437,48 @@ async fn attach_volume(ctx: CommandContext, args: AttachVolumeArgs) -> Result<()
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Attached volume {} at {} ({})",
-                response.volume_id, response.mount_path, response.id
-            ));
-        }
-    }
+    let attachment_id = response.id.clone();
+    let volume_id = response.volume_id.clone();
+    let org_id_str = org_id.to_string();
+    let app_id_str = app_id.to_string();
+    let env_id_str = env_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt --org {} volumes get {}", org_id_str.clone(), volume_id),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!(
+                "vt events tail --org {} --app {} --env {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Attached volume {} at {} ({})",
+            response.volume_id.as_str(),
+            response.mount_path.as_str(),
+            attachment_id.as_str()
+        ),
+        "accepted",
+        "volume_attachments.create",
+        "volume_attachment",
+        &response,
+        serde_json::json!({
+            "attachment_id": attachment_id,
+            "volume_id": response.volume_id,
+            "env_id": env_id_str,
+            "app_id": app_id_str,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -434,10 +496,28 @@ async fn detach_volume(ctx: CommandContext, args: DetachVolumeArgs) -> Result<()
     );
     client.delete_with_idempotency_key(&path, None).await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&DeleteResponse { ok: true }, ctx.format),
-        OutputFormat::Table => print_success(&format!("Detached attachment {}", args.attachment)),
-    }
+    let org_id_str = org_id.to_string();
+    let app_id_str = app_id.to_string();
+    let env_id_str = env_id.to_string();
+    let attachment_id = args.attachment.clone();
+    let next = vec![ReceiptNextStep {
+        label: "Next",
+        cmd: format!("vt --org {} volumes list", org_id_str.clone()),
+    }];
+
+    print_receipt_no_resource(
+        ctx.format,
+        &format!("Detached attachment {}", attachment_id),
+        "accepted",
+        "volume_attachments.delete",
+        serde_json::json!({
+            "attachment_id": attachment_id,
+            "env_id": env_id_str,
+            "app_id": app_id_str,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -458,15 +538,42 @@ async fn snapshot_create(ctx: CommandContext, args: SnapshotCreateArgs) -> Resul
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Created snapshot {} for volume {}",
-                response.id, response.volume_id
-            ));
-        }
-    }
+    let snapshot_id = response.id.clone();
+    let volume_id = response.volume_id.clone();
+    let org_id_str = org_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} volumes snapshot-list {}",
+                org_id_str.clone(),
+                volume_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt --org {} volumes get {}", org_id_str.clone(), volume_id),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Created snapshot {} for volume {}",
+            snapshot_id.as_str(),
+            response.volume_id.as_str()
+        ),
+        "accepted",
+        "snapshots.create",
+        "snapshot",
+        &response,
+        serde_json::json!({
+            "snapshot_id": snapshot_id,
+            "volume_id": response.volume_id,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -511,12 +618,32 @@ async fn restore_volume(ctx: CommandContext, args: RestoreVolumeArgs) -> Result<
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!("Restored volume {}", response.id));
-        }
-    }
+    let volume_id = response.id.clone();
+    let org_id_str = org_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt --org {} volumes get {}", org_id_str.clone(), volume_id),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt --org {} volumes list", org_id_str.clone()),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!("Restored volume {}", response.id.as_str()),
+        "accepted",
+        "volumes.restore",
+        "volume",
+        &response,
+        serde_json::json!({
+            "volume_id": response.id,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }

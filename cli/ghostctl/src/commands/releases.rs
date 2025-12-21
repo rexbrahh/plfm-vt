@@ -2,13 +2,13 @@
 
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_single, print_success, OutputFormat};
+use crate::output::{print_output, print_receipt, print_single, OutputFormat, ReceiptNextStep};
 
 use super::CommandContext;
 
@@ -118,13 +118,13 @@ struct ListReleasesResponse {
     next_cursor: Option<String>,
 }
 
-/// Create release request.
 #[derive(Debug, Serialize)]
 struct CreateReleaseRequest {
     image_ref: String,
     image_digest: String,
     manifest_schema_version: i32,
     manifest_hash: String,
+    command: Vec<String>,
 }
 
 /// List all releases for the current app.
@@ -160,11 +160,22 @@ async fn create_release(ctx: CommandContext, args: CreateReleaseArgs) -> Result<
         anyhow::bail!("use either --manifest or --manifest-hash (not both)");
     }
 
-    let manifest_hash = if let Some(hash) = args.manifest_hash.as_deref() {
-        hash.to_string()
+    let (manifest_hash, command) = if let Some(hash) = args.manifest_hash.as_deref() {
+        let command = if let Some(path) = args.manifest.as_ref() {
+            let contents = std::fs::read_to_string(path)
+                .with_context(|| format!("failed to read manifest: {}", path.display()))?;
+            command_from_manifest_contents(&contents)?
+        } else {
+            default_command()
+        };
+        (hash.to_string(), command)
     } else {
         let path = args.manifest.unwrap_or_else(|| PathBuf::from("vt.toml"));
-        crate::manifest::manifest_hash_from_path(&path)?
+        let contents = std::fs::read_to_string(&path)
+            .with_context(|| format!("failed to read manifest: {}", path.display()))?;
+        let manifest_hash = crate::manifest::manifest_hash_from_toml_str(&contents)?;
+        let command = command_from_manifest_contents(&contents)?;
+        (manifest_hash, command)
     };
 
     let request = CreateReleaseRequest {
@@ -172,6 +183,7 @@ async fn create_release(ctx: CommandContext, args: CreateReleaseArgs) -> Result<
         image_digest: args.image_digest.clone(),
         manifest_schema_version: args.manifest_schema_version,
         manifest_hash,
+        command,
     };
     let path = format!("/v1/orgs/{}/apps/{}/releases", org, app);
     let idempotency_key = match ctx.idempotency_key.as_deref() {
@@ -183,12 +195,56 @@ async fn create_release(ctx: CommandContext, args: CreateReleaseArgs) -> Result<
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!("Created release {} for app {}", response.id, app));
-        }
-    }
+    let release_id = response.id.clone();
+    let org_id_str = org.to_string();
+    let app_id_str = app.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} releases get {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                release_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} --env <env> deploys create {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                release_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!(
+                "vt events tail --org {} --app {}",
+                org_id_str.clone(),
+                app_id_str.clone()
+            ),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Created release {} for app {}",
+            release_id.as_str(),
+            app_id_str.as_str()
+        ),
+        "accepted",
+        "releases.create",
+        "release",
+        &response,
+        serde_json::json!({
+            "release_id": release_id,
+            "app_id": app_id_str,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -214,4 +270,39 @@ async fn get_release(ctx: CommandContext, args: GetReleaseArgs) -> Result<()> {
 
     print_single(&response, ctx.format);
     Ok(())
+}
+
+fn default_command() -> Vec<String> {
+    vec!["./start".to_string()]
+}
+
+fn command_from_manifest_contents(contents: &str) -> Result<Vec<String>> {
+    let manifest_json = crate::manifest::manifest_json_from_toml_str(contents)?;
+    let Some(processes) = manifest_json.get("processes").and_then(|v| v.as_object()) else {
+        anyhow::bail!("manifest missing [processes] section (at least one process type required)");
+    };
+
+    let mut keys: Vec<&String> = processes.keys().collect();
+    keys.sort();
+    let Some(primary) = keys.first() else {
+        anyhow::bail!("manifest [processes] must include at least one process type");
+    };
+
+    let command = processes
+        .get(*primary)
+        .and_then(|process| process.get("command"))
+        .and_then(|command| command.as_array())
+        .map(|command| {
+            command
+                .iter()
+                .filter_map(|entry| entry.as_str().map(str::to_string))
+                .collect::<Vec<String>>()
+        })
+        .unwrap_or_default();
+
+    if command.is_empty() {
+        Ok(default_command())
+    } else {
+        Ok(command)
+    }
 }

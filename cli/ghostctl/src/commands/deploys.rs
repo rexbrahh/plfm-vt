@@ -10,7 +10,9 @@ use tokio::time::{sleep, Instant};
 
 use crate::client::ApiClient;
 use crate::error::CliError;
-use crate::output::{print_info, print_output, print_single, print_success, OutputFormat};
+use crate::output::{
+    print_info, print_output, print_receipt, print_single, OutputFormat, ReceiptNextStep,
+};
 
 use super::CommandContext;
 
@@ -349,35 +351,93 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
         .await?;
 
     let deploy_id = response.id.clone();
+    let org_id_str = org_id.to_string();
+    let app_id_str = app_id.to_string();
+    let env_id_str = env_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} --env {} deploys get {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone(),
+                deploy_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} --env {} instances list",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!(
+                "vt events tail --org {} --app {} --env {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+    ];
 
-    match ctx.format {
-        OutputFormat::Json if !args.wait => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!("Created deploy {} for env {}", deploy_id, env_id));
-        }
-        _ => {}
-    }
-
-    // Wait for convergence if requested
-    if args.wait {
-        let final_response = wait_for_deploy(
-            &client,
-            org_id,
-            app_id,
-            env_id,
-            &deploy_id,
-            wait_timeout,
+    if !args.wait {
+        print_receipt(
             ctx.format,
-        )
-        .await?;
-
-        match ctx.format {
-            OutputFormat::Json => print_single(&final_response, ctx.format),
-            OutputFormat::Table => {
-                print_success(&format!("Deploy {} completed successfully", deploy_id));
-            }
-        }
+            &format!(
+                "Created deploy {} for env {}",
+                deploy_id.as_str(),
+                env_id_str.as_str()
+            ),
+            "accepted",
+            "deploys.create",
+            "deploy",
+            &response,
+            serde_json::json!({
+                "deploy_id": deploy_id,
+                "env_id": env_id_str,
+                "app_id": app_id_str,
+                "org_id": org_id_str
+            }),
+            &next,
+        );
+        return Ok(());
     }
+
+    let final_response = wait_for_deploy(
+        &client,
+        org_id,
+        app_id,
+        env_id,
+        &deploy_id,
+        wait_timeout,
+        ctx.format,
+    )
+    .await?;
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Deploy {} completed with status {}",
+            deploy_id.as_str(),
+            final_response.status.as_str()
+        ),
+        final_response.status.as_str(),
+        "deploys.create",
+        "deploy",
+        &final_response,
+        serde_json::json!({
+            "deploy_id": deploy_id,
+            "env_id": env_id.to_string(),
+            "app_id": app_id.to_string(),
+            "org_id": org_id.to_string()
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -417,38 +477,93 @@ async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
         .await?;
 
     let deploy_id = response.id.clone();
+    let org_id_str = org_id.to_string();
+    let app_id_str = app_id.to_string();
+    let env_id_str = env_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} --env {} deploys get {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone(),
+                deploy_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} --env {} status",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!(
+                "vt events tail --org {} --app {} --env {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+    ];
 
-    match ctx.format {
-        OutputFormat::Json if !args.wait => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Created rollback {} for env {}",
-                deploy_id, env_id
-            ));
-        }
-        _ => {}
-    }
-
-    // Wait for convergence if requested
-    if args.wait {
-        let final_response = wait_for_deploy(
-            &client,
-            org_id,
-            app_id,
-            env_id,
-            &deploy_id,
-            wait_timeout,
+    if !args.wait {
+        print_receipt(
             ctx.format,
-        )
-        .await?;
-
-        match ctx.format {
-            OutputFormat::Json => print_single(&final_response, ctx.format),
-            OutputFormat::Table => {
-                print_success(&format!("Rollback {} completed successfully", deploy_id));
-            }
-        }
+            &format!(
+                "Created rollback {} for env {}",
+                deploy_id.as_str(),
+                env_id_str.as_str()
+            ),
+            "accepted",
+            "rollbacks.create",
+            "deploy",
+            &response,
+            serde_json::json!({
+                "deploy_id": deploy_id,
+                "env_id": env_id_str,
+                "app_id": app_id_str,
+                "org_id": org_id_str
+            }),
+            &next,
+        );
+        return Ok(());
     }
+
+    let final_response = wait_for_deploy(
+        &client,
+        org_id,
+        app_id,
+        env_id,
+        &deploy_id,
+        wait_timeout,
+        ctx.format,
+    )
+    .await?;
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Rollback {} completed with status {}",
+            deploy_id.as_str(),
+            final_response.status.as_str()
+        ),
+        final_response.status.as_str(),
+        "rollbacks.create",
+        "deploy",
+        &final_response,
+        serde_json::json!({
+            "deploy_id": deploy_id,
+            "env_id": env_id.to_string(),
+            "app_id": app_id.to_string(),
+            "org_id": org_id.to_string()
+        }),
+        &next,
+    );
 
     Ok(())
 }

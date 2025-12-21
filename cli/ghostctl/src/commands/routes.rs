@@ -6,7 +6,10 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_single, print_success, OutputFormat};
+use crate::output::{
+    print_output, print_receipt, print_receipt_no_resource, print_single, OutputFormat,
+    ReceiptNextStep,
+};
 
 use super::CommandContext;
 
@@ -285,18 +288,63 @@ async fn create_route(ctx: CommandContext, args: CreateRouteArgs) -> Result<()> 
         .post_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
         .await?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Created route '{}' ({}) -> {}:{}",
-                response.hostname,
-                response.id,
-                response.backend_process_type,
-                response.backend_port
-            ));
-        }
-    }
+    let route_id = response.id.clone();
+    let hostname = response.hostname.clone();
+    let org_id_str = org_id.to_string();
+    let app_id_str = app_id.to_string();
+    let env_id_str = env_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} --env {} routes get {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone(),
+                route_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} --env {} routes list",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!(
+                "vt events tail --org {} --app {} --env {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!(
+            "Created route '{}' ({}) -> {}:{}",
+            hostname,
+            route_id.as_str(),
+            response.backend_process_type.as_str(),
+            response.backend_port
+        ),
+        "accepted",
+        "routes.create",
+        "route",
+        &response,
+        serde_json::json!({
+            "route_id": route_id,
+            "env_id": env_id_str,
+            "app_id": app_id_str,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -335,15 +383,48 @@ async fn update_route(ctx: CommandContext, args: UpdateRouteArgs) -> Result<()> 
             other => other,
         })?;
 
-    match ctx.format {
-        OutputFormat::Json => print_single(&response, ctx.format),
-        OutputFormat::Table => {
-            print_success(&format!(
-                "Updated route '{}' ({})",
-                response.hostname, response.id
-            ));
-        }
-    }
+    let route_id = response.id.clone();
+    let hostname = response.hostname.clone();
+    let org_id_str = org_id.to_string();
+    let app_id_str = app_id.to_string();
+    let env_id_str = env_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} --env {} routes get {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone(),
+                route_id.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!(
+                "vt events tail --org {} --app {} --env {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        &format!("Updated route '{}' ({})", hostname, route_id.as_str()),
+        "accepted",
+        "routes.update",
+        "route",
+        &response,
+        serde_json::json!({
+            "route_id": route_id,
+            "env_id": env_id_str,
+            "app_id": app_id_str,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }
@@ -374,14 +455,44 @@ async fn delete_route(ctx: CommandContext, args: DeleteRouteArgs) -> Result<()> 
             other => other,
         })?;
 
-    match ctx.format {
-        OutputFormat::Json => {
-            print_single(&serde_json::json!({ "ok": true }), ctx.format);
-        }
-        OutputFormat::Table => {
-            print_success(&format!("Deleted route '{}'", args.route));
-        }
-    }
+    let org_id_str = org_id.to_string();
+    let app_id_str = app_id.to_string();
+    let env_id_str = env_id.to_string();
+    let route_id = args.route.clone();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} --env {} routes list",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!(
+                "vt events tail --org {} --app {} --env {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+    ];
+
+    print_receipt_no_resource(
+        ctx.format,
+        &format!("Deleted route '{}'", route_id),
+        "accepted",
+        "routes.delete",
+        serde_json::json!({
+            "route_id": route_id,
+            "env_id": env_id_str,
+            "app_id": app_id_str,
+            "org_id": org_id_str
+        }),
+        &next,
+    );
 
     Ok(())
 }
