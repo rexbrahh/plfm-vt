@@ -612,4 +612,52 @@ async fn test_instance_status_reporting() {
             .unwrap();
 
     assert_eq!(row.map(|r| r.0), Some("ready".to_string()));
+
+    let resp_failed = harness
+        .client
+        .post(&status_url)
+        .json(&serde_json::json!({
+            "status": "failed",
+            "error_message": "OOM killed",
+            "exit_code": 137
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    let failed_status = resp_failed.status();
+    let failed_body: serde_json::Value = resp_failed.json().await.unwrap();
+    assert!(
+        failed_status.is_success(),
+        "Status report should succeed: {} - {:?}",
+        failed_status,
+        failed_body
+    );
+    assert!(
+        failed_body["accepted"].as_bool().unwrap_or(false),
+        "Status should be accepted"
+    );
+
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let row: Option<(String,)> =
+        sqlx::query_as("SELECT status FROM instances_status_view WHERE instance_id = $1")
+            .bind(&instance_id)
+            .fetch_optional(&harness.scheduler_pool)
+            .await
+            .unwrap();
+
+    assert_eq!(row.map(|r| r.0), Some("failed".to_string()));
+
+    let payload: serde_json::Value = sqlx::query_scalar(
+        "SELECT payload FROM events WHERE aggregate_id = $1 AND event_type = 'instance.status_changed' ORDER BY event_id DESC LIMIT 1",
+    )
+    .bind(&instance_id)
+    .fetch_one(&harness.scheduler_pool)
+    .await
+    .unwrap();
+
+    assert_eq!(payload["new_status"], "failed");
+    assert_eq!(payload["error_message"], "OOM killed");
+    assert_eq!(payload["exit_code"], 137);
 }
