@@ -12,7 +12,10 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
-use crate::client::{ControlPlaneClient, InstancePlan, InstanceStatus, InstanceStatusReport};
+use crate::client::{
+    ControlPlaneClient, DesiredInstanceAssignment, InstanceDesiredState, InstancePlan,
+    InstanceStatus, InstanceStatusReport,
+};
 use crate::runtime::{Runtime, VmHandle};
 use crate::vsock::{ConfigStore, PendingConfig};
 
@@ -71,11 +74,8 @@ pub struct InstanceManager {
     /// Current instances by instance_id.
     instances: RwLock<HashMap<String, InstanceState>>,
 
-    /// Last applied plan version.
-    last_plan_version: RwLock<i64>,
-
-    /// Node overlay IPv6 address (/128).
-    node_overlay_ipv6: RwLock<Option<String>>,
+    last_cursor_event_id: RwLock<i64>,
+    last_plan_id: RwLock<Option<String>>,
 
     /// Config store for guest-init handshake.
     config_store: Arc<ConfigStore>,
@@ -97,8 +97,8 @@ impl InstanceManager {
         Self {
             runtime,
             instances: RwLock::new(HashMap::new()),
-            last_plan_version: RwLock::new(0),
-            node_overlay_ipv6: RwLock::new(None),
+            last_cursor_event_id: RwLock::new(0),
+            last_plan_id: RwLock::new(None),
             config_store,
             control_plane,
             config_generation: AtomicU64::new(1),
@@ -114,43 +114,38 @@ impl InstanceManager {
             .count() as i32
     }
 
-    /// Get the last applied plan version.
-    pub async fn last_plan_version(&self) -> i64 {
-        *self.last_plan_version.read().await
-    }
-
-    pub async fn set_node_overlay_ipv6(&self, overlay_ipv6: Option<String>) {
-        let mut current = self.node_overlay_ipv6.write().await;
-        if *current == overlay_ipv6 {
-            return;
-        }
-        *current = overlay_ipv6.clone();
-        match overlay_ipv6 {
-            Some(value) => info!(node_overlay_ipv6 = %value, "Updated node overlay IPv6"),
-            None => info!("Cleared node overlay IPv6"),
-        }
+    pub async fn last_cursor_event_id(&self) -> i64 {
+        *self.last_cursor_event_id.read().await
     }
 
     /// Apply a new plan, converging the local state to match.
-    pub async fn apply_plan(&self, plan_version: i64, desired_instances: Vec<InstancePlan>) {
-        let last_version = *self.last_plan_version.read().await;
-        if plan_version <= last_version {
-            debug!(
-                plan_version,
-                last_version, "Plan version not newer, skipping"
-            );
+    pub async fn apply_plan(
+        &self,
+        cursor_event_id: i64,
+        plan_id: String,
+        desired_instances: Vec<DesiredInstanceAssignment>,
+    ) {
+        let last_cursor = *self.last_cursor_event_id.read().await;
+        if cursor_event_id < last_cursor {
             return;
         }
 
+        if cursor_event_id == last_cursor {
+            let last_plan_id = self.last_plan_id.read().await.clone();
+            if last_plan_id.as_deref() == Some(plan_id.as_str()) {
+                return;
+            }
+        }
+
         info!(
-            plan_version,
+            cursor_event_id,
             instance_count = desired_instances.len(),
             "Applying new plan"
         );
 
         let desired_ids: std::collections::HashSet<_> = desired_instances
             .iter()
-            .map(|i| i.instance_id.clone())
+            .map(|assignment| assignment.instance_id.clone())
             .collect();
 
         // Find instances to stop (in current state but not in desired)
@@ -169,12 +164,26 @@ impl InstanceManager {
         }
 
         // Start or update instances
-        for plan in desired_instances {
-            self.ensure_instance(plan).await;
+        for assignment in desired_instances {
+            match assignment.desired_state {
+                InstanceDesiredState::Running => {
+                    if let Some(plan) = assignment.workload {
+                        self.ensure_instance(plan).await;
+                    } else {
+                        warn!(
+                            instance_id = %assignment.instance_id,
+                            "Missing workload spec for running instance"
+                        );
+                    }
+                }
+                InstanceDesiredState::Draining | InstanceDesiredState::Stopped => {
+                    self.stop_instance(&assignment.instance_id).await;
+                }
+            }
         }
 
-        // Update plan version
-        *self.last_plan_version.write().await = plan_version;
+        *self.last_cursor_event_id.write().await = cursor_event_id;
+        *self.last_plan_id.write().await = Some(plan_id);
     }
 
     /// Ensure an instance is running with the given plan.
@@ -190,8 +199,11 @@ impl InstanceManager {
         match existing {
             Some(existing) => {
                 // Instance exists - check if it needs updating
-                if existing.plan.release_id != plan.release_id || existing.plan.image != plan.image
-                {
+                let image_changed = existing.plan.image.resolved_digest
+                    != plan.image.resolved_digest
+                    || existing.plan.image.image_ref != plan.image.image_ref;
+
+                if existing.plan.release_id != plan.release_id || image_changed {
                     info!(
                         instance_id = %instance_id,
                         old_release = %existing.plan.release_id,
@@ -214,25 +226,39 @@ impl InstanceManager {
     /// Start a new instance.
     async fn start_instance(&self, plan: InstancePlan) {
         let instance_id = plan.instance_id.clone();
-        let env_var_count = plan.env_vars.as_object().map(|m| m.len()).unwrap_or(0);
-        let volume_count = plan.volumes.len();
-        let read_only_volume_count = plan.volumes.iter().filter(|v| v.read_only).count();
+        let env_var_count = plan.env_vars.as_ref().map(|m| m.len()).unwrap_or(0);
+        let mount_count = plan.mounts.as_ref().map(|m| m.len()).unwrap_or(0);
+        let read_only_mount_count = plan
+            .mounts
+            .as_ref()
+            .map(|m| m.iter().filter(|mount| mount.read_only).count())
+            .unwrap_or(0);
         let non_empty_volume_ids = plan
-            .volumes
-            .iter()
-            .filter(|v| !v.volume_id.is_empty())
-            .count();
-        let total_mount_path_chars: usize = plan.volumes.iter().map(|v| v.mount_path.len()).sum();
+            .mounts
+            .as_ref()
+            .map(|m| m.iter().filter(|mount| !mount.volume_id.is_empty()).count())
+            .unwrap_or(0);
+        let total_mount_path_chars: usize = plan
+            .mounts
+            .as_ref()
+            .map(|m| m.iter().map(|mount| mount.mount_path.len()).sum())
+            .unwrap_or(0);
+        let image_label = plan
+            .image
+            .image_ref
+            .as_deref()
+            .unwrap_or(&plan.image.resolved_digest);
 
         info!(
             instance_id = %instance_id,
             app_id = %plan.app_id,
             env_id = %plan.env_id,
-            deploy_id = %plan.deploy_id,
-            image = %plan.image,
+            release_id = %plan.release_id,
+            manifest_hash = %plan.manifest_hash,
+            image = %image_label,
             env_var_count,
-            volume_count,
-            read_only_volume_count,
+            mount_count,
+            read_only_mount_count,
             non_empty_volume_ids,
             total_mount_path_chars,
             "Starting instance"
@@ -241,7 +267,11 @@ impl InstanceManager {
         // Create initial state
         let mut state = InstanceState::from_plan(plan.clone());
 
-        let secrets_data = match plan.secrets_version_id.as_deref() {
+        let secret_version_id = plan
+            .secrets
+            .as_ref()
+            .and_then(|secrets| secrets.secret_version_id.as_deref());
+        let secrets_data = match secret_version_id {
             Some(version_id) => match self.control_plane.fetch_secret_material(version_id).await {
                 Ok(payload) => Some(payload.data),
                 Err(e) => {
@@ -257,16 +287,21 @@ impl InstanceManager {
         };
 
         let generation = self.config_generation.fetch_add(1, Ordering::SeqCst);
-        let overlay_ipv6 = if plan.overlay_ipv6.is_empty() {
+        let overlay_ipv6 = if plan.network.overlay_ipv6.is_empty() {
             "fd00::1".to_string()
         } else {
-            plan.overlay_ipv6.clone()
+            plan.network.overlay_ipv6.clone()
+        };
+        let gateway_ipv6 = if plan.network.gateway_ipv6.is_empty() {
+            "fe80::1".to_string()
+        } else {
+            plan.network.gateway_ipv6.clone()
         };
 
         let pending = PendingConfig {
             plan: plan.clone(),
             overlay_ipv6,
-            gateway_ipv6: "fe80::1".to_string(),
+            gateway_ipv6,
             generation,
             secrets_data,
         };
@@ -386,27 +421,51 @@ impl InstanceManager {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_instance_state_from_plan() {
-        let plan = InstancePlan {
-            instance_id: "inst_123".to_string(),
+    fn test_plan() -> InstancePlan {
+        InstancePlan {
+            spec_version: "v1".to_string(),
+            org_id: "org_test".to_string(),
             app_id: "app_456".to_string(),
             env_id: "env_789".to_string(),
             process_type: "web".to_string(),
+            instance_id: "inst_123".to_string(),
+            generation: 1,
             release_id: "rel_abc".to_string(),
-            deploy_id: "dep_xyz".to_string(),
-            image: "ghcr.io/org/app:v1".to_string(),
-            command: vec!["./start".to_string()],
-            resources: crate::client::InstanceResources {
-                cpu: 1.0,
-                memory_bytes: 512 * 1024 * 1024,
+            image: crate::client::WorkloadImage {
+                image_ref: Some("ghcr.io/org/app:v1".to_string()),
+                digest: "sha256:manifest".to_string(),
+                index_digest: None,
+                resolved_digest: "sha256:resolved".to_string(),
+                os: "linux".to_string(),
+                arch: "amd64".to_string(),
             },
-            overlay_ipv6: "fd00::1".to_string(),
-            secrets_version_id: None,
-            env_vars: serde_json::json!({}),
-            volumes: vec![],
-        };
+            manifest_hash: "hash_abc".to_string(),
+            command: vec!["./start".to_string()],
+            workdir: None,
+            env_vars: None,
+            resources: crate::client::WorkloadResources {
+                cpu_request: 1.0,
+                memory_limit_bytes: 512 * 1024 * 1024,
+                ephemeral_disk_bytes: None,
+                vcpu_count: None,
+                cpu_weight: None,
+            },
+            network: crate::client::WorkloadNetwork {
+                overlay_ipv6: "fd00::1".to_string(),
+                gateway_ipv6: "fd00::1".to_string(),
+                mtu: Some(1420),
+                dns: None,
+                ports: None,
+            },
+            mounts: None,
+            secrets: None,
+            spec_hash: None,
+        }
+    }
 
+    #[test]
+    fn test_instance_state_from_plan() {
+        let plan = test_plan();
         let state = InstanceState::from_plan(plan);
         assert_eq!(state.status, InstanceStatus::Booting);
         assert!(state.boot_id.is_none());
@@ -414,25 +473,7 @@ mod tests {
 
     #[test]
     fn test_instance_state_to_status_report() {
-        let plan = InstancePlan {
-            instance_id: "inst_123".to_string(),
-            app_id: "app_456".to_string(),
-            env_id: "env_789".to_string(),
-            process_type: "web".to_string(),
-            release_id: "rel_abc".to_string(),
-            deploy_id: "dep_xyz".to_string(),
-            image: "ghcr.io/org/app:v1".to_string(),
-            command: vec!["./start".to_string()],
-            resources: crate::client::InstanceResources {
-                cpu: 1.0,
-                memory_bytes: 512 * 1024 * 1024,
-            },
-            overlay_ipv6: "fd00::1".to_string(),
-            secrets_version_id: None,
-            env_vars: serde_json::json!({}),
-            volumes: vec![],
-        };
-
+        let plan = test_plan();
         let mut state = InstanceState::from_plan(plan);
         state.status = InstanceStatus::Ready;
         state.boot_id = Some("boot_abc".to_string());

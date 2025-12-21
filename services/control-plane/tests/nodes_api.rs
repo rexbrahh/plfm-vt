@@ -505,17 +505,17 @@ async fn test_node_plan_with_scheduled_instance() {
         .expect("missing instances array");
     assert!(!instances.is_empty(), "Plan should have scheduled instance");
 
-    // Verify instance has required fields
     let instance = &instances[0];
     assert!(
         instance["instance_id"].as_str().is_some(),
         "missing instance_id"
     );
+    let workload = &instance["workload"];
     assert!(
-        instance["release_id"].as_str().is_some(),
-        "missing release_id"
+        workload["release_id"].as_str().is_some(),
+        "missing workload.release_id"
     );
-    assert!(instance["image"].as_str().is_some(), "missing image");
+    assert!(workload["image"].is_object(), "missing workload.image");
 }
 
 #[tokio::test]
@@ -657,7 +657,7 @@ async fn test_instance_status_reporting() {
     .await
     .unwrap();
 
-    assert_eq!(payload["new_status"], "failed");
-    assert_eq!(payload["error_message"], "OOM killed");
+    assert_eq!(payload["status"], "failed");
+    assert_eq!(payload["reason_detail"], "OOM killed");
     assert_eq!(payload["exit_code"], 137);
 }

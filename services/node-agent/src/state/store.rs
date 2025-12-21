@@ -67,8 +67,8 @@ impl InstancePhase {
 /// Node-level state.
 #[derive(Debug, Clone, Default)]
 pub struct NodeState {
-    /// Current plan version.
-    pub plan_version: i64,
+    pub cursor_event_id: i64,
+    pub plan_id: Option<String>,
     /// Event cursor for resuming sync.
     pub event_cursor: Option<String>,
     /// Last heartbeat timestamp (Unix seconds).
@@ -129,7 +129,8 @@ impl StateStore {
             r#"
             CREATE TABLE IF NOT EXISTS node_state (
                 id INTEGER PRIMARY KEY CHECK (id = 1),
-                plan_version INTEGER NOT NULL DEFAULT 0,
+                cursor_event_id INTEGER NOT NULL DEFAULT 0,
+                plan_id TEXT,
                 event_cursor TEXT,
                 last_heartbeat INTEGER NOT NULL DEFAULT 0
             );
@@ -158,14 +159,15 @@ impl StateStore {
     /// Get node state.
     pub fn get_node_state(&self) -> Result<NodeState, StateStoreError> {
         let mut stmt = self.conn.prepare(
-            "SELECT plan_version, event_cursor, last_heartbeat FROM node_state WHERE id = 1",
+            "SELECT cursor_event_id, plan_id, event_cursor, last_heartbeat FROM node_state WHERE id = 1",
         )?;
 
         stmt.query_row([], |row| {
             Ok(NodeState {
-                plan_version: row.get(0)?,
-                event_cursor: row.get(1)?,
-                last_heartbeat: row.get(2)?,
+                cursor_event_id: row.get(0)?,
+                plan_id: row.get(1)?,
+                event_cursor: row.get(2)?,
+                last_heartbeat: row.get(3)?,
             })
         })
         .map_err(Into::into)
@@ -174,17 +176,29 @@ impl StateStore {
     /// Update node state.
     pub fn set_node_state(&self, state: &NodeState) -> Result<(), StateStoreError> {
         self.conn.execute(
-            "UPDATE node_state SET plan_version = ?1, event_cursor = ?2, last_heartbeat = ?3 WHERE id = 1",
-            params![state.plan_version, state.event_cursor, state.last_heartbeat],
+            "UPDATE node_state SET cursor_event_id = ?1, plan_id = ?2, event_cursor = ?3, last_heartbeat = ?4 WHERE id = 1",
+            params![
+                state.cursor_event_id,
+                state.plan_id,
+                state.event_cursor,
+                state.last_heartbeat
+            ],
         )?;
         Ok(())
     }
 
-    /// Update plan version.
-    pub fn set_plan_version(&self, version: i64) -> Result<(), StateStoreError> {
+    pub fn set_cursor_event_id(&self, cursor_event_id: i64) -> Result<(), StateStoreError> {
         self.conn.execute(
-            "UPDATE node_state SET plan_version = ?1 WHERE id = 1",
-            params![version],
+            "UPDATE node_state SET cursor_event_id = ?1 WHERE id = 1",
+            params![cursor_event_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn set_plan_id(&self, plan_id: Option<&str>) -> Result<(), StateStoreError> {
+        self.conn.execute(
+            "UPDATE node_state SET plan_id = ?1 WHERE id = 1",
+            params![plan_id],
         )?;
         Ok(())
     }
@@ -358,15 +372,18 @@ mod tests {
 
         // Default state
         let state = store.get_node_state().unwrap();
-        assert_eq!(state.plan_version, 0);
+        assert_eq!(state.cursor_event_id, 0);
+        assert!(state.plan_id.is_none());
         assert!(state.event_cursor.is_none());
 
         // Update state
-        store.set_plan_version(42).unwrap();
+        store.set_cursor_event_id(42).unwrap();
+        store.set_plan_id(Some("plan-123")).unwrap();
         store.set_event_cursor("cursor-123").unwrap();
 
         let state = store.get_node_state().unwrap();
-        assert_eq!(state.plan_version, 42);
+        assert_eq!(state.cursor_event_id, 42);
+        assert_eq!(state.plan_id, Some("plan-123".to_string()));
         assert_eq!(state.event_cursor, Some("cursor-123".to_string()));
     }
 

@@ -268,7 +268,7 @@ async fn report_status(
     }
 
     // Get current status if exists
-    let current_status = sqlx::query_scalar::<_, Option<String>>(
+    let _current_status = sqlx::query_scalar::<_, Option<String>>(
         "SELECT status FROM instances_status_view WHERE instance_id = $1",
     )
     .bind(&instance_id)
@@ -283,7 +283,7 @@ async fn report_status(
 
     // Get instance details for the event
     let instance_info = sqlx::query_as::<_, InstanceInfoRow>(
-        "SELECT org_id, app_id, env_id FROM instances_desired_view WHERE instance_id = $1",
+        "SELECT org_id, app_id, env_id, node_id FROM instances_desired_view WHERE instance_id = $1",
     )
     .bind(&instance_id)
     .fetch_optional(state.db().pool())
@@ -347,11 +347,13 @@ async fn report_status(
         causation_id: None,
         payload: serde_json::json!({
             "instance_id": instance_id,
-            "old_status": current_status.unwrap_or_else(|| "unknown".to_string()),
-            "new_status": req.status,
+            "node_id": instance_info.node_id,
+            "status": req.status,
             "boot_id": req.boot_id,
-            "error_message": req.error_message,
             "exit_code": req.exit_code,
+            "reason_code": if req.status == "failed" { req.error_message.as_ref().map(|_| "unknown_error") } else { None },
+            "reason_detail": req.error_message,
+            "reported_at": chrono::Utc::now().to_rfc3339(),
         }),
     };
 
@@ -436,6 +438,7 @@ struct InstanceInfoRow {
     org_id: String,
     app_id: String,
     env_id: String,
+    node_id: String,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for InstanceInfoRow {
@@ -445,6 +448,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for InstanceInfoRow {
             org_id: row.try_get("org_id")?,
             app_id: row.try_get("app_id")?,
             env_id: row.try_get("env_id")?,
+            node_id: row.try_get("node_id")?,
         })
     }
 }

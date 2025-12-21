@@ -221,6 +221,8 @@ async fn create_project(
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
+            "project_id": project_id.to_string(),
+            "org_id": org_id.to_string(),
             "name": req.name
         }),
     };
@@ -439,6 +441,8 @@ async fn update_project(
 
     let next_version = current.resource_version + 1;
     let payload = serde_json::json!({
+        "project_id": project_id.to_string(),
+        "org_id": org_id.to_string(),
         "name": req.name
     });
 

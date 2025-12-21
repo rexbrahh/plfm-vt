@@ -365,9 +365,14 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
     // -------------------------------------------------------------------------
 
     async fn start_instance(&mut self, spec: &InstancePlan) -> Result<(), ActorError> {
+        let image_label = spec
+            .image
+            .image_ref
+            .as_deref()
+            .unwrap_or(spec.image.resolved_digest.as_str());
         info!(
             instance_id = %self.instance_id,
-            image = %spec.image,
+            image = %image_label,
             "Starting instance"
         );
 
@@ -441,7 +446,9 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
     fn needs_restart(&self, new_spec: &InstancePlan) -> bool {
         if let Some(current) = &self.current_spec {
             // Restart if image or release changed
-            current.image != new_spec.image || current.release_id != new_spec.release_id
+            let image_changed = current.image.resolved_digest != new_spec.image.resolved_digest
+                || current.image.image_ref != new_spec.image.image_ref;
+            image_changed || current.release_id != new_spec.release_id
         } else {
             false
         }
@@ -579,22 +586,43 @@ mod tests {
 
     fn test_plan() -> InstancePlan {
         InstancePlan {
-            instance_id: "inst_test".to_string(),
+            spec_version: "v1".to_string(),
+            org_id: "org_test".to_string(),
             app_id: "app_test".to_string(),
             env_id: "env_test".to_string(),
             process_type: "web".to_string(),
+            instance_id: "inst_test".to_string(),
+            generation: 1,
             release_id: "rel_test".to_string(),
-            deploy_id: "dep_test".to_string(),
-            image: "test:latest".to_string(),
-            command: vec!["./start".to_string()],
-            resources: crate::client::InstanceResources {
-                cpu: 1.0,
-                memory_bytes: 512 * 1024 * 1024,
+            image: crate::client::WorkloadImage {
+                image_ref: Some("test:latest".to_string()),
+                digest: "sha256:manifest".to_string(),
+                index_digest: None,
+                resolved_digest: "sha256:resolved".to_string(),
+                os: "linux".to_string(),
+                arch: "amd64".to_string(),
             },
-            overlay_ipv6: "fd00::1".to_string(),
-            secrets_version_id: None,
-            env_vars: serde_json::json!({}),
-            volumes: vec![],
+            manifest_hash: "hash_test".to_string(),
+            command: vec!["./start".to_string()],
+            workdir: None,
+            env_vars: None,
+            resources: crate::client::WorkloadResources {
+                cpu_request: 1.0,
+                memory_limit_bytes: 512 * 1024 * 1024,
+                ephemeral_disk_bytes: None,
+                vcpu_count: None,
+                cpu_weight: None,
+            },
+            network: crate::client::WorkloadNetwork {
+                overlay_ipv6: "fd00::1".to_string(),
+                gateway_ipv6: "fd00::1".to_string(),
+                mtu: Some(1420),
+                dns: None,
+                ports: None,
+            },
+            mounts: None,
+            secrets: None,
+            spec_hash: None,
         }
     }
 

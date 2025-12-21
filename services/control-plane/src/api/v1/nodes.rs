@@ -12,7 +12,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use plfm_events::{ActorType, AggregateType, NodeState};
-use plfm_id::{AppId, EnvId, InstanceId, NodeId, OrgId, SecretVersionId};
+use plfm_id::{AppId, AssignmentId, EnvId, InstanceId, NodeId, OrgId, SecretVersionId, Ulid};
 use serde::{Deserialize, Serialize};
 use sqlx::QueryBuilder;
 use std::collections::HashMap;
@@ -26,6 +26,12 @@ use crate::state::AppState;
 
 const MAX_LOG_ENTRIES: usize = 500;
 const MAX_LOG_LINE_BYTES: usize = 16 * 1024;
+const NODE_PLAN_SPEC_VERSION: &str = "v1";
+const WORKLOAD_SPEC_VERSION: &str = "v1";
+const DEFAULT_DRAIN_GRACE_SECONDS: i32 = 10;
+const DEFAULT_EPHEMERAL_DISK_BYTES: i64 = 4 * 1024 * 1024 * 1024;
+const DEFAULT_GATEWAY_IPV6: &str = "fe80::1";
+const DEFAULT_MTU: i32 = 1420;
 
 /// Create node routes.
 ///
@@ -185,59 +191,119 @@ pub struct HeartbeatResponse {
 /// Response for node plan (instances to run).
 #[derive(Debug, Serialize)]
 pub struct NodePlanResponse {
-    /// Plan version (monotonically increasing).
-    pub plan_version: i64,
-
-    /// Node overlay IPv6 address (/128).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub node_overlay_ipv6: Option<String>,
-
-    /// Instances assigned to this node.
-    pub instances: Vec<InstancePlan>,
+    pub spec_version: String,
+    pub node_id: String,
+    pub plan_id: String,
+    pub created_at: DateTime<Utc>,
+    pub cursor_event_id: i64,
+    pub instances: Vec<DesiredInstanceAssignment>,
 }
 
 #[derive(Debug, Serialize)]
-pub struct InstancePlan {
+pub struct DesiredInstanceAssignment {
+    pub assignment_id: String,
+    pub node_id: String,
     pub instance_id: String,
+    pub generation: i32,
+    pub desired_state: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drain_grace_seconds: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workload: Option<WorkloadSpec>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WorkloadSpec {
+    pub spec_version: String,
+    pub org_id: String,
     pub app_id: String,
     pub env_id: String,
     pub process_type: String,
+    pub instance_id: String,
+    pub generation: i32,
     pub release_id: String,
-    pub deploy_id: String,
-    pub image: String,
+    pub image: WorkloadImage,
+    pub manifest_hash: String,
     pub command: Vec<String>,
-    pub resources: InstanceResources,
-    #[serde(default)]
-    pub overlay_ipv6: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub secrets_version_id: Option<String>,
-    #[serde(default)]
-    pub env_vars: serde_json::Value,
-    #[serde(default)]
-    pub volumes: Vec<VolumeMount>,
+    pub workdir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env_vars: Option<HashMap<String, String>>,
+    pub resources: WorkloadResources,
+    pub network: WorkloadNetwork,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mounts: Option<Vec<WorkloadMount>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secrets: Option<WorkloadSecrets>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub spec_hash: Option<String>,
 }
 
-/// Resource requests for an instance.
 #[derive(Debug, Serialize)]
-pub struct InstanceResources {
-    /// CPU cores (can be fractional).
-    pub cpu: f64,
-
-    /// Memory in bytes.
-    pub memory_bytes: i64,
+pub struct WorkloadImage {
+    #[serde(skip_serializing_if = "Option::is_none", rename = "ref")]
+    pub image_ref: Option<String>,
+    pub digest: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub index_digest: Option<String>,
+    pub resolved_digest: String,
+    pub os: String,
+    pub arch: String,
 }
 
-/// Volume mount specification.
+#[derive(Debug, Serialize)]
+pub struct WorkloadResources {
+    pub cpu_request: f64,
+    pub memory_limit_bytes: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ephemeral_disk_bytes: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vcpu_count: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cpu_weight: Option<i32>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WorkloadNetwork {
+    pub overlay_ipv6: String,
+    pub gateway_ipv6: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mtu: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dns: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ports: Option<Vec<WorkloadPort>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WorkloadPort {
+    pub name: String,
+    pub port: i32,
+    pub protocol: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
-pub struct VolumeMount {
-    /// Volume ID.
+pub struct WorkloadMount {
     pub volume_id: String,
-
-    /// Mount path inside the instance.
     pub mount_path: String,
-
-    /// Whether the mount is read-only.
     pub read_only: bool,
+    pub filesystem: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_hint: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WorkloadSecrets {
+    pub required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secret_version_id: Option<String>,
+    pub mount_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mode: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uid: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gid: Option<i32>,
 }
 
 /// Secret material response for node agent delivery.
@@ -812,20 +878,20 @@ async fn get_plan(
             .with_request_id(request_id.clone())
     })?;
 
-    let node_overlay_ipv6 = sqlx::query_scalar::<_, Option<String>>(
-        "SELECT host(overlay_ipv6)::TEXT FROM nodes_view WHERE node_id = $1",
+    let node_info = sqlx::query_as::<_, NodePlanNodeRow>(
+        "SELECT labels, mtu FROM nodes_view WHERE node_id = $1",
     )
     .bind(&node_id)
     .fetch_optional(state.db().pool())
     .await
     .map_err(|e| {
-        tracing::error!(error = %e, request_id = %request_id, "Failed to load node overlay IPv6");
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load node info");
         ApiError::internal("internal_error", "Failed to get plan")
             .with_request_id(request_id.clone())
     })?;
 
-    let node_overlay_ipv6 = match node_overlay_ipv6 {
-        Some(value) => value,
+    let node_info = match node_info {
+        Some(info) => info,
         None => {
             return Err(ApiError::not_found(
                 "node_not_found",
@@ -840,22 +906,26 @@ async fn get_plan(
     let instances = sqlx::query_as::<_, InstancePlanRow>(
         r#"
         SELECT i.instance_id,
+               i.org_id,
                i.app_id,
                i.env_id,
                i.process_type,
+               i.node_id,
+               i.desired_state,
+               i.generation,
                i.release_id,
-               COALESCE(i.deploy_id, '') as deploy_id,
                r.image_ref as image_ref,
-               r.index_or_manifest_digest as image_digest,
+               r.index_or_manifest_digest as index_or_manifest_digest,
+               r.resolved_digests as resolved_digests,
+               r.manifest_hash as manifest_hash,
                r.command as command,
                i.secrets_version_id,
                host(i.overlay_ipv6)::TEXT as overlay_ipv6,
                i.resources_snapshot,
-               i.resource_version
+               i.spec_hash
         FROM instances_desired_view i
         JOIN releases_view r ON i.release_id = r.release_id
         WHERE i.node_id = $1
-          AND i.desired_state = 'running'
         ORDER BY i.created_at
         "#,
     )
@@ -868,24 +938,27 @@ async fn get_plan(
             .with_request_id(request_id.clone())
     })?;
 
-    // Get max event_id as plan version
     let event_store = state.db().event_store();
-    let plan_version = event_store.get_max_event_id().await.map_err(|e| {
-        tracing::error!(error = %e, request_id = %request_id, "Failed to get plan version");
+    let cursor_event_id = event_store.get_max_event_id().await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to get plan cursor");
         ApiError::internal("internal_error", "Failed to get plan")
             .with_request_id(request_id.clone())
     })?;
 
     let volume_mounts = load_volume_mounts(&state, &request_id, &instances).await?;
-    let instance_plans: Vec<InstancePlan> = instances
+    let arch_hint = label_value(&node_info.labels, "arch");
+    let instance_assignments: Vec<DesiredInstanceAssignment> = instances
         .into_iter()
-        .map(|row| InstancePlan::from_row(row, &volume_mounts))
+        .map(|row| assignment_from_row(row, &volume_mounts, node_info.mtu, arch_hint.as_deref()))
         .collect();
 
     Ok(Json(NodePlanResponse {
-        plan_version,
-        node_overlay_ipv6,
-        instances: instance_plans,
+        spec_version: NODE_PLAN_SPEC_VERSION.to_string(),
+        node_id,
+        plan_id: Ulid::new().to_string(),
+        created_at: Utc::now(),
+        cursor_event_id,
+        instances: instance_assignments,
     }))
 }
 
@@ -1212,7 +1285,7 @@ async fn report_instance_status(
         .with_request_id(request_id.clone()));
     }
 
-    let current_status = sqlx::query_scalar::<_, Option<String>>(
+    let _current_status = sqlx::query_scalar::<_, Option<String>>(
         "SELECT status FROM instances_status_view WHERE instance_id = $1",
     )
     .bind(instance_id_typed.to_string())
@@ -1294,11 +1367,13 @@ async fn report_instance_status(
         causation_id: None,
         payload: serde_json::json!({
             "instance_id": instance_id_typed.to_string(),
-            "old_status": current_status.unwrap_or_else(|| "unknown".to_string()),
-            "new_status": req.status,
+            "node_id": node_id_typed.to_string(),
+            "status": req.status,
             "boot_id": req.boot_id,
-            "error_message": req.error_message,
             "exit_code": req.exit_code,
+            "reason_code": if req.status == "failed" { req.error_message.as_ref().map(|_| "unknown_error") } else { None },
+            "reason_detail": req.error_message,
+            "reported_at": chrono::Utc::now().to_rfc3339(),
         }),
     };
 
@@ -1378,22 +1453,41 @@ impl From<NodeRow> for NodeResponse {
     }
 }
 
+struct NodePlanNodeRow {
+    labels: serde_json::Value,
+    mtu: Option<i32>,
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for NodePlanNodeRow {
+    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            labels: row.try_get("labels")?,
+            mtu: row.try_get("mtu")?,
+        })
+    }
+}
+
 /// Row for instance plan query.
 struct InstancePlanRow {
     instance_id: String,
+    org_id: String,
     app_id: String,
     env_id: String,
     process_type: String,
+    node_id: String,
+    desired_state: String,
+    generation: i32,
     release_id: String,
-    deploy_id: String,
     image_ref: String,
-    image_digest: String,
+    index_or_manifest_digest: String,
+    resolved_digests: serde_json::Value,
+    manifest_hash: String,
     command: serde_json::Value,
     secrets_version_id: Option<String>,
     overlay_ipv6: Option<String>,
     resources_snapshot: serde_json::Value,
-    #[allow(dead_code)]
-    resource_version: i32,
+    spec_hash: String,
 }
 
 impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for InstancePlanRow {
@@ -1401,47 +1495,24 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for InstancePlanRow {
         use sqlx::Row;
         Ok(Self {
             instance_id: row.try_get("instance_id")?,
+            org_id: row.try_get("org_id")?,
             app_id: row.try_get("app_id")?,
             env_id: row.try_get("env_id")?,
             process_type: row.try_get("process_type")?,
+            node_id: row.try_get("node_id")?,
+            desired_state: row.try_get("desired_state")?,
+            generation: row.try_get("generation")?,
             release_id: row.try_get("release_id")?,
-            deploy_id: row.try_get("deploy_id")?,
             image_ref: row.try_get("image_ref")?,
-            image_digest: row.try_get("image_digest")?,
+            index_or_manifest_digest: row.try_get("index_or_manifest_digest")?,
+            resolved_digests: row.try_get("resolved_digests")?,
+            manifest_hash: row.try_get("manifest_hash")?,
             command: row.try_get("command")?,
             secrets_version_id: row.try_get("secrets_version_id")?,
             overlay_ipv6: row.try_get("overlay_ipv6")?,
             resources_snapshot: row.try_get("resources_snapshot")?,
-            resource_version: row.try_get("resource_version")?,
+            spec_hash: row.try_get("spec_hash")?,
         })
-    }
-}
-
-impl InstancePlan {
-    fn from_row(row: InstancePlanRow, volume_mounts: &VolumeMountMap) -> Self {
-        let image = compose_image_ref(&row.image_ref, &row.image_digest);
-        let resources = resources_from_snapshot(&row.resources_snapshot);
-        let volumes = volume_mounts
-            .get(&(row.env_id.clone(), row.process_type.clone()))
-            .cloned()
-            .unwrap_or_default();
-        let command: Vec<String> = serde_json::from_value(row.command).unwrap_or_default();
-
-        Self {
-            instance_id: row.instance_id,
-            app_id: row.app_id,
-            env_id: row.env_id,
-            process_type: row.process_type,
-            release_id: row.release_id,
-            deploy_id: row.deploy_id,
-            image,
-            command,
-            resources,
-            overlay_ipv6: row.overlay_ipv6.unwrap_or_default(),
-            secrets_version_id: row.secrets_version_id,
-            env_vars: serde_json::json!({}),
-            volumes,
-        }
     }
 }
 
@@ -1511,24 +1582,201 @@ fn normalize_log_line(line: &str, truncated_flag: bool) -> (String, bool) {
     (trimmed, true)
 }
 
-type VolumeMountMap = HashMap<(String, String), Vec<VolumeMount>>;
+type VolumeMountMap = HashMap<(String, String), Vec<WorkloadMount>>;
 
-fn compose_image_ref(image_ref: &str, image_digest: &str) -> String {
-    if image_ref.contains('@') {
-        image_ref.to_string()
-    } else {
-        format!("{image_ref}@{image_digest}")
+#[derive(Debug, Deserialize)]
+struct ResolvedDigestEntry {
+    os: String,
+    arch: String,
+    digest: String,
+}
+
+fn label_value(labels: &serde_json::Value, key: &str) -> Option<String> {
+    labels
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(|value| value.to_string())
+}
+
+fn assignment_id_from_instance_id(instance_id: &str) -> String {
+    match InstanceId::parse(instance_id) {
+        Ok(id) => AssignmentId::from_ulid(id.ulid()).to_string(),
+        Err(_) => AssignmentId::new().to_string(),
     }
 }
 
-fn resources_from_snapshot(snapshot: &serde_json::Value) -> InstanceResources {
-    let cpu = snapshot.get("cpu").and_then(|v| v.as_f64()).unwrap_or(1.0);
-    let memory_bytes = snapshot
-        .get("memory_bytes")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(512 * 1024 * 1024);
+fn assignment_from_row(
+    row: InstancePlanRow,
+    volume_mounts: &VolumeMountMap,
+    node_mtu: Option<i32>,
+    arch_hint: Option<&str>,
+) -> DesiredInstanceAssignment {
+    let workload = if desired_state_requires_workload(&row.desired_state) {
+        Some(workload_spec_from_row(
+            &row,
+            volume_mounts,
+            node_mtu,
+            arch_hint,
+        ))
+    } else {
+        None
+    };
 
-    InstanceResources { cpu, memory_bytes }
+    let drain_grace_seconds = if row.desired_state == "draining" {
+        Some(DEFAULT_DRAIN_GRACE_SECONDS)
+    } else {
+        None
+    };
+
+    DesiredInstanceAssignment {
+        assignment_id: assignment_id_from_instance_id(&row.instance_id),
+        node_id: row.node_id,
+        instance_id: row.instance_id,
+        generation: row.generation,
+        desired_state: row.desired_state,
+        drain_grace_seconds,
+        workload,
+    }
+}
+
+fn workload_spec_from_row(
+    row: &InstancePlanRow,
+    volume_mounts: &VolumeMountMap,
+    node_mtu: Option<i32>,
+    arch_hint: Option<&str>,
+) -> WorkloadSpec {
+    let command: Vec<String> = serde_json::from_value(row.command.clone()).unwrap_or_default();
+    let resources = resources_from_snapshot(&row.resources_snapshot);
+    let mounts = volume_mounts
+        .get(&(row.env_id.clone(), row.process_type.clone()))
+        .cloned()
+        .filter(|items| !items.is_empty());
+    let secrets = row
+        .secrets_version_id
+        .as_ref()
+        .map(|version_id| WorkloadSecrets {
+            required: true,
+            secret_version_id: Some(version_id.clone()),
+            mount_path: "/run/secrets/platform.env".to_string(),
+            mode: None,
+            uid: None,
+            gid: None,
+        });
+    let overlay_ipv6 = row
+        .overlay_ipv6
+        .clone()
+        .unwrap_or_else(|| "fd00::1".to_string());
+    let network = WorkloadNetwork {
+        overlay_ipv6,
+        gateway_ipv6: DEFAULT_GATEWAY_IPV6.to_string(),
+        mtu: Some(node_mtu.unwrap_or(DEFAULT_MTU)),
+        dns: None,
+        ports: None,
+    };
+
+    WorkloadSpec {
+        spec_version: WORKLOAD_SPEC_VERSION.to_string(),
+        org_id: row.org_id.clone(),
+        app_id: row.app_id.clone(),
+        env_id: row.env_id.clone(),
+        process_type: row.process_type.clone(),
+        instance_id: row.instance_id.clone(),
+        generation: row.generation,
+        release_id: row.release_id.clone(),
+        image: workload_image_from_row(row, arch_hint),
+        manifest_hash: row.manifest_hash.clone(),
+        command,
+        workdir: None,
+        env_vars: None,
+        resources,
+        network,
+        mounts,
+        secrets,
+        spec_hash: Some(row.spec_hash.clone()),
+    }
+}
+
+fn workload_image_from_row(row: &InstancePlanRow, arch_hint: Option<&str>) -> WorkloadImage {
+    let entries = resolved_digest_entries(&row.resolved_digests);
+    let resolved = select_resolved_digest(&entries, arch_hint);
+    let resolved_digest = resolved
+        .map(|entry| entry.digest.clone())
+        .unwrap_or_else(|| row.index_or_manifest_digest.clone());
+    let os = resolved
+        .map(|entry| entry.os.clone())
+        .unwrap_or_else(|| "linux".to_string());
+    let arch = resolved
+        .map(|entry| entry.arch.clone())
+        .or_else(|| arch_hint.map(|value| value.to_string()))
+        .unwrap_or_else(|| "amd64".to_string());
+    let index_digest = if resolved_digest != row.index_or_manifest_digest {
+        Some(row.index_or_manifest_digest.clone())
+    } else {
+        None
+    };
+
+    WorkloadImage {
+        image_ref: Some(row.image_ref.clone()),
+        digest: row.index_or_manifest_digest.clone(),
+        index_digest,
+        resolved_digest,
+        os,
+        arch,
+    }
+}
+
+fn resolved_digest_entries(value: &serde_json::Value) -> Vec<ResolvedDigestEntry> {
+    serde_json::from_value(value.clone()).unwrap_or_default()
+}
+
+fn select_resolved_digest<'a>(
+    entries: &'a [ResolvedDigestEntry],
+    arch_hint: Option<&str>,
+) -> Option<&'a ResolvedDigestEntry> {
+    if let Some(arch) = arch_hint {
+        if let Some(entry) = entries.iter().find(|entry| entry.arch == arch) {
+            return Some(entry);
+        }
+    }
+
+    if entries.len() == 1 {
+        return entries.first();
+    }
+
+    None
+}
+
+fn resources_from_snapshot(snapshot: &serde_json::Value) -> WorkloadResources {
+    let cpu_request = snapshot
+        .get("cpu_request")
+        .and_then(|value| value.as_f64())
+        .or_else(|| snapshot.get("cpu").and_then(|value| value.as_f64()))
+        .unwrap_or(1.0);
+    let memory_limit_bytes = snapshot
+        .get("memory_limit_bytes")
+        .and_then(|value| value.as_i64())
+        .or_else(|| {
+            snapshot
+                .get("memory_bytes")
+                .and_then(|value| value.as_i64())
+        })
+        .unwrap_or(512 * 1024 * 1024);
+    let ephemeral_disk_bytes = snapshot
+        .get("ephemeral_disk_bytes")
+        .and_then(|value| value.as_i64())
+        .or(Some(DEFAULT_EPHEMERAL_DISK_BYTES));
+
+    WorkloadResources {
+        cpu_request,
+        memory_limit_bytes,
+        ephemeral_disk_bytes,
+        vcpu_count: None,
+        cpu_weight: None,
+    }
+}
+
+fn desired_state_requires_workload(state: &str) -> bool {
+    matches!(state, "running" | "draining")
 }
 
 async fn load_volume_mounts(
@@ -1577,10 +1825,12 @@ async fn load_volume_mounts(
         mounts
             .entry((row.env_id, row.process_type))
             .or_default()
-            .push(VolumeMount {
+            .push(WorkloadMount {
                 volume_id: row.volume_id,
                 mount_path: row.mount_path,
                 read_only: row.read_only,
+                filesystem: "ext4".to_string(),
+                device_hint: None,
             });
     }
 

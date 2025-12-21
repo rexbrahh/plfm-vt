@@ -16,13 +16,19 @@ pub struct ProjectsProjection;
 
 /// Payload for project.created event.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ProjectCreatedPayload {
+    project_id: String,
+    org_id: String,
     name: String,
 }
 
 /// Payload for project.updated event.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct ProjectUpdatedPayload {
+    project_id: String,
+    org_id: String,
     #[serde(default)]
     name: Option<String>,
 }
@@ -183,8 +189,10 @@ mod tests {
 
     #[test]
     fn test_project_created_payload_deserialization() {
-        let json = r#"{"name": "my-project"}"#;
+        let json = r#"{"project_id": "project_test", "org_id": "org_test", "name": "my-project"}"#;
         let payload: ProjectCreatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.project_id, "project_test");
+        assert_eq!(payload.org_id, "org_test");
         assert_eq!(payload.name, "my-project");
     }
 }

@@ -4,6 +4,7 @@
 //! - Fetching the current plan
 //! - Reporting instance status
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use anyhow::Result;
@@ -51,7 +52,7 @@ impl ControlPlaneClient {
 
         let plan: NodePlan = response.json().await?;
         debug!(
-            plan_version = plan.plan_version,
+            cursor_event_id = plan.cursor_event_id,
             instance_count = plan.instances.len(),
             "Fetched node plan"
         );
@@ -153,60 +154,128 @@ impl ControlPlaneClient {
 /// Node plan from the control plane.
 #[derive(Debug, Clone, Deserialize)]
 pub struct NodePlan {
-    /// Plan version (monotonically increasing).
-    pub plan_version: i64,
+    pub spec_version: String,
+    pub node_id: String,
+    pub plan_id: String,
+    pub created_at: DateTime<Utc>,
+    pub cursor_event_id: i64,
+    pub instances: Vec<DesiredInstanceAssignment>,
+}
 
-    /// Node overlay IPv6 address (/128).
+#[derive(Debug, Clone, Deserialize)]
+pub struct DesiredInstanceAssignment {
+    pub assignment_id: String,
+    pub node_id: String,
+    pub instance_id: String,
+    pub generation: i32,
+    pub desired_state: InstanceDesiredState,
     #[serde(default)]
-    pub node_overlay_ipv6: Option<String>,
+    pub drain_grace_seconds: Option<i32>,
+    #[serde(default)]
+    pub workload: Option<InstancePlan>,
+}
 
-    /// Instances assigned to this node.
-    pub instances: Vec<InstancePlan>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum InstanceDesiredState {
+    Running,
+    Draining,
+    Stopped,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct InstancePlan {
-    pub instance_id: String,
+    pub spec_version: String,
+    pub org_id: String,
     pub app_id: String,
     pub env_id: String,
     pub process_type: String,
+    pub instance_id: String,
+    pub generation: i32,
     pub release_id: String,
-    pub deploy_id: String,
-    pub image: String,
+    pub image: WorkloadImage,
+    pub manifest_hash: String,
     #[serde(default)]
     pub command: Vec<String>,
-    pub resources: InstanceResources,
     #[serde(default)]
+    pub workdir: Option<String>,
+    #[serde(default)]
+    pub env_vars: Option<HashMap<String, String>>,
+    pub resources: WorkloadResources,
+    pub network: WorkloadNetwork,
+    #[serde(default)]
+    pub mounts: Option<Vec<WorkloadMount>>,
+    #[serde(default)]
+    pub secrets: Option<WorkloadSecrets>,
+    #[serde(default)]
+    pub spec_hash: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkloadImage {
+    #[serde(rename = "ref")]
+    pub image_ref: Option<String>,
+    pub digest: String,
+    #[serde(default)]
+    pub index_digest: Option<String>,
+    pub resolved_digest: String,
+    pub os: String,
+    pub arch: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkloadResources {
+    pub cpu_request: f64,
+    pub memory_limit_bytes: i64,
+    #[serde(default)]
+    pub ephemeral_disk_bytes: Option<i64>,
+    #[serde(default)]
+    pub vcpu_count: Option<i32>,
+    #[serde(default)]
+    pub cpu_weight: Option<i32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkloadNetwork {
     pub overlay_ipv6: String,
+    pub gateway_ipv6: String,
     #[serde(default)]
-    pub secrets_version_id: Option<String>,
+    pub mtu: Option<i32>,
     #[serde(default)]
-    pub env_vars: serde_json::Value,
+    pub dns: Option<Vec<String>>,
     #[serde(default)]
-    pub volumes: Vec<VolumeMount>,
+    pub ports: Option<Vec<WorkloadPort>>,
 }
 
-/// Resource requests for an instance.
 #[derive(Debug, Clone, Deserialize)]
-pub struct InstanceResources {
-    /// CPU cores (can be fractional).
-    pub cpu: f64,
-
-    /// Memory in bytes.
-    pub memory_bytes: i64,
+pub struct WorkloadPort {
+    pub name: String,
+    pub port: i32,
+    pub protocol: String,
 }
 
-/// Volume mount specification.
 #[derive(Debug, Clone, Deserialize)]
-pub struct VolumeMount {
-    /// Volume ID.
+pub struct WorkloadMount {
     pub volume_id: String,
-
-    /// Mount path inside the instance.
     pub mount_path: String,
-
-    /// Whether the mount is read-only.
     pub read_only: bool,
+    pub filesystem: String,
+    #[serde(default)]
+    pub device_hint: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkloadSecrets {
+    pub required: bool,
+    #[serde(default)]
+    pub secret_version_id: Option<String>,
+    pub mount_path: String,
+    #[serde(default)]
+    pub mode: Option<i32>,
+    #[serde(default)]
+    pub uid: Option<i32>,
+    #[serde(default)]
+    pub gid: Option<i32>,
 }
 
 /// Secret material response from the control plane.
@@ -327,33 +396,68 @@ mod tests {
     #[test]
     fn test_node_plan_deserialization() {
         let json = r#"{
-            "plan_version": 42,
-            "node_overlay_ipv6": "fd00::ffff",
+            "spec_version": "v1",
+            "node_id": "node_123",
+            "plan_id": "01HZYKX4MZ5ZQ2KQ2B70YH9F7T",
+            "created_at": "2025-12-17T12:00:00Z",
+            "cursor_event_id": 42,
             "instances": [
                 {
+                    "assignment_id": "assign_123",
+                    "node_id": "node_123",
                     "instance_id": "inst_123",
-                    "app_id": "app_456",
-                    "env_id": "env_789",
-                    "process_type": "web",
-                    "release_id": "rel_abc",
-                    "deploy_id": "dep_xyz",
-                    "image": "ghcr.io/org/app:v1",
-                    "resources": {
-                        "cpu": 1.0,
-                        "memory_bytes": 536870912
-                    },
-                    "overlay_ipv6": "fd00::1234"
+                    "generation": 1,
+                    "desired_state": "running",
+                    "drain_grace_seconds": 10,
+                    "workload": {
+                        "spec_version": "v1",
+                        "org_id": "org_123",
+                        "app_id": "app_456",
+                        "env_id": "env_789",
+                        "process_type": "web",
+                        "instance_id": "inst_123",
+                        "generation": 1,
+                        "release_id": "rel_abc",
+                        "image": {
+                            "ref": "ghcr.io/org/app:v1",
+                            "digest": "sha256:manifest",
+                            "resolved_digest": "sha256:resolved",
+                            "os": "linux",
+                            "arch": "amd64"
+                        },
+                        "manifest_hash": "hash_abc",
+                        "command": ["./start"],
+                        "env_vars": {"FOO": "bar"},
+                        "resources": {
+                            "cpu_request": 1.0,
+                            "memory_limit_bytes": 536870912
+                        },
+                        "network": {
+                            "overlay_ipv6": "fd00::1234",
+                            "gateway_ipv6": "fd00::1",
+                            "mtu": 1420,
+                            "dns": ["fd00::53"]
+                        },
+                        "mounts": [],
+                        "secrets": null,
+                        "spec_hash": "spec_hash"
+                    }
                 }
             ]
         }"#;
 
         let plan: NodePlan = serde_json::from_str(json).unwrap();
-        assert_eq!(plan.plan_version, 42);
-        assert_eq!(plan.node_overlay_ipv6.as_deref(), Some("fd00::ffff"));
+        assert_eq!(plan.cursor_event_id, 42);
+        assert_eq!(plan.plan_id, "01HZYKX4MZ5ZQ2KQ2B70YH9F7T");
         assert_eq!(plan.instances.len(), 1);
         assert_eq!(plan.instances[0].instance_id, "inst_123");
-        assert_eq!(plan.instances[0].process_type, "web");
-        assert_eq!(plan.instances[0].overlay_ipv6, "fd00::1234");
+        assert_eq!(
+            plan.instances[0].desired_state,
+            InstanceDesiredState::Running
+        );
+        let workload = plan.instances[0].workload.as_ref().unwrap();
+        assert_eq!(workload.process_type, "web");
+        assert_eq!(workload.network.overlay_ipv6, "fd00::1234");
     }
 
     #[test]

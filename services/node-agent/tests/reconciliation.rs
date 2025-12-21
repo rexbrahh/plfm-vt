@@ -12,7 +12,10 @@ use std::time::Duration;
 
 use plfm_id::NodeId;
 use plfm_node_agent::actors::supervisor::NodeSupervisor;
-use plfm_node_agent::client::{ControlPlaneClient, InstancePlan, InstanceResources};
+use plfm_node_agent::client::{
+    ControlPlaneClient, DesiredInstanceAssignment, InstanceDesiredState, InstancePlan,
+    WorkloadImage, WorkloadNetwork, WorkloadResources,
+};
 use plfm_node_agent::config::Config;
 use plfm_node_agent::runtime::MockRuntime;
 use tokio::sync::watch;
@@ -34,22 +37,55 @@ fn test_control_plane(config: &Config) -> Arc<ControlPlaneClient> {
 
 fn test_plan(id: &str, image: &str) -> InstancePlan {
     InstancePlan {
-        instance_id: id.to_string(),
+        spec_version: "v1".to_string(),
+        org_id: "org_test".to_string(),
         app_id: "app_test".to_string(),
         env_id: "env_test".to_string(),
         process_type: "web".to_string(),
+        instance_id: id.to_string(),
+        generation: 1,
         release_id: "rel_test".to_string(),
-        deploy_id: "dep_test".to_string(),
-        image: image.to_string(),
-        command: vec!["./start".to_string()],
-        resources: InstanceResources {
-            cpu: 1.0,
-            memory_bytes: 512 * 1024 * 1024,
+        image: WorkloadImage {
+            image_ref: Some(image.to_string()),
+            digest: "sha256:manifest".to_string(),
+            index_digest: None,
+            resolved_digest: "sha256:resolved".to_string(),
+            os: "linux".to_string(),
+            arch: "amd64".to_string(),
         },
-        overlay_ipv6: "fd00::1".to_string(),
-        secrets_version_id: None,
-        env_vars: serde_json::json!({}),
-        volumes: vec![],
+        manifest_hash: "hash_test".to_string(),
+        command: vec!["./start".to_string()],
+        workdir: None,
+        env_vars: None,
+        resources: WorkloadResources {
+            cpu_request: 1.0,
+            memory_limit_bytes: 512 * 1024 * 1024,
+            ephemeral_disk_bytes: None,
+            vcpu_count: None,
+            cpu_weight: None,
+        },
+        network: WorkloadNetwork {
+            overlay_ipv6: "fd00::1".to_string(),
+            gateway_ipv6: "fd00::1".to_string(),
+            mtu: Some(1420),
+            dns: None,
+            ports: None,
+        },
+        mounts: None,
+        secrets: None,
+        spec_hash: None,
+    }
+}
+
+fn test_assignment(id: &str, image: &str) -> DesiredInstanceAssignment {
+    DesiredInstanceAssignment {
+        assignment_id: format!("assign-{id}"),
+        node_id: "node-test".to_string(),
+        instance_id: id.to_string(),
+        generation: 1,
+        desired_state: InstanceDesiredState::Running,
+        drain_grace_seconds: None,
+        workload: Some(test_plan(id, image)),
     }
 }
 
@@ -83,8 +119,8 @@ async fn test_apply_single_instance() {
     supervisor.start();
 
     // Apply one instance
-    let plans = vec![test_plan("inst_001", "ghcr.io/test/app:v1")];
-    supervisor.apply_instances(plans).await;
+    let assignments = vec![test_assignment("inst_001", "ghcr.io/test/app:v1")];
+    supervisor.apply_instances(assignments).await;
 
     // Instance should be pending (waiting for image pull)
     assert_eq!(supervisor.pending_count(), 1);
@@ -104,12 +140,12 @@ async fn test_apply_multiple_instances() {
     supervisor.start();
 
     // Apply multiple instances with same image (should deduplicate pulls)
-    let plans = vec![
-        test_plan("inst_001", "ghcr.io/test/app:v1"),
-        test_plan("inst_002", "ghcr.io/test/app:v1"),
-        test_plan("inst_003", "ghcr.io/test/worker:v1"),
+    let assignments = vec![
+        test_assignment("inst_001", "ghcr.io/test/app:v1"),
+        test_assignment("inst_002", "ghcr.io/test/app:v1"),
+        test_assignment("inst_003", "ghcr.io/test/worker:v1"),
     ];
-    supervisor.apply_instances(plans).await;
+    supervisor.apply_instances(assignments).await;
 
     // All instances should be pending
     assert_eq!(supervisor.pending_count(), 3);
@@ -127,24 +163,24 @@ async fn test_scale_up_and_down() {
     // Don't call start() - this bypasses image pull
 
     // Scale up to 3 instances
-    let plans = vec![
-        test_plan("inst_001", "test:v1"),
-        test_plan("inst_002", "test:v1"),
-        test_plan("inst_003", "test:v1"),
+    let assignments = vec![
+        test_assignment("inst_001", "test:v1"),
+        test_assignment("inst_002", "test:v1"),
+        test_assignment("inst_003", "test:v1"),
     ];
-    supervisor.apply_instances(plans).await;
+    supervisor.apply_instances(assignments).await;
     assert_eq!(supervisor.instance_count(), 3);
 
     // Scale down to 1
-    let plans = vec![test_plan("inst_001", "test:v1")];
-    supervisor.apply_instances(plans).await;
+    let assignments = vec![test_assignment("inst_001", "test:v1")];
+    supervisor.apply_instances(assignments).await;
 
     // Give actors time to process stop messages
     tokio::time::sleep(Duration::from_millis(50)).await;
     assert_eq!(supervisor.instance_count(), 1);
 
     // Scale to 0
-    supervisor.apply_instances(vec![]).await;
+    supervisor.apply_instances(Vec::new()).await;
     tokio::time::sleep(Duration::from_millis(50)).await;
     assert_eq!(supervisor.instance_count(), 0);
 }
@@ -160,13 +196,13 @@ async fn test_update_instance_spec() {
     // Don't call start() - direct spawn
 
     // Create instance
-    let plans = vec![test_plan("inst_001", "test:v1")];
-    supervisor.apply_instances(plans).await;
+    let assignments = vec![test_assignment("inst_001", "test:v1")];
+    supervisor.apply_instances(assignments).await;
     assert_eq!(supervisor.instance_count(), 1);
 
     // Update to new version (should trigger restart)
-    let plans = vec![test_plan("inst_001", "test:v2")];
-    supervisor.apply_instances(plans).await;
+    let assignments = vec![test_assignment("inst_001", "test:v2")];
+    supervisor.apply_instances(assignments).await;
 
     // Instance should still exist
     assert_eq!(supervisor.instance_count(), 1);
@@ -185,8 +221,8 @@ async fn test_instance_with_digest() {
     // Apply instance with digest in image ref
     let image_with_digest =
         "ghcr.io/test/app@sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
-    let plans = vec![test_plan("inst_001", image_with_digest)];
-    supervisor.apply_instances(plans).await;
+    let assignments = vec![test_assignment("inst_001", image_with_digest)];
+    supervisor.apply_instances(assignments).await;
 
     // Should be pending for image pull
     assert_eq!(supervisor.pending_count(), 1);
@@ -204,16 +240,16 @@ async fn test_concurrent_apply() {
 
     // Rapidly apply different sets
     supervisor
-        .apply_instances(vec![test_plan("inst_001", "test:v1")])
+        .apply_instances(vec![test_assignment("inst_001", "test:v1")])
         .await;
     supervisor
         .apply_instances(vec![
-            test_plan("inst_001", "test:v1"),
-            test_plan("inst_002", "test:v1"),
+            test_assignment("inst_001", "test:v1"),
+            test_assignment("inst_002", "test:v1"),
         ])
         .await;
     supervisor
-        .apply_instances(vec![test_plan("inst_002", "test:v1")])
+        .apply_instances(vec![test_assignment("inst_002", "test:v1")])
         .await;
 
     tokio::time::sleep(Duration::from_millis(50)).await;

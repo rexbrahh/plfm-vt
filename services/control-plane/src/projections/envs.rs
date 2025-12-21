@@ -15,13 +15,21 @@ pub struct EnvsProjection;
 
 /// Payload for env.created event.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct EnvCreatedPayload {
+    env_id: String,
+    org_id: String,
+    app_id: String,
     name: String,
 }
 
 /// Payload for env.updated event.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct EnvUpdatedPayload {
+    env_id: String,
+    org_id: String,
+    app_id: String,
     #[serde(default)]
     name: Option<String>,
 }
@@ -184,22 +192,31 @@ mod tests {
 
     #[test]
     fn test_env_created_payload_deserialization() {
-        let json = r#"{"name": "production"}"#;
+        let json = r#"{"env_id": "env_test", "org_id": "org_test", "app_id": "app_test", "name": "production"}"#;
         let payload: EnvCreatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.env_id, "env_test");
+        assert_eq!(payload.org_id, "org_test");
+        assert_eq!(payload.app_id, "app_test");
         assert_eq!(payload.name, "production");
     }
 
     #[test]
     fn test_env_updated_payload_deserialization() {
-        let json = r#"{"name": "staging"}"#;
+        let json = r#"{"env_id": "env_test", "org_id": "org_test", "app_id": "app_test", "name": "staging"}"#;
         let payload: EnvUpdatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.env_id, "env_test");
+        assert_eq!(payload.org_id, "org_test");
+        assert_eq!(payload.app_id, "app_test");
         assert_eq!(payload.name, Some("staging".to_string()));
     }
 
     #[test]
     fn test_env_updated_payload_empty() {
-        let json = r#"{}"#;
+        let json = r#"{"env_id": "env_test", "org_id": "org_test", "app_id": "app_test"}"#;
         let payload: EnvUpdatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.env_id, "env_test");
+        assert_eq!(payload.org_id, "org_test");
+        assert_eq!(payload.app_id, "app_test");
         assert_eq!(payload.name, None);
     }
 

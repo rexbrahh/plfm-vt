@@ -126,6 +126,9 @@ pub struct Credentials {
     /// Access token.
     pub token: String,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+
     /// Token expiration time (if known).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
@@ -144,6 +147,7 @@ impl Credentials {
     pub fn new(token: String) -> Self {
         Self {
             token,
+            refresh_token: None,
             expires_at: None,
             user_id: None,
             email: None,

@@ -165,6 +165,7 @@ async fn create_org(
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
+            "org_id": org_id.to_string(),
             "name": req.name
         }),
     };
@@ -417,6 +418,7 @@ async fn update_org(
 
     let next_version = current.resource_version + 1;
     let payload = serde_json::json!({
+        "org_id": org_id.to_string(),
         "name": req.name
     });
 

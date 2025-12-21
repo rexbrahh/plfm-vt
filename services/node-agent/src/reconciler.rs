@@ -103,23 +103,17 @@ impl Reconciler {
             }
         };
 
-        // Check if plan is newer
-        let last_version = self.instance_manager.last_plan_version().await;
-        if plan.plan_version <= last_version {
+        let last_cursor_event_id = self.instance_manager.last_cursor_event_id().await;
+        if plan.cursor_event_id < last_cursor_event_id {
             debug!(
-                plan_version = plan.plan_version,
-                last_version, "Plan version not newer, skipping"
+                cursor_event_id = plan.cursor_event_id,
+                last_cursor_event_id, "Plan cursor not newer, skipping"
             );
             return Ok(());
         }
 
         self.instance_manager
-            .set_node_overlay_ipv6(plan.node_overlay_ipv6.clone())
-            .await;
-
-        // Apply the plan
-        self.instance_manager
-            .apply_plan(plan.plan_version, plan.instances)
+            .apply_plan(plan.cursor_event_id, plan.plan_id.clone(), plan.instances)
             .await;
 
         // Report status for all instances

@@ -34,24 +34,36 @@ struct InstanceAllocatedPayload {
 #[derive(Debug, Deserialize)]
 struct InstanceDesiredStateChangedPayload {
     instance_id: String,
+    desired_state: String,
+    #[serde(default)]
     #[allow(dead_code)]
-    old_state: String,
-    new_state: String,
+    drain_grace_seconds: Option<i32>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    reason: Option<String>,
 }
 
 /// Payload for instance.status_changed event.
 #[derive(Debug, Deserialize)]
 struct InstanceStatusChangedPayload {
     instance_id: String,
-    #[allow(dead_code)]
-    old_status: String,
-    new_status: String,
+    #[serde(default)]
+    node_id: Option<String>,
+    status: String,
     #[serde(default)]
     boot_id: Option<String>,
     #[serde(default)]
-    error_message: Option<String>,
+    #[allow(dead_code)]
+    microvm_id: Option<String>,
     #[serde(default)]
     exit_code: Option<i32>,
+    #[serde(default)]
+    reason_code: Option<String>,
+    #[serde(default)]
+    reason_detail: Option<String>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    reported_at: Option<String>,
 }
 
 #[async_trait]
@@ -182,7 +194,7 @@ impl InstancesProjection {
 
         debug!(
             instance_id = %payload.instance_id,
-            new_state = %payload.new_state,
+            desired_state = %payload.desired_state,
             "Updating instance desired_state in instances_desired_view"
         );
 
@@ -196,7 +208,7 @@ impl InstancesProjection {
             "#,
         )
         .bind(&payload.instance_id)
-        .bind(&payload.new_state)
+        .bind(&payload.desired_state)
         .bind(event.occurred_at)
         .execute(&mut **tx)
         .await?;
@@ -231,23 +243,18 @@ impl InstancesProjection {
 
         debug!(
             instance_id = %payload.instance_id,
-            new_status = %payload.new_status,
+            status = %payload.status,
             "Updating instance status in instances_status_view"
         );
 
-        // Get node_id from instances_desired_view
-        let node_id: Option<String> =
+        let node_id = if let Some(ref nid) = payload.node_id {
+            nid.clone()
+        } else {
             sqlx::query_scalar("SELECT node_id FROM instances_desired_view WHERE instance_id = $1")
                 .bind(&payload.instance_id)
                 .fetch_optional(&mut **tx)
-                .await?;
-
-        let node_id = node_id.unwrap_or_else(|| "unknown".to_string());
-
-        let (reason_code, reason_detail) = if payload.new_status == "failed" {
-            (Some("unknown_error"), payload.error_message.as_deref())
-        } else {
-            (None, None)
+                .await?
+                .unwrap_or_else(|| "unknown".to_string())
         };
 
         sqlx::query(
@@ -277,11 +284,11 @@ impl InstancesProjection {
         .bind(org_id)
         .bind(env_id.to_string())
         .bind(&node_id)
-        .bind(&payload.new_status)
+        .bind(&payload.status)
         .bind(payload.boot_id.as_deref())
         .bind(payload.exit_code)
-        .bind(reason_code)
-        .bind(reason_detail)
+        .bind(payload.reason_code.as_deref())
+        .bind(payload.reason_detail.as_deref())
         .bind(event.occurred_at)
         .execute(&mut **tx)
         .await?;
@@ -314,12 +321,14 @@ mod tests {
     fn test_instance_desired_state_changed_payload_deserialization() {
         let json = r#"{
             "instance_id": "inst_123",
-            "old_state": "running",
-            "new_state": "draining"
+            "desired_state": "draining",
+            "drain_grace_seconds": 10,
+            "reason": "scale_down"
         }"#;
         let payload: InstanceDesiredStateChangedPayload = serde_json::from_str(json).unwrap();
         assert_eq!(payload.instance_id, "inst_123");
-        assert_eq!(payload.new_state, "draining");
+        assert_eq!(payload.desired_state, "draining");
+        assert_eq!(payload.drain_grace_seconds, Some(10));
     }
 
     #[test]
@@ -341,29 +350,34 @@ mod tests {
     fn test_instance_status_changed_payload_deserialization() {
         let json = r#"{
             "instance_id": "inst_123",
-            "old_status": "booting",
-            "new_status": "ready",
-            "boot_id": "boot_456"
+            "node_id": "node_789",
+            "status": "ready",
+            "boot_id": "boot_456",
+            "reported_at": "2025-12-21T00:00:00Z"
         }"#;
         let payload: InstanceStatusChangedPayload = serde_json::from_str(json).unwrap();
         assert_eq!(payload.instance_id, "inst_123");
-        assert_eq!(payload.new_status, "ready");
+        assert_eq!(payload.status, "ready");
         assert_eq!(payload.boot_id, Some("boot_456".to_string()));
+        assert_eq!(payload.node_id, Some("node_789".to_string()));
     }
 
     #[test]
-    fn test_instance_status_changed_payload_with_error() {
+    fn test_instance_status_changed_payload_with_failure() {
         let json = r#"{
             "instance_id": "inst_123",
-            "old_status": "booting",
-            "new_status": "failed",
-            "error_message": "OOM killed",
-            "exit_code": 137
+            "node_id": "node_789",
+            "status": "failed",
+            "exit_code": 137,
+            "reason_code": "oom_killed",
+            "reason_detail": "Out of memory",
+            "reported_at": "2025-12-21T00:00:00Z"
         }"#;
         let payload: InstanceStatusChangedPayload = serde_json::from_str(json).unwrap();
         assert_eq!(payload.instance_id, "inst_123");
-        assert_eq!(payload.new_status, "failed");
-        assert_eq!(payload.error_message, Some("OOM killed".to_string()));
+        assert_eq!(payload.status, "failed");
+        assert_eq!(payload.reason_code, Some("oom_killed".to_string()));
+        assert_eq!(payload.reason_detail, Some("Out of memory".to_string()));
         assert_eq!(payload.exit_code, Some(137));
     }
 }

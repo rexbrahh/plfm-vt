@@ -15,7 +15,10 @@ pub struct AppsProjection;
 
 /// Payload for app.created event.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AppCreatedPayload {
+    app_id: String,
+    org_id: String,
     name: String,
     #[serde(default)]
     description: Option<String>,
@@ -23,7 +26,10 @@ struct AppCreatedPayload {
 
 /// Payload for app.updated event.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct AppUpdatedPayload {
+    app_id: String,
+    org_id: String,
     #[serde(default)]
     name: Option<String>,
     #[serde(default)]
@@ -222,24 +228,30 @@ mod tests {
 
     #[test]
     fn test_app_created_payload_deserialization() {
-        let json = r#"{"name": "my-app", "description": "A test app"}"#;
+        let json = r#"{"app_id": "app_test", "org_id": "org_test", "name": "my-app", "description": "A test app"}"#;
         let payload: AppCreatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.app_id, "app_test");
+        assert_eq!(payload.org_id, "org_test");
         assert_eq!(payload.name, "my-app");
         assert_eq!(payload.description, Some("A test app".to_string()));
     }
 
     #[test]
     fn test_app_created_payload_without_description() {
-        let json = r#"{"name": "my-app"}"#;
+        let json = r#"{"app_id": "app_test", "org_id": "org_test", "name": "my-app"}"#;
         let payload: AppCreatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.app_id, "app_test");
+        assert_eq!(payload.org_id, "org_test");
         assert_eq!(payload.name, "my-app");
         assert_eq!(payload.description, None);
     }
 
     #[test]
     fn test_app_updated_payload_deserialization() {
-        let json = r#"{"name": "updated-app"}"#;
+        let json = r#"{"app_id": "app_test", "org_id": "org_test", "name": "updated-app"}"#;
         let payload: AppUpdatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.app_id, "app_test");
+        assert_eq!(payload.org_id, "org_test");
         assert_eq!(payload.name, Some("updated-app".to_string()));
         assert_eq!(payload.description, None);
     }

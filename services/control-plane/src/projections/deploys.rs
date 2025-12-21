@@ -15,23 +15,32 @@ pub struct DeploysProjection;
 
 /// Payload for deploy.created event.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct DeployCreatedPayload {
-    release_id: String,
+    deploy_id: String,
+    org_id: String,
+    app_id: String,
+    env_id: String,
     kind: String,
+    release_id: String,
     process_types: Vec<String>,
-    status: String,
+    strategy: String,
+    initiated_at: String,
 }
 
 /// Payload for deploy.status_changed event.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct DeployStatusChangedPayload {
-    #[allow(dead_code)]
-    old_status: String,
-    new_status: String,
+    deploy_id: String,
+    org_id: String,
+    env_id: String,
+    status: String,
     #[serde(default)]
     message: Option<String>,
     #[serde(default)]
     failed_reason: Option<String>,
+    updated_at: String,
 }
 
 #[async_trait]
@@ -116,7 +125,7 @@ impl DeploysProjection {
         .bind(&payload.kind)
         .bind(&payload.release_id)
         .bind(serde_json::to_value(&payload.process_types).unwrap_or_default())
-        .bind(&payload.status)
+        .bind("queued")
         .bind(event.occurred_at)
         .execute(&mut **tx)
         .await?;
@@ -194,7 +203,7 @@ impl DeploysProjection {
 
         debug!(
             deploy_id = %event.aggregate_id,
-            new_status = %payload.new_status,
+            status = %payload.status,
             "Updating deploy status in deploys_view"
         );
 
@@ -210,7 +219,7 @@ impl DeploysProjection {
             "#,
         )
         .bind(&event.aggregate_id)
-        .bind(&payload.new_status)
+        .bind(&payload.status)
         .bind(&payload.message)
         .bind(&payload.failed_reason)
         .bind(event.occurred_at)
@@ -228,30 +237,46 @@ mod tests {
     #[test]
     fn test_deploy_created_payload_deserialization() {
         let json = r#"{
+            "deploy_id": "dep_123",
+            "org_id": "org_123",
+            "app_id": "app_123",
+            "env_id": "env_123",
             "release_id": "rel_123",
             "kind": "deploy",
             "process_types": ["web", "worker"],
-            "status": "queued"
+            "strategy": "rolling",
+            "initiated_at": "2025-01-01T00:00:00Z"
         }"#;
         let payload: DeployCreatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.deploy_id, "dep_123");
+        assert_eq!(payload.org_id, "org_123");
+        assert_eq!(payload.app_id, "app_123");
+        assert_eq!(payload.env_id, "env_123");
         assert_eq!(payload.release_id, "rel_123");
         assert_eq!(payload.kind, "deploy");
         assert_eq!(payload.process_types, vec!["web", "worker"]);
-        assert_eq!(payload.status, "queued");
+        assert_eq!(payload.strategy, "rolling");
+        assert_eq!(payload.initiated_at, "2025-01-01T00:00:00Z");
     }
 
     #[test]
     fn test_deploy_status_changed_payload_deserialization() {
         let json = r#"{
-            "old_status": "queued",
-            "new_status": "rolling",
-            "message": "Starting deployment"
+            "deploy_id": "dep_123",
+            "org_id": "org_123",
+            "env_id": "env_123",
+            "status": "rolling",
+            "message": "Starting deployment",
+            "updated_at": "2025-01-01T00:00:10Z"
         }"#;
         let payload: DeployStatusChangedPayload = serde_json::from_str(json).unwrap();
-        assert_eq!(payload.old_status, "queued");
-        assert_eq!(payload.new_status, "rolling");
+        assert_eq!(payload.deploy_id, "dep_123");
+        assert_eq!(payload.org_id, "org_123");
+        assert_eq!(payload.env_id, "env_123");
+        assert_eq!(payload.status, "rolling");
         assert_eq!(payload.message, Some("Starting deployment".to_string()));
         assert_eq!(payload.failed_reason, None);
+        assert_eq!(payload.updated_at, "2025-01-01T00:00:10Z");
     }
 
     #[test]

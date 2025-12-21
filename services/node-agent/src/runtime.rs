@@ -87,11 +87,16 @@ impl Runtime for MockRuntime {
             anyhow::bail!("Mock runtime configured to fail");
         }
 
+        let image_label = plan
+            .image
+            .image_ref
+            .as_deref()
+            .unwrap_or(plan.image.resolved_digest.as_str());
         info!(
             instance_id = %plan.instance_id,
-            image = %plan.image,
-            cpu = plan.resources.cpu,
-            memory_mb = plan.resources.memory_bytes / (1024 * 1024),
+            image = %image_label,
+            cpu = plan.resources.cpu_request,
+            memory_mb = plan.resources.memory_limit_bytes / (1024 * 1024),
             "[MOCK] Starting VM"
         );
 
@@ -148,22 +153,43 @@ mod tests {
 
     fn test_plan() -> InstancePlan {
         InstancePlan {
-            instance_id: "inst_test".to_string(),
+            spec_version: "v1".to_string(),
+            org_id: "org_test".to_string(),
             app_id: "app_test".to_string(),
             env_id: "env_test".to_string(),
             process_type: "web".to_string(),
+            instance_id: "inst_test".to_string(),
+            generation: 1,
             release_id: "rel_test".to_string(),
-            deploy_id: "dep_test".to_string(),
-            image: "test:latest".to_string(),
-            command: vec!["./start".to_string()],
-            resources: crate::client::InstanceResources {
-                cpu: 1.0,
-                memory_bytes: 512 * 1024 * 1024,
+            image: crate::client::WorkloadImage {
+                image_ref: Some("test:latest".to_string()),
+                digest: "sha256:manifest".to_string(),
+                index_digest: None,
+                resolved_digest: "sha256:resolved".to_string(),
+                os: "linux".to_string(),
+                arch: "amd64".to_string(),
             },
-            overlay_ipv6: "fd00::1".to_string(),
-            secrets_version_id: None,
-            env_vars: serde_json::json!({}),
-            volumes: vec![],
+            manifest_hash: "hash_test".to_string(),
+            command: vec!["./start".to_string()],
+            workdir: None,
+            env_vars: None,
+            resources: crate::client::WorkloadResources {
+                cpu_request: 1.0,
+                memory_limit_bytes: 512 * 1024 * 1024,
+                ephemeral_disk_bytes: None,
+                vcpu_count: None,
+                cpu_weight: None,
+            },
+            network: crate::client::WorkloadNetwork {
+                overlay_ipv6: "fd00::1".to_string(),
+                gateway_ipv6: "fd00::1".to_string(),
+                mtu: Some(1420),
+                dns: None,
+                ports: None,
+            },
+            mounts: None,
+            secrets: None,
+            spec_hash: None,
         }
     }
 

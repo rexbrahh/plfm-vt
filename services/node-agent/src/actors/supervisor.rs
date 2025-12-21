@@ -39,7 +39,9 @@ use super::framework::{ActorHandle, RestartPolicy, Supervisor};
 use super::image::{ImageMessage, ImagePullActor};
 use super::instance::{DesiredInstanceState, InstanceActor, InstanceMessage};
 use super::stream::{ControlPlaneStreamActor, StreamMessage};
-use crate::client::{ControlPlaneClient, InstancePlan, NodePlan};
+use crate::client::{
+    ControlPlaneClient, DesiredInstanceAssignment, InstanceDesiredState, InstancePlan, NodePlan,
+};
 use crate::config::Config;
 use crate::runtime::Runtime;
 
@@ -73,7 +75,8 @@ pub struct NodeSupervisor<R: Runtime + Send + Sync + 'static> {
 
     instance_count: Arc<AtomicUsize>,
 
-    last_plan_version: i64,
+    last_cursor_event_id: i64,
+    last_plan_id: Option<String>,
 
     /// Core supervisor for static actors.
     supervisor: Supervisor,
@@ -116,7 +119,8 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
             plan_rx,
             plan_tx,
             instance_count,
-            last_plan_version: 0,
+            last_cursor_event_id: 0,
+            last_plan_id: None,
             supervisor,
             stream_handle: None,
             image_handle: None,
@@ -162,7 +166,7 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
     ///
     /// This is the main entry point for reconciliation - it compares desired
     /// vs current instances and spawns/stops actors as needed.
-    pub async fn apply_instances(&mut self, desired: Vec<InstancePlan>) {
+    pub async fn apply_instances(&mut self, desired: Vec<DesiredInstanceAssignment>) {
         self.spec_revision += 1;
         let revision = self.spec_revision;
 
@@ -202,24 +206,76 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
     }
 
     async fn handle_plan(&mut self, plan: NodePlan) {
-        if plan.plan_version <= self.last_plan_version {
+        if plan.cursor_event_id < self.last_cursor_event_id {
             return;
         }
 
-        self.last_plan_version = plan.plan_version;
+        if plan.cursor_event_id == self.last_cursor_event_id
+            && self.last_plan_id.as_deref() == Some(plan.plan_id.as_str())
+        {
+            return;
+        }
+
+        self.last_cursor_event_id = plan.cursor_event_id;
+        self.last_plan_id = Some(plan.plan_id.clone());
         self.apply_instances(plan.instances).await;
     }
 
     /// Ensure an instance actor exists and has the correct spec.
-    async fn ensure_instance(&mut self, plan: InstancePlan, revision: u64) {
-        let instance_id = plan.instance_id.clone();
+    async fn ensure_instance(&mut self, assignment: DesiredInstanceAssignment, revision: u64) {
+        let instance_id = assignment.instance_id.clone();
+        let desired_state = map_desired_state(assignment.desired_state);
+
+        if desired_state != DesiredInstanceState::Running {
+            self.pending_instances.remove(&instance_id);
+        }
+
+        match desired_state {
+            DesiredInstanceState::Stopped => {
+                if self.instance_handles.contains_key(&instance_id) {
+                    self.stop_instance(&instance_id).await;
+                }
+                return;
+            }
+            DesiredInstanceState::Draining => {
+                let Some(plan) = assignment.workload else {
+                    if self.instance_handles.contains_key(&instance_id) {
+                        self.stop_instance(&instance_id).await;
+                    }
+                    return;
+                };
+
+                if let Some(handle) = self.instance_handles.get(&instance_id) {
+                    let msg = InstanceMessage::ApplyDesired {
+                        spec_revision: revision,
+                        spec: Box::new(plan),
+                        desired_state,
+                    };
+
+                    if let Err(e) = handle.send(msg).await {
+                        warn!(
+                            instance_id = %instance_id,
+                            error = %e,
+                            "Failed to send spec update to instance actor"
+                        );
+                    }
+                }
+                return;
+            }
+            DesiredInstanceState::Running => {}
+        }
+
+        let Some(plan) = assignment.workload else {
+            warn!(instance_id = %instance_id, "Missing workload spec for running instance");
+            return;
+        };
 
         if let Some(handle) = self.instance_handles.get(&instance_id) {
             // Actor exists, send updated spec
             let msg = InstanceMessage::ApplyDesired {
                 spec_revision: revision,
                 spec: Box::new(plan.clone()),
-                desired_state: DesiredInstanceState::Running,
+                desired_state,
             };
 
             if let Err(e) = handle.send(msg).await {
@@ -255,12 +311,11 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
     /// Request image pull for an instance.
     async fn request_image_pull(&mut self, plan: InstancePlan, revision: u64) {
         let instance_id = plan.instance_id.clone();
-        let image_ref = plan.image.clone();
-
-        // Extract digest from image ref if present, otherwise use a placeholder
-        // In real usage, the digest should come from the release spec
-        let expected_digest = extract_digest_from_image(&image_ref)
-            .unwrap_or_else(|| format!("sha256:{}", sha256_hash(&image_ref)));
+        let Some(image_ref) = image_ref_for_plan(&plan) else {
+            warn!(instance_id = %instance_id, "Missing image ref for instance");
+            return;
+        };
+        let expected_digest = plan.image.resolved_digest.clone();
 
         info!(
             instance_id = %instance_id,
@@ -352,9 +407,10 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
         for instance_id in pending_ids {
             // Check if this instance is still pending
             if let Some(pending) = self.pending_instances.get(&instance_id) {
-                let image_ref = &pending.plan.image;
-                let expected_digest = extract_digest_from_image(image_ref)
-                    .unwrap_or_else(|| format!("sha256:{}", sha256_hash(image_ref)));
+                let Some(image_ref) = image_ref_for_plan(&pending.plan) else {
+                    continue;
+                };
+                let expected_digest = pending.plan.image.resolved_digest.clone();
 
                 // For now, we'll spawn after a delay to simulate image being ready
                 // In a full implementation, we'd query the image cache
@@ -546,30 +602,21 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
 // Helper Functions
 // =============================================================================
 
-/// Extract digest from an image reference if present.
-///
-/// Examples:
-/// - `ghcr.io/org/app@sha256:abc123` -> Some("sha256:abc123")
-/// - `ghcr.io/org/app:v1` -> None
-fn extract_digest_from_image(image_ref: &str) -> Option<String> {
-    if let Some(at_pos) = image_ref.rfind('@') {
-        let digest = &image_ref[at_pos + 1..];
-        if digest.starts_with("sha256:") || digest.starts_with("sha512:") {
-            return Some(digest.to_string());
-        }
+fn map_desired_state(state: InstanceDesiredState) -> DesiredInstanceState {
+    match state {
+        InstanceDesiredState::Running => DesiredInstanceState::Running,
+        InstanceDesiredState::Draining => DesiredInstanceState::Draining,
+        InstanceDesiredState::Stopped => DesiredInstanceState::Stopped,
     }
-    None
 }
 
-/// Compute a simple SHA-256 hash of a string (for generating fake digests in tests).
-fn sha256_hash(input: &str) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-
-    let mut hasher = DefaultHasher::new();
-    input.hash(&mut hasher);
-    let hash = hasher.finish();
-    format!("{:016x}{:016x}{:016x}{:016x}", hash, hash, hash, hash)
+fn image_ref_for_plan(plan: &InstancePlan) -> Option<String> {
+    let image_ref = plan.image.image_ref.as_ref()?;
+    if image_ref.contains('@') {
+        Some(image_ref.clone())
+    } else {
+        Some(format!("{image_ref}@{}", plan.image.resolved_digest))
+    }
 }
 
 // =============================================================================
@@ -579,8 +626,12 @@ fn sha256_hash(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::InstanceResources;
+    use crate::client::{
+        DesiredInstanceAssignment, InstanceDesiredState, WorkloadImage, WorkloadNetwork,
+        WorkloadResources,
+    };
     use crate::runtime::MockRuntime;
+    use chrono::Utc;
     use plfm_id::NodeId;
 
     fn test_config() -> Config {
@@ -596,22 +647,55 @@ mod tests {
 
     fn test_plan(id: &str) -> InstancePlan {
         InstancePlan {
-            instance_id: id.to_string(),
+            spec_version: "v1".to_string(),
+            org_id: "org_test".to_string(),
             app_id: "app_test".to_string(),
             env_id: "env_test".to_string(),
             process_type: "web".to_string(),
+            instance_id: id.to_string(),
+            generation: 1,
             release_id: "rel_test".to_string(),
-            deploy_id: "dep_test".to_string(),
-            image: "test:latest".to_string(),
-            command: vec!["./start".to_string()],
-            resources: InstanceResources {
-                cpu: 1.0,
-                memory_bytes: 512 * 1024 * 1024,
+            image: WorkloadImage {
+                image_ref: Some("test:latest".to_string()),
+                digest: "sha256:manifest".to_string(),
+                index_digest: None,
+                resolved_digest: "sha256:resolved".to_string(),
+                os: "linux".to_string(),
+                arch: "amd64".to_string(),
             },
-            overlay_ipv6: "fd00::1".to_string(),
-            secrets_version_id: None,
-            env_vars: serde_json::json!({}),
-            volumes: vec![],
+            manifest_hash: "hash_test".to_string(),
+            command: vec!["./start".to_string()],
+            workdir: None,
+            env_vars: None,
+            resources: WorkloadResources {
+                cpu_request: 1.0,
+                memory_limit_bytes: 512 * 1024 * 1024,
+                ephemeral_disk_bytes: None,
+                vcpu_count: None,
+                cpu_weight: None,
+            },
+            network: WorkloadNetwork {
+                overlay_ipv6: "fd00::1".to_string(),
+                gateway_ipv6: "fd00::1".to_string(),
+                mtu: Some(1420),
+                dns: None,
+                ports: None,
+            },
+            mounts: None,
+            secrets: None,
+            spec_hash: None,
+        }
+    }
+
+    fn test_assignment(id: &str) -> DesiredInstanceAssignment {
+        DesiredInstanceAssignment {
+            assignment_id: format!("assign-{id}"),
+            node_id: "node-test".to_string(),
+            instance_id: id.to_string(),
+            generation: 1,
+            desired_state: InstanceDesiredState::Running,
+            drain_grace_seconds: None,
+            workload: Some(test_plan(id)),
         }
     }
 
@@ -650,21 +734,13 @@ mod tests {
         let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
         supervisor.start();
 
-        // Apply some instances - they go to pending first (waiting for image pull)
-        let plans = vec![test_plan("inst_1"), test_plan("inst_2")];
-        supervisor.apply_instances(plans).await;
+        let assignments = vec![test_assignment("inst_1"), test_assignment("inst_2")];
+        supervisor.apply_instances(assignments).await;
 
-        // With image pull integration, instances are pending until image is ready
-        // The image actor handles the pull and instances are spawned asynchronously
         assert_eq!(supervisor.pending_count(), 2);
-        assert_eq!(supervisor.instance_count(), 0); // Not spawned yet
+        assert_eq!(supervisor.instance_count(), 0);
 
-        // Give time for image pull simulation to complete
         tokio::time::sleep(Duration::from_millis(100)).await;
-
-        // After image pull, instances should be spawned on next apply or tick
-        // For now, test the pending -> spawn flow by directly spawning
-        // (In production, this happens via the reconciliation loop)
     }
 
     #[tokio::test]
@@ -673,21 +749,28 @@ mod tests {
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
+        let node_id = config.node_id.to_string();
 
         let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
 
         let plan = NodePlan {
-            plan_version: 1,
-            node_overlay_ipv6: None,
-            instances: vec![test_plan("inst_1")],
+            spec_version: "v1".to_string(),
+            node_id: node_id.clone(),
+            plan_id: "plan-1".to_string(),
+            created_at: Utc::now(),
+            cursor_event_id: 1,
+            instances: vec![test_assignment("inst_1")],
         };
         supervisor.handle_plan(plan).await;
         assert_eq!(supervisor.instance_count(), 1);
 
         let plan = NodePlan {
-            plan_version: 1,
-            node_overlay_ipv6: None,
-            instances: vec![test_plan("inst_2")],
+            spec_version: "v1".to_string(),
+            node_id,
+            plan_id: "plan-1".to_string(),
+            created_at: Utc::now(),
+            cursor_event_id: 1,
+            instances: vec![test_assignment("inst_2")],
         };
         supervisor.handle_plan(plan).await;
         assert_eq!(supervisor.instance_count(), 1);
@@ -697,24 +780,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_node_supervisor_direct_spawn() {
-        // Test direct spawn without image pull (for when image is already cached)
         let config = test_config();
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
 
         let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
-        // Don't start() - this means no image actor, so instances spawn directly
 
-        let plans = vec![test_plan("inst_1"), test_plan("inst_2")];
-        supervisor.apply_instances(plans).await;
+        let assignments = vec![test_assignment("inst_1"), test_assignment("inst_2")];
+        supervisor.apply_instances(assignments).await;
 
-        // Without image actor, instances spawn directly
         assert_eq!(supervisor.instance_count(), 2);
 
-        // Scale down
-        let plans = vec![test_plan("inst_1")];
-        supervisor.apply_instances(plans).await;
+        let assignments = vec![test_assignment("inst_1")];
+        supervisor.apply_instances(assignments).await;
 
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(supervisor.instance_count(), 1);

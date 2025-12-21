@@ -65,7 +65,8 @@ pub struct StreamActorState {
     /// Last successful connection time.
     pub last_connected_at: Option<Instant>,
 
-    pub last_plan_version: i64,
+    pub last_cursor_event_id: i64,
+    pub last_plan_id: Option<String>,
 
     pub next_reconnect_at: Option<Instant>,
 
@@ -185,18 +186,26 @@ impl ControlPlaneStreamActor {
             .await
             .map_err(|e| ActorError::Transient(e.to_string()))?;
 
-        if plan.plan_version <= self.persisted.last_plan_version {
+        if plan.cursor_event_id < self.persisted.last_cursor_event_id {
             return Ok(());
         }
 
-        let plan_version = plan.plan_version;
+        if plan.cursor_event_id == self.persisted.last_cursor_event_id
+            && self.persisted.last_plan_id.as_deref() == Some(plan.plan_id.as_str())
+        {
+            return Ok(());
+        }
+
+        let cursor_event_id = plan.cursor_event_id;
+        let plan_id = plan.plan_id.clone();
 
         if let Err(e) = self.plan_tx.try_send(plan) {
             warn!(error = %e, "Failed to send plan update");
             return Ok(());
         }
 
-        self.persisted.last_plan_version = plan_version;
+        self.persisted.last_cursor_event_id = cursor_event_id;
+        self.persisted.last_plan_id = Some(plan_id);
 
         Ok(())
     }
@@ -378,7 +387,8 @@ mod tests {
         let state = StreamActorState::default();
         assert_eq!(state.last_event_cursor, 0);
         assert!(state.last_connected_at.is_none());
-        assert_eq!(state.last_plan_version, 0);
+        assert_eq!(state.last_cursor_event_id, 0);
+        assert!(state.last_plan_id.is_none());
         assert!(state.next_reconnect_at.is_none());
         assert_eq!(state.consecutive_failures, 0);
     }

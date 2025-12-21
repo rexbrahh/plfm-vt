@@ -42,6 +42,6 @@ pub mod reconciler;
 pub mod runtime;
 
 // Re-export commonly used types
-pub use client::{ControlPlaneClient, InstancePlan, InstanceResources};
+pub use client::{ControlPlaneClient, InstancePlan, WorkloadResources};
 pub use instance::{InstanceManager, InstanceState};
 pub use runtime::MockRuntime;

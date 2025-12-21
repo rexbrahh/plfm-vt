@@ -27,7 +27,7 @@ const DEFAULT_WAIT_TIMEOUT: Duration = Duration::from_secs(5 * 60); // 5 minutes
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
 /// Terminal deploy statuses that indicate the deploy is done.
-const TERMINAL_STATUSES: &[&str] = &["completed", "failed", "cancelled"];
+const TERMINAL_STATUSES: &[&str] = &["succeeded", "failed"];
 
 /// Apply a manifest (create release + deploy).
 #[derive(Debug, Args)]
@@ -172,7 +172,7 @@ async fn wait_for_deploy(
 
         // Check if terminal status
         if TERMINAL_STATUSES.contains(&response.status.as_str()) {
-            if response.status == "completed" {
+            if response.status == "succeeded" {
                 return Ok(response);
             } else {
                 anyhow::bail!(
@@ -187,7 +187,7 @@ async fn wait_for_deploy(
         // Check timeout
         if start.elapsed() > timeout {
             anyhow::bail!(
-                "Timeout waiting for deploy {} to complete (last status: {})",
+                "Timeout waiting for deploy {} to finish (last status: {})",
                 deploy_id,
                 response.status
             );
@@ -410,7 +410,7 @@ impl ApplyCommand {
                 ctx.format,
                 Receipt {
                     message: format!(
-                        "Deploy {} completed with status {}",
+                        "Deploy {} finished with status {}",
                         deploy_id.as_str(),
                         final_deploy.status.as_str()
                     ),

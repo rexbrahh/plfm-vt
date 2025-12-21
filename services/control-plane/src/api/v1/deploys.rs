@@ -11,7 +11,7 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use plfm_events::{AggregateType, DeployStatus};
+use plfm_events::AggregateType;
 use plfm_id::{AppId, DeployId, EnvId, OrgId, ReleaseId};
 use serde::{Deserialize, Serialize};
 
@@ -274,10 +274,15 @@ async fn create_deploy(
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
-            "release_id": release_id.to_string(),
+            "deploy_id": deploy_id.to_string(),
+            "org_id": org_id.to_string(),
+            "app_id": app_id.to_string(),
+            "env_id": env_id.to_string(),
             "kind": kind,
+            "release_id": release_id.to_string(),
             "process_types": process_types,
-            "status": DeployStatus::Queued
+            "strategy": req.strategy,
+            "initiated_at": Utc::now().to_rfc3339(),
         }),
     };
 
@@ -493,10 +498,15 @@ pub async fn create_rollback(
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
-            "release_id": release_id.to_string(),
+            "deploy_id": deploy_id.to_string(),
+            "org_id": org_id.to_string(),
+            "app_id": app_id.to_string(),
+            "env_id": env_id.to_string(),
             "kind": "rollback",
+            "release_id": release_id.to_string(),
             "process_types": process_types,
-            "status": DeployStatus::Queued
+            "strategy": DeployStrategy::Rolling,
+            "initiated_at": Utc::now().to_rfc3339(),
         }),
     };
 

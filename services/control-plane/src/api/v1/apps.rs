@@ -242,6 +242,8 @@ async fn create_app(
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
+            "app_id": app_id.to_string(),
+            "org_id": org_id.to_string(),
             "name": req.name,
             "description": req.description
         }),
@@ -462,6 +464,8 @@ async fn update_app(
 
     let next_version = current.resource_version + 1;
     let payload = serde_json::json!({
+        "app_id": app_id.to_string(),
+        "org_id": org_id.to_string(),
         "name": req.name,
         "description": req.description
     });

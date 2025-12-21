@@ -15,15 +15,21 @@ pub struct OrgsProjection;
 
 /// Payload for org.created event.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OrgCreatedPayload {
+    org_id: String,
     name: String,
 }
 
 /// Payload for org.updated event.
 #[derive(Debug, Deserialize)]
+#[allow(dead_code)]
 struct OrgUpdatedPayload {
+    org_id: String,
     #[serde(default)]
     name: Option<String>,
+    #[serde(default)]
+    billing_email: Option<String>,
 }
 
 #[async_trait]
@@ -145,22 +151,25 @@ mod tests {
 
     #[test]
     fn test_org_created_payload_deserialization() {
-        let json = r#"{"name": "Test Org"}"#;
+        let json = r#"{"org_id": "org_test", "name": "Test Org"}"#;
         let payload: OrgCreatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.org_id, "org_test");
         assert_eq!(payload.name, "Test Org");
     }
 
     #[test]
     fn test_org_updated_payload_deserialization() {
-        let json = r#"{"name": "Updated Org"}"#;
+        let json = r#"{"org_id": "org_test", "name": "Updated Org"}"#;
         let payload: OrgUpdatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.org_id, "org_test");
         assert_eq!(payload.name, Some("Updated Org".to_string()));
     }
 
     #[test]
     fn test_org_updated_payload_empty() {
-        let json = r#"{}"#;
+        let json = r#"{"org_id": "org_test"}"#;
         let payload: OrgUpdatedPayload = serde_json::from_str(json).unwrap();
+        assert_eq!(payload.org_id, "org_test");
         assert_eq!(payload.name, None);
     }
 

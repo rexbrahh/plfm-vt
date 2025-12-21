@@ -54,9 +54,11 @@ pub struct GroupDesiredState {
 #[derive(Debug, Clone)]
 pub struct InstanceState {
     pub instance_id: String,
+    #[allow(dead_code)]
     pub node_id: String,
     pub desired_state: String,
     pub spec_hash: String,
+    #[allow(dead_code)]
     pub release_id: String,
 }
 
@@ -422,10 +424,9 @@ impl SchedulerReconciler {
             causation_id: None,
             payload: serde_json::json!({
                 "instance_id": instance.instance_id,
-                "node_id": instance.node_id,
-                "release_id": instance.release_id,
-                "old_state": instance.desired_state,
-                "new_state": "draining",
+                "desired_state": "draining",
+                "drain_grace_seconds": 10,
+                "reason": "scheduler_drain",
             }),
         };
 

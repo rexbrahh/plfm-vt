@@ -4,9 +4,9 @@
 //! Events are versioned for schema evolution.
 
 use plfm_id::{
-    AppId, AssignmentId, DeployId, EnvId, ExecSessionId, InstanceId, MemberId, NodeId, OrgId,
-    ReleaseId, RestoreJobId, RouteId, SecretBundleId, SecretVersionId, ServicePrincipalId,
-    SnapshotId, VolumeAttachmentId, VolumeId,
+    AppId, DeployId, EnvId, ExecSessionId, InstanceId, MemberId, NodeId, OrgId, ReleaseId,
+    RestoreJobId, RouteId, SecretBundleId, SecretVersionId, ServicePrincipalId, SnapshotId,
+    VolumeAttachmentId, VolumeId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -217,6 +217,8 @@ pub struct OrgUpdatedPayload {
     pub org_id: OrgId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub billing_email: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -288,6 +290,7 @@ pub struct AppCreatedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppUpdatedPayload {
     pub app_id: AppId,
+    pub org_id: OrgId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -306,6 +309,7 @@ pub struct AppDeletedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvCreatedPayload {
     pub env_id: EnvId,
+    pub org_id: OrgId,
     pub app_id: AppId,
     pub name: String,
 }
@@ -313,6 +317,8 @@ pub struct EnvCreatedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvUpdatedPayload {
     pub env_id: EnvId,
+    pub org_id: OrgId,
+    pub app_id: AppId,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
 }
@@ -373,19 +379,27 @@ pub struct ReleaseCreatedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployCreatedPayload {
     pub deploy_id: DeployId,
+    pub org_id: OrgId,
+    pub app_id: AppId,
     pub env_id: EnvId,
+    pub kind: String,
     pub release_id: ReleaseId,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub is_rollback: Option<bool>,
+    pub process_types: Vec<String>,
+    pub strategy: String,
+    pub initiated_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeployStatusChangedPayload {
     pub deploy_id: DeployId,
-    pub old_status: DeployStatus,
-    pub new_status: DeployStatus,
+    pub org_id: OrgId,
+    pub env_id: EnvId,
+    pub status: DeployStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub failure_reason: Option<String>,
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failed_reason: Option<String>,
+    pub updated_at: String,
 }
 
 // -----------------------------------------------------------------------------
@@ -561,29 +575,59 @@ pub struct RestoreJobStatusChangedPayload {
 // -----------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstanceResourcesSnapshot {
+    pub cpu_request: f64,
+    pub memory_limit_bytes: i64,
+    pub ephemeral_disk_bytes: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstanceAllocatedPayload {
     pub instance_id: InstanceId,
-    pub assignment_id: AssignmentId,
+    pub org_id: OrgId,
+    pub app_id: AppId,
     pub env_id: EnvId,
     pub process_type: String,
     pub node_id: NodeId,
+    pub desired_state: InstanceDesiredState,
     pub release_id: ReleaseId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secrets_version_id: Option<SecretVersionId>,
+    pub overlay_ipv6: String,
+    pub resources_snapshot: InstanceResourcesSnapshot,
+    pub spec_hash: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstanceDesiredStateChangedPayload {
     pub instance_id: InstanceId,
-    pub old_state: InstanceDesiredState,
-    pub new_state: InstanceDesiredState,
+    pub org_id: OrgId,
+    pub env_id: EnvId,
+    pub desired_state: InstanceDesiredState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub drain_grace_seconds: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InstanceStatusChangedPayload {
     pub instance_id: InstanceId,
-    pub old_status: InstanceStatus,
-    pub new_status: InstanceStatus,
+    pub org_id: OrgId,
+    pub env_id: EnvId,
+    pub node_id: NodeId,
+    pub status: InstanceStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub failure_reason: Option<InstanceFailureReason>,
+    pub boot_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub microvm_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<InstanceFailureReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason_detail: Option<String>,
+    pub reported_at: String,
 }
 
 // -----------------------------------------------------------------------------
@@ -698,9 +742,16 @@ mod tests {
     fn test_instance_status_changed_payload() {
         let payload = InstanceStatusChangedPayload {
             instance_id: InstanceId::new(),
-            old_status: InstanceStatus::Booting,
-            new_status: InstanceStatus::Failed,
-            failure_reason: Some(InstanceFailureReason::HealthcheckFailed),
+            org_id: OrgId::new(),
+            env_id: EnvId::new(),
+            node_id: NodeId::new(),
+            status: InstanceStatus::Failed,
+            boot_id: Some("boot_123".to_string()),
+            microvm_id: None,
+            exit_code: Some(137),
+            reason_code: Some(InstanceFailureReason::HealthcheckFailed),
+            reason_detail: Some("healthcheck failed".to_string()),
+            reported_at: "2025-12-17T12:00:00Z".to_string(),
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains("\"healthcheck_failed\""));

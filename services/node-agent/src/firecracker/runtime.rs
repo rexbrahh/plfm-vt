@@ -244,8 +244,12 @@ impl FirecrackerRuntime {
         let instance_id = &plan.instance_id;
 
         // Convert plan resources to Firecracker config
-        let vcpu_count = (plan.resources.cpu.ceil() as u8).max(1);
-        let mem_size_mib = (plan.resources.memory_bytes / (1024 * 1024)) as u32;
+        let vcpu_count = plan
+            .resources
+            .vcpu_count
+            .unwrap_or_else(|| plan.resources.cpu_request.ceil() as i32)
+            .max(1) as u8;
+        let mem_size_mib = (plan.resources.memory_limit_bytes / (1024 * 1024)) as u32;
 
         let machine = MachineConfig::new(vcpu_count, mem_size_mib.max(128));
 
@@ -267,21 +271,21 @@ impl FirecrackerRuntime {
         client.put_drive(&scratch_drive).await?;
 
         // Configure volume drives (sorted by volume_id for deterministic mapping)
-        let mut volumes = plan.volumes.clone();
-        volumes.sort_by(|a, b| a.volume_id.cmp(&b.volume_id));
+        let mut mounts = plan.mounts.clone().unwrap_or_default();
+        mounts.sort_by(|a, b| a.volume_id.cmp(&b.volume_id));
 
-        for (idx, volume) in volumes.iter().enumerate() {
-            let path = self.volume_path(&volume.volume_id);
+        for (idx, mount) in mounts.iter().enumerate() {
+            let path = self.volume_path(&mount.volume_id);
             if !path.exists() {
                 return Err(anyhow!(
                     "volume device missing for {} at {}",
-                    volume.volume_id,
+                    mount.volume_id,
                     path.display()
                 ));
             }
 
             let drive_id = format!("vol-{}", idx);
-            let drive = DriveConfig::new(&drive_id, path, false).read_only(volume.read_only);
+            let drive = DriveConfig::new(&drive_id, path, false).read_only(mount.read_only);
             client.put_drive(&drive).await?;
         }
 
@@ -289,8 +293,8 @@ impl FirecrackerRuntime {
         client.put_vsock(&vsock).await?;
 
         // Configure networking if overlay_ipv6 is provided
-        let tap_device = if !plan.overlay_ipv6.is_empty() {
-            let tap_config = TapConfig::new(instance_id, &plan.overlay_ipv6);
+        let tap_device = if !plan.network.overlay_ipv6.is_empty() {
+            let tap_config = TapConfig::new(instance_id, &plan.network.overlay_ipv6);
             let tap_device = create_tap(&tap_config).map_err(|e| {
                 error!(instance_id = %instance_id, error = %e, "Failed to create TAP device");
                 anyhow!("Failed to create TAP device: {}", e)
@@ -310,7 +314,7 @@ impl FirecrackerRuntime {
                 instance_id = %instance_id,
                 tap = %tap_device.name(),
                 mac = %mac,
-                overlay_ipv6 = %plan.overlay_ipv6,
+                overlay_ipv6 = %plan.network.overlay_ipv6,
                 "Network configured"
             );
 
@@ -375,11 +379,16 @@ impl Runtime for FirecrackerRuntime {
         let boot_id = self.next_boot_id();
         let guest_cid = self.allocate_guest_cid().await;
 
-        let (registry, repo, reference) = parse_image_ref(&plan.image)
-            .map_err(|e| anyhow!("Invalid image reference {}: {}", plan.image, e))?;
+        let image_ref = plan
+            .image
+            .image_ref
+            .as_deref()
+            .ok_or_else(|| anyhow!("Missing image ref for instance {}", instance_id))?;
+        let (registry, repo, _) = parse_image_ref(image_ref)
+            .map_err(|e| anyhow!("Invalid image reference {}: {}", image_ref, e))?;
         let pull_result = self
             .image_puller
-            .ensure_image(&plan.image, &registry, &repo, &reference)
+            .ensure_image(image_ref, &registry, &repo, &plan.image.resolved_digest)
             .await
             .map_err(|e| anyhow!("Failed to pull image: {}", e))?;
         let root_disk_path = pull_result.root_disk_path.clone();

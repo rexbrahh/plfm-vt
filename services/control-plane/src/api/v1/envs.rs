@@ -471,6 +471,9 @@ async fn create_env(
         correlation_id: None,
         causation_id: None,
         payload: serde_json::json!({
+            "env_id": env_id.to_string(),
+            "org_id": org_id.to_string(),
+            "app_id": app_id.to_string(),
             "name": req.name
         }),
     };
@@ -697,6 +700,9 @@ async fn update_env(
 
     let next_version = current.resource_version + 1;
     let payload = serde_json::json!({
+        "env_id": env_id.to_string(),
+        "org_id": org_id.to_string(),
+        "app_id": app_id.to_string(),
         "name": req.name
     });
 

@@ -366,14 +366,7 @@ fn handle_connection(mut stream: VsockStream, config_store: Arc<ConfigStore>) ->
 fn build_config_message(instance_id: &str, pending: &PendingConfig) -> ConfigMessage {
     let plan = &pending.plan;
 
-    // Convert env_vars from JSON to HashMap
-    let env: HashMap<String, String> = match plan.env_vars.as_object() {
-        Some(obj) => obj
-            .iter()
-            .filter_map(|(k, v)| v.as_str().map(|s| (k.clone(), s.to_string())))
-            .collect(),
-        None => HashMap::new(),
-    };
+    let env = plan.env_vars.clone().unwrap_or_default();
 
     let argv = if plan.command.is_empty() {
         vec!["./start".to_string()]
@@ -383,7 +376,7 @@ fn build_config_message(instance_id: &str, pending: &PendingConfig) -> ConfigMes
 
     let workload = WorkloadConfig {
         argv,
-        cwd: "/app".to_string(),
+        cwd: plan.workdir.clone().unwrap_or_else(|| "/app".to_string()),
         env,
         uid: 1000,
         gid: 1000,
@@ -391,42 +384,57 @@ fn build_config_message(instance_id: &str, pending: &PendingConfig) -> ConfigMes
         tty: false,
     };
 
-    // Build network config
     let network = NetworkConfig {
         overlay_ipv6: pending.overlay_ipv6.clone(),
         gateway_ipv6: pending.gateway_ipv6.clone(),
         prefix_len: 128,
-        mtu: 1420,
-        dns: vec!["fd00::53".to_string()], // TODO: From platform config
+        mtu: plan.network.mtu.unwrap_or(1420) as u32,
+        dns: plan
+            .network
+            .dns
+            .clone()
+            .unwrap_or_else(|| vec!["fd00::53".to_string()]),
         hostname: Some(format!("i-{}", instance_id)),
     };
 
-    // Build mount configs from volumes
     let mounts: Vec<MountConfig> = plan
-        .volumes
-        .iter()
-        .enumerate()
-        .map(|(i, vol)| MountConfig {
-            kind: "volume".to_string(),
-            name: vol.volume_id.clone(),
-            device: Some(format!("/dev/vd{}", (b'c' + i as u8) as char)), // vdc, vdd, etc.
-            mountpoint: vol.mount_path.clone(),
-            fs_type: "ext4".to_string(),
-            mode: if vol.read_only { "ro" } else { "rw" }.to_string(),
+        .mounts
+        .as_ref()
+        .map(|mounts| {
+            mounts
+                .iter()
+                .enumerate()
+                .map(|(i, mount)| MountConfig {
+                    kind: "volume".to_string(),
+                    name: mount.volume_id.clone(),
+                    device: mount
+                        .device_hint
+                        .clone()
+                        .or_else(|| Some(format!("/dev/vd{}", (b'c' + i as u8) as char))),
+                    mountpoint: mount.mount_path.clone(),
+                    fs_type: mount.filesystem.clone(),
+                    mode: if mount.read_only { "ro" } else { "rw" }.to_string(),
+                })
+                .collect()
         })
-        .collect();
+        .unwrap_or_default();
 
-    // Build secrets config
-    let secrets = pending.secrets_data.as_ref().map(|data| SecretsConfig {
-        required: true,
-        path: "/run/secrets/platform.env".to_string(),
-        mode: "0400".to_string(),
-        owner_uid: 0,
-        owner_gid: 0,
-        format: "platform_env_v1".to_string(),
-        bundle_version_id: plan.secrets_version_id.clone(),
-        data: Some(data.clone()),
-    });
+    let secrets = match (pending.secrets_data.as_ref(), plan.secrets.as_ref()) {
+        (Some(data), Some(secrets)) => Some(SecretsConfig {
+            required: secrets.required,
+            path: secrets.mount_path.clone(),
+            mode: secrets
+                .mode
+                .map(|mode| format!("{:04o}", mode))
+                .unwrap_or_else(|| "0400".to_string()),
+            owner_uid: secrets.uid.unwrap_or(0) as u32,
+            owner_gid: secrets.gid.unwrap_or(0) as u32,
+            format: "platform_env_v1".to_string(),
+            bundle_version_id: secrets.secret_version_id.clone(),
+            data: Some(data.clone()),
+        }),
+        _ => None,
+    };
 
     // Exec config
     let exec = ExecConfig {
@@ -557,26 +565,47 @@ mod tests {
         let store = ConfigStore::new();
 
         let plan = InstancePlan {
-            instance_id: "inst_test".to_string(),
+            spec_version: "v1".to_string(),
+            org_id: "org_test".to_string(),
             app_id: "app_test".to_string(),
             env_id: "env_test".to_string(),
             process_type: "web".to_string(),
+            instance_id: "inst_test".to_string(),
+            generation: 1,
             release_id: "rel_test".to_string(),
-            deploy_id: "dep_test".to_string(),
-            image: "test:latest".to_string(),
+            image: crate::client::WorkloadImage {
+                image_ref: Some("test:latest".to_string()),
+                digest: "sha256:manifest".to_string(),
+                index_digest: None,
+                resolved_digest: "sha256:resolved".to_string(),
+                os: "linux".to_string(),
+                arch: "amd64".to_string(),
+            },
+            manifest_hash: "hash_test".to_string(),
             command: vec![
                 "./start".to_string(),
                 "--port".to_string(),
                 "8080".to_string(),
             ],
-            resources: crate::client::InstanceResources {
-                cpu: 1.0,
-                memory_bytes: 512 * 1024 * 1024,
+            workdir: None,
+            env_vars: Some(HashMap::from([("PORT".to_string(), "8080".to_string())])),
+            resources: crate::client::WorkloadResources {
+                cpu_request: 1.0,
+                memory_limit_bytes: 512 * 1024 * 1024,
+                ephemeral_disk_bytes: None,
+                vcpu_count: None,
+                cpu_weight: None,
             },
-            overlay_ipv6: "fd00::1234".to_string(),
-            secrets_version_id: None,
-            env_vars: serde_json::json!({"PORT": "8080"}),
-            volumes: vec![],
+            network: crate::client::WorkloadNetwork {
+                overlay_ipv6: "fd00::1234".to_string(),
+                gateway_ipv6: "fd00::1".to_string(),
+                mtu: Some(1420),
+                dns: None,
+                ports: None,
+            },
+            mounts: None,
+            secrets: None,
+            spec_hash: None,
         };
 
         let pending = PendingConfig {
