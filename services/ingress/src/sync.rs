@@ -17,7 +17,8 @@ use std::{
 
 use anyhow::{Context, Result};
 use plfm_events::{
-    RouteCreatedPayload, RouteDeletedPayload, RouteProxyProtocol, RouteUpdatedPayload,
+    RouteCreatedPayload, RouteDeletedPayload, RouteProtocolHint, RouteProxyProtocol,
+    RouteUpdatedPayload,
 };
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION};
 use serde::Deserialize;
@@ -50,9 +51,11 @@ struct RouteState {
     env_id: String,
     backend_process_type: String,
     backend_port: i32,
+    protocol_hint: RouteProtocolHint,
     proxy_protocol: RouteProxyProtocol,
     backend_expects_proxy_protocol: bool,
     ipv4_required: bool,
+    env_ipv4_address: Option<String>,
 }
 
 impl RouteState {
@@ -65,13 +68,14 @@ impl RouteState {
             env_id: payload.env_id.to_string(),
             backend_process_type: payload.backend_process_type,
             backend_port: payload.backend_port,
+            protocol_hint: payload.protocol_hint,
             proxy_protocol: payload.proxy_protocol,
             backend_expects_proxy_protocol: payload.backend_expects_proxy_protocol,
             ipv4_required: payload.ipv4_required,
+            env_ipv4_address: payload.env_ipv4_address,
         }
     }
 
-    /// Convert from persisted route.
     fn from_persisted(p: &PersistedRoute) -> Self {
         Self {
             route_id: p.route_id.clone(),
@@ -81,13 +85,14 @@ impl RouteState {
             env_id: p.env_id.clone(),
             backend_process_type: p.backend_process_type.clone(),
             backend_port: p.backend_port,
+            protocol_hint: PersistedRoute::protocol_hint_from_string(&p.protocol_hint),
             proxy_protocol: PersistedRoute::proxy_protocol_from_string(&p.proxy_protocol),
             backend_expects_proxy_protocol: p.backend_expects_proxy_protocol,
             ipv4_required: p.ipv4_required,
+            env_ipv4_address: p.env_ipv4_address.clone(),
         }
     }
 
-    /// Convert to persisted route.
     fn to_persisted(&self) -> PersistedRoute {
         PersistedRoute {
             route_id: self.route_id.clone(),
@@ -97,9 +102,11 @@ impl RouteState {
             env_id: self.env_id.clone(),
             backend_process_type: self.backend_process_type.clone(),
             backend_port: self.backend_port,
+            protocol_hint: PersistedRoute::protocol_hint_to_string(self.protocol_hint),
             proxy_protocol: PersistedRoute::proxy_protocol_to_string(self.proxy_protocol),
             backend_expects_proxy_protocol: self.backend_expects_proxy_protocol,
             ipv4_required: self.ipv4_required,
+            env_ipv4_address: self.env_ipv4_address.clone(),
         }
     }
 
@@ -141,6 +148,13 @@ impl RouteState {
             }
         }
 
+        if let Some(v) = payload.env_ipv4_address {
+            if v != self.env_ipv4_address {
+                self.env_ipv4_address = v;
+                changed.push("env_ipv4_address");
+            }
+        }
+
         changed
     }
 }
@@ -152,13 +166,18 @@ fn proxy_protocol_label(p: RouteProxyProtocol) -> &'static str {
     }
 }
 
-/// Convert internal RouteState to proxy Route.
 fn route_state_to_proxy_route(state: &RouteState) -> Route {
+    let protocol = match state.protocol_hint {
+        RouteProtocolHint::TlsPassthrough => ProtocolHint::TlsPassthrough,
+        RouteProtocolHint::TcpRaw => ProtocolHint::TcpRaw,
+    };
+    let allow_non_tls_fallback = matches!(state.protocol_hint, RouteProtocolHint::TcpRaw);
+
     Route {
         id: state.route_id.clone(),
         hostname: Route::normalize_hostname(&state.hostname),
         port: state.listen_port as u16,
-        protocol: ProtocolHint::TlsPassthrough, // Assume TLS for now
+        protocol,
         proxy_protocol: match state.proxy_protocol {
             RouteProxyProtocol::Off => ProxyProtocol::Off,
             RouteProxyProtocol::V2 => ProxyProtocol::V2,
@@ -167,7 +186,8 @@ fn route_state_to_proxy_route(state: &RouteState) -> Route {
         env_id: state.env_id.clone(),
         backend_process_type: state.backend_process_type.clone(),
         backend_port: state.backend_port as u16,
-        allow_non_tls_fallback: false,
+        allow_non_tls_fallback,
+        env_ipv4_address: state.env_ipv4_address.clone(),
     }
 }
 
@@ -619,9 +639,11 @@ mod tests {
             env_id: "env_123".to_string(),
             backend_process_type: "web".to_string(),
             backend_port: 8080,
+            protocol_hint: RouteProtocolHint::TlsPassthrough,
             proxy_protocol: RouteProxyProtocol::Off,
             backend_expects_proxy_protocol: false,
             ipv4_required: false,
+            env_ipv4_address: None,
         };
 
         let payload = RouteUpdatedPayload {
@@ -633,6 +655,7 @@ mod tests {
             proxy_protocol: Some(RouteProxyProtocol::V2),
             backend_expects_proxy_protocol: Some(true),
             ipv4_required: None,
+            env_ipv4_address: None,
         };
 
         let changed = state.apply_update(payload);

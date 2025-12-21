@@ -341,7 +341,8 @@ release_body="$(
         --arg image_ref "example.com/${app_name}:demo" \
         --arg image_digest "${image_digest}" \
         --arg manifest_hash "${manifest_hash}" \
-        '{image_ref: $image_ref, image_digest: $image_digest, manifest_schema_version: 1, manifest_hash: $manifest_hash}'
+        --argjson command '["./start","--port","8080"]' \
+        '{image_ref: $image_ref, image_digest: $image_digest, manifest_schema_version: 1, manifest_hash: $manifest_hash, command: $command}'
 )"
 idem_release="demo-release-${now_suffix}-key"
 req_rel_1="$(

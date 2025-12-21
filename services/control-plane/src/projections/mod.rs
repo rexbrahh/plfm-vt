@@ -12,6 +12,7 @@
 mod apps;
 mod deploys;
 mod env_config;
+mod env_networking;
 mod envs;
 mod exec_sessions;
 mod instances;
@@ -91,6 +92,7 @@ impl ProjectionRegistry {
                 Box::new(nodes::NodesProjection),
                 Box::new(instances::InstancesProjection),
                 Box::new(env_config::EnvConfigProjection),
+                Box::new(env_networking::EnvNetworkingProjection),
                 Box::new(routes::RoutesProjection),
                 Box::new(secret_bundles::SecretBundlesProjection),
                 Box::new(volumes::VolumesProjection),
@@ -204,5 +206,12 @@ mod tests {
         let registry = ProjectionRegistry::new();
         assert!(registry.handler_for("env.desired_release_set").is_some());
         assert!(registry.handler_for("env.scale_set").is_some());
+    }
+
+    #[test]
+    fn test_registry_finds_env_networking_handler() {
+        let registry = ProjectionRegistry::new();
+        assert!(registry.handler_for("env.ipv4_addon_enabled").is_some());
+        assert!(registry.handler_for("env.ipv4_addon_disabled").is_some());
     }
 }

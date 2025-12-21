@@ -12,6 +12,7 @@ mod error;
 mod event_store;
 mod idempotency;
 mod projections;
+pub mod quotas;
 
 pub use error::DbError;
 pub use event_store::{AppendEvent, EventRow, EventStore};
@@ -137,13 +138,17 @@ impl Database {
     pub async fn run_migrations(&self) -> Result<(), DbError> {
         info!("Running database migrations");
 
-        let candidates = ["./migrations", "services/control-plane/migrations"];
+        let candidates = vec![
+            std::path::PathBuf::from("./migrations"),
+            std::path::PathBuf::from("services/control-plane/migrations"),
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("migrations"),
+        ];
         let mut last_error: Option<sqlx::migrate::MigrateError> = None;
 
-        for dir in candidates {
-            match sqlx::migrate::Migrator::new(std::path::Path::new(dir)).await {
+        for dir in &candidates {
+            match sqlx::migrate::Migrator::new(dir.clone()).await {
                 Ok(migrator) => {
-                    info!(migrations_dir = %dir, "Loaded migrations");
+                    info!(migrations_dir = %dir.display(), "Loaded migrations");
                     migrator.run(&self.pool).await.map_err(DbError::Migration)?;
                     info!("Database migrations complete");
                     return Ok(());
@@ -154,8 +159,14 @@ impl Database {
             }
         }
 
+        let tried = candidates
+            .iter()
+            .map(|dir| dir.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
         Err(DbError::MigrationDirNotFound {
-            tried: candidates.join(", "),
+            tried,
             last_error: last_error
                 .map(|e| e.to_string())
                 .unwrap_or_else(|| "unknown error".to_string()),

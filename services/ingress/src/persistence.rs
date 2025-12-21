@@ -14,12 +14,13 @@ use std::fs;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
-use plfm_events::RouteProxyProtocol;
+use plfm_events::{RouteProtocolHint, RouteProxyProtocol};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 /// Persisted route state file format version.
-const STATE_VERSION: u32 = 1;
+/// v2: Added protocol_hint field for raw TCP support.
+const STATE_VERSION: u32 = 2;
 
 /// Persisted route state.
 #[derive(Debug, Serialize, Deserialize)]
@@ -42,7 +43,6 @@ impl Default for PersistedState {
     }
 }
 
-/// Persisted route entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersistedRoute {
     pub route_id: String,
@@ -52,13 +52,29 @@ pub struct PersistedRoute {
     pub env_id: String,
     pub backend_process_type: String,
     pub backend_port: i32,
+    pub protocol_hint: String,
     pub proxy_protocol: String,
     pub backend_expects_proxy_protocol: bool,
     pub ipv4_required: bool,
+    #[serde(default)]
+    pub env_ipv4_address: Option<String>,
 }
 
 impl PersistedRoute {
-    /// Convert from internal RouteProxyProtocol to string.
+    pub fn protocol_hint_to_string(p: RouteProtocolHint) -> String {
+        match p {
+            RouteProtocolHint::TlsPassthrough => "tls_passthrough".to_string(),
+            RouteProtocolHint::TcpRaw => "tcp_raw".to_string(),
+        }
+    }
+
+    pub fn protocol_hint_from_string(s: &str) -> RouteProtocolHint {
+        match s {
+            "tcp_raw" => RouteProtocolHint::TcpRaw,
+            _ => RouteProtocolHint::TlsPassthrough,
+        }
+    }
+
     pub fn proxy_protocol_to_string(p: RouteProxyProtocol) -> String {
         match p {
             RouteProxyProtocol::Off => "off".to_string(),
@@ -66,7 +82,6 @@ impl PersistedRoute {
         }
     }
 
-    /// Parse proxy protocol from string.
     pub fn proxy_protocol_from_string(s: &str) -> RouteProxyProtocol {
         match s {
             "v2" => RouteProxyProtocol::V2,
@@ -195,9 +210,11 @@ mod tests {
                 env_id: "env_1".to_string(),
                 backend_process_type: "web".to_string(),
                 backend_port: 8080,
+                protocol_hint: "tls_passthrough".to_string(),
                 proxy_protocol: "off".to_string(),
                 backend_expects_proxy_protocol: false,
                 ipv4_required: false,
+                env_ipv4_address: None,
             },
         );
 
@@ -237,9 +254,11 @@ mod tests {
                 env_id: "env_1".to_string(),
                 backend_process_type: "web".to_string(),
                 backend_port: 8080,
+                protocol_hint: "tls_passthrough".to_string(),
                 proxy_protocol: "v2".to_string(),
                 backend_expects_proxy_protocol: true,
                 ipv4_required: false,
+                env_ipv4_address: None,
             },
         );
 
@@ -280,6 +299,31 @@ mod tests {
         assert_eq!(
             PersistedRoute::proxy_protocol_from_string("invalid"),
             RouteProxyProtocol::Off
+        );
+    }
+
+    #[test]
+    fn test_protocol_hint_conversion() {
+        assert_eq!(
+            PersistedRoute::protocol_hint_to_string(RouteProtocolHint::TlsPassthrough),
+            "tls_passthrough"
+        );
+        assert_eq!(
+            PersistedRoute::protocol_hint_to_string(RouteProtocolHint::TcpRaw),
+            "tcp_raw"
+        );
+
+        assert_eq!(
+            PersistedRoute::protocol_hint_from_string("tls_passthrough"),
+            RouteProtocolHint::TlsPassthrough
+        );
+        assert_eq!(
+            PersistedRoute::protocol_hint_from_string("tcp_raw"),
+            RouteProtocolHint::TcpRaw
+        );
+        assert_eq!(
+            PersistedRoute::protocol_hint_from_string("invalid"),
+            RouteProtocolHint::TlsPassthrough
         );
     }
 }

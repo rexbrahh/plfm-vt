@@ -51,6 +51,9 @@ pub struct CreateReleaseRequest {
 
     /// Hash of the manifest content.
     pub manifest_hash: String,
+
+    /// Entrypoint command (array of strings).
+    pub command: Vec<String>,
 }
 
 fn default_manifest_version() -> i32 {
@@ -80,6 +83,9 @@ pub struct ReleaseResponse {
 
     /// Manifest hash.
     pub manifest_hash: String,
+
+    /// Entrypoint command.
+    pub command: Vec<String>,
 
     /// Resource version for optimistic concurrency.
     pub resource_version: i32,
@@ -251,7 +257,8 @@ async fn create_release(
             "image_ref": req.image_ref,
             "image_digest": req.image_digest,
             "manifest_schema_version": req.manifest_schema_version,
-            "manifest_hash": req.manifest_hash
+            "manifest_hash": req.manifest_hash,
+            "command": req.command
         }),
     };
 
@@ -281,7 +288,7 @@ async fn create_release(
     let row = sqlx::query_as::<_, ReleaseRow>(
         r#"
         SELECT release_id, org_id, app_id, image_ref, index_or_manifest_digest,
-               manifest_schema_version, manifest_hash, resource_version, created_at
+               manifest_schema_version, manifest_hash, command, resource_version, created_at
         FROM releases_view
         WHERE release_id = $1 AND org_id = $2 AND app_id = $3
         "#,
@@ -366,11 +373,10 @@ async fn list_releases(
         None => None,
     };
 
-    // Query the releases_view table (stable ordering by release_id)
     let rows = sqlx::query_as::<_, ReleaseRow>(
         r#"
         SELECT release_id, org_id, app_id, image_ref, index_or_manifest_digest,
-               manifest_schema_version, manifest_hash, resource_version, created_at
+               manifest_schema_version, manifest_hash, command, resource_version, created_at
         FROM releases_view
         WHERE org_id = $1 AND app_id = $2
           AND ($3::TEXT IS NULL OR release_id > $3)
@@ -428,11 +434,10 @@ async fn get_release(
 
     let _role = authz::require_org_member(&state, &org_id_typed, &ctx).await?;
 
-    // Query the releases_view table
     let row = sqlx::query_as::<_, ReleaseRow>(
         r#"
         SELECT release_id, org_id, app_id, image_ref, index_or_manifest_digest,
-               manifest_schema_version, manifest_hash, resource_version, created_at
+               manifest_schema_version, manifest_hash, command, resource_version, created_at
         FROM releases_view
         WHERE org_id = $1 AND app_id = $2 AND release_id = $3
         "#,
@@ -462,7 +467,6 @@ async fn get_release(
 // Database Row Types
 // =============================================================================
 
-/// Row from releases_view table.
 struct ReleaseRow {
     release_id: String,
     org_id: String,
@@ -471,6 +475,7 @@ struct ReleaseRow {
     index_or_manifest_digest: String,
     manifest_schema_version: i32,
     manifest_hash: String,
+    command: serde_json::Value,
     resource_version: i32,
     created_at: DateTime<Utc>,
 }
@@ -486,6 +491,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for ReleaseRow {
             index_or_manifest_digest: row.try_get("index_or_manifest_digest")?,
             manifest_schema_version: row.try_get("manifest_schema_version")?,
             manifest_hash: row.try_get("manifest_hash")?,
+            command: row.try_get("command")?,
             resource_version: row.try_get("resource_version")?,
             created_at: row.try_get("created_at")?,
         })
@@ -494,6 +500,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for ReleaseRow {
 
 impl From<ReleaseRow> for ReleaseResponse {
     fn from(row: ReleaseRow) -> Self {
+        let command: Vec<String> = serde_json::from_value(row.command).unwrap_or_default();
         Self {
             id: row.release_id,
             org_id: row.org_id,
@@ -502,6 +509,7 @@ impl From<ReleaseRow> for ReleaseResponse {
             image_digest: row.index_or_manifest_digest,
             manifest_schema_version: row.manifest_schema_version,
             manifest_hash: row.manifest_hash,
+            command,
             resource_version: row.resource_version,
             created_at: row.created_at,
         }
@@ -517,13 +525,15 @@ mod tests {
         let json = r#"{
             "image_ref": "registry.example.com/app:v1.0",
             "image_digest": "sha256:abc123",
-            "manifest_hash": "def456"
+            "manifest_hash": "def456",
+            "command": ["./start", "--port", "8080"]
         }"#;
         let req: CreateReleaseRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.image_ref, "registry.example.com/app:v1.0");
         assert_eq!(req.image_digest, "sha256:abc123");
-        assert_eq!(req.manifest_schema_version, 1); // default
+        assert_eq!(req.manifest_schema_version, 1);
         assert_eq!(req.manifest_hash, "def456");
+        assert_eq!(req.command, vec!["./start", "--port", "8080"]);
     }
 
     #[test]
@@ -536,6 +546,7 @@ mod tests {
             image_digest: "sha256:abc123".to_string(),
             manifest_schema_version: 1,
             manifest_hash: "def456".to_string(),
+            command: vec!["./start".to_string()],
             resource_version: 1,
             created_at: Utc::now(),
         };
@@ -543,5 +554,6 @@ mod tests {
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"id\":\"rel_123\""));
         assert!(json.contains("\"image_ref\":\"registry.example.com/app:v1.0\""));
+        assert!(json.contains("\"command\":[\"./start\"]"));
     }
 }

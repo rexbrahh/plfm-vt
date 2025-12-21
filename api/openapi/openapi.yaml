@@ -2177,6 +2177,7 @@ components:
           image_digest,
           manifest_schema_version,
           manifest_hash,
+          command,
           resource_version,
           created_at,
         ]
@@ -2195,6 +2196,11 @@ components:
           type: string
         manifest_schema_version:
           type: integer
+        command:
+          type: array
+          items:
+            type: string
+          minItems: 1
         resource_version:
           type: integer
         created_at:
@@ -2226,7 +2232,7 @@ components:
 
     CreateReleaseRequest:
       type: object
-      required: [image_ref, image_digest, manifest_hash]
+      required: [image_ref, image_digest, manifest_hash, command]
       properties:
         image_ref:
           type: string
@@ -2240,6 +2246,12 @@ components:
         manifest_hash:
           type: string
           description: Hash of manifest content (sha256:...)
+        command:
+          type: array
+          items:
+            type: string
+          minItems: 1
+          description: Fully resolved entrypoint command
 
     ListReleasesResponse:
       type: object

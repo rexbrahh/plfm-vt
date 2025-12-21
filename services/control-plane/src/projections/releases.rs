@@ -14,13 +14,13 @@ use super::{ProjectionError, ProjectionHandler, ProjectionResult};
 /// Projection handler for releases.
 pub struct ReleasesProjection;
 
-/// Payload for release.created event.
 #[derive(Debug, Deserialize)]
 struct ReleaseCreatedPayload {
     image_ref: String,
     image_digest: String,
     manifest_schema_version: i32,
     manifest_hash: String,
+    command: Vec<String>,
 }
 
 #[async_trait]
@@ -79,10 +79,10 @@ impl ReleasesProjection {
             r#"
             INSERT INTO releases_view (
                 release_id, org_id, app_id, image_ref, index_or_manifest_digest,
-                resolved_digests, manifest_schema_version, manifest_hash,
+                resolved_digests, manifest_schema_version, manifest_hash, command,
                 resource_version, created_at
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 1, $9)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 1, $10)
             ON CONFLICT (release_id) DO NOTHING
             "#,
         )
@@ -91,9 +91,10 @@ impl ReleasesProjection {
         .bind(app_id)
         .bind(&payload.image_ref)
         .bind(&payload.image_digest)
-        .bind(serde_json::json!({})) // resolved_digests
+        .bind(serde_json::json!({}))
         .bind(payload.manifest_schema_version)
         .bind(&payload.manifest_hash)
+        .bind(serde_json::json!(&payload.command))
         .bind(event.occurred_at)
         .execute(&mut **tx)
         .await?;
@@ -112,13 +113,15 @@ mod tests {
             "image_ref": "registry.example.com/app:v1.0",
             "image_digest": "sha256:abc123",
             "manifest_schema_version": 1,
-            "manifest_hash": "def456"
+            "manifest_hash": "def456",
+            "command": ["./start", "--port", "8080"]
         }"#;
         let payload: ReleaseCreatedPayload = serde_json::from_str(json).unwrap();
         assert_eq!(payload.image_ref, "registry.example.com/app:v1.0");
         assert_eq!(payload.image_digest, "sha256:abc123");
         assert_eq!(payload.manifest_schema_version, 1);
         assert_eq!(payload.manifest_hash, "def456");
+        assert_eq!(payload.command, vec!["./start", "--port", "8080"]);
     }
 
     #[test]

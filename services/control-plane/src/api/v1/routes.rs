@@ -353,6 +353,19 @@ async fn create_route(
         .with_request_id(request_id.clone()));
     }
 
+    let env_ipv4_address: Option<String> = sqlx::query_scalar(
+        "SELECT host(ipv4_address)::TEXT FROM env_networking_view WHERE env_id = $1 AND ipv4_enabled = true",
+    )
+    .bind(env_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to fetch env IPv4 address");
+        ApiError::internal("internal_error", "Failed to create route")
+            .with_request_id(request_id.clone())
+    })?
+    .flatten();
+
     let route_id = RouteId::new();
     let payload = RouteCreatedPayload {
         route_id,
@@ -367,6 +380,7 @@ async fn create_route(
         proxy_protocol: req.proxy_protocol,
         backend_expects_proxy_protocol: req.backend_expects_proxy_protocol,
         ipv4_required: req.ipv4_required,
+        env_ipv4_address,
     };
 
     let payload = serde_json::to_value(&payload).map_err(|e| {
@@ -738,6 +752,7 @@ async fn update_route(
         proxy_protocol: req.proxy_protocol,
         backend_expects_proxy_protocol: req.backend_expects_proxy_protocol,
         ipv4_required: req.ipv4_required,
+        env_ipv4_address: None,
     };
 
     let payload = serde_json::to_value(&payload).map_err(|e| {

@@ -43,29 +43,19 @@ impl Default for ProxyProtocol {
     }
 }
 
-/// A route configuration.
 #[derive(Debug, Clone)]
 pub struct Route {
-    /// Unique route identifier.
     pub id: String,
-    /// Hostname for this route (normalized).
     pub hostname: String,
-    /// Listener port.
     pub port: u16,
-    /// Protocol hint.
     pub protocol: ProtocolHint,
-    /// PROXY protocol configuration.
     pub proxy_protocol: ProxyProtocol,
-    /// Application ID this route belongs to.
     pub app_id: String,
-    /// Environment ID this route belongs to.
     pub env_id: String,
-    /// Backend process type to route to.
     pub backend_process_type: String,
-    /// Backend port inside the microVM.
     pub backend_port: u16,
-    /// Whether to allow non-TLS fallback (only if unambiguous).
     pub allow_non_tls_fallback: bool,
+    pub env_ipv4_address: Option<String>,
 }
 
 impl Route {
@@ -255,14 +245,16 @@ impl RouteTable {
 
     /// Make a routing decision based on listener address and optional SNI.
     ///
-    /// This is lock-free and can be called from hot path without blocking.
-    ///
-    /// # Arguments
-    /// * `listener_addr` - The address the connection arrived on
-    /// * `sni` - Optional SNI hostname extracted from TLS ClientHello
+    /// For IPv4 listeners, only routes with matching env_ipv4_address are considered.
+    /// For IPv6 listeners, all routes are considered (current default behavior).
     pub async fn route(&self, listener_addr: SocketAddr, sni: Option<&str>) -> RoutingDecision {
         let port = listener_addr.port();
         let snapshot = self.snapshot.load();
+
+        let listener_ipv4 = match listener_addr {
+            SocketAddr::V4(addr) => Some(addr.ip().to_string()),
+            SocketAddr::V6(_) => None,
+        };
 
         // Try exact match with SNI
         if let Some(hostname) = sni {
@@ -273,34 +265,42 @@ impl RouteTable {
             };
 
             if let Some(route) = snapshot.by_key.get(&key) {
-                debug!(
-                    route_id = %route.id,
-                    hostname = %normalized,
-                    port = port,
-                    "Route matched by SNI"
-                );
-                return RoutingDecision::Matched {
-                    route: route.clone(),
-                };
+                if Self::route_matches_listener(&listener_ipv4, route) {
+                    debug!(
+                        route_id = %route.id,
+                        hostname = %normalized,
+                        port = port,
+                        "Route matched by SNI"
+                    );
+                    return RoutingDecision::Matched {
+                        route: route.clone(),
+                    };
+                }
             }
 
-            // No match for this hostname
             return RoutingDecision::NoMatch {
                 reason: format!("No route for hostname '{}' on port {}", normalized, port),
             };
         }
 
-        // No SNI - check if routing is unambiguous
-        match snapshot.by_port.get(&port) {
-            None => RoutingDecision::NoMatch {
+        // No SNI - filter routes by listener IP and check if routing is unambiguous
+        let eligible_routes: Vec<&Route> = snapshot
+            .by_port
+            .get(&port)
+            .map(|routes| {
+                routes
+                    .iter()
+                    .filter(|r| Self::route_matches_listener(&listener_ipv4, r))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        match eligible_routes.len() {
+            0 => RoutingDecision::NoMatch {
                 reason: format!("No routes bound to port {}", port),
             },
-            Some(routes) if routes.is_empty() => RoutingDecision::NoMatch {
-                reason: format!("No routes bound to port {}", port),
-            },
-            Some(routes) if routes.len() == 1 => {
-                let route = &routes[0];
-                // Check if fallback is allowed
+            1 => {
+                let route = eligible_routes[0];
                 if route.protocol == ProtocolHint::TlsPassthrough && !route.allow_non_tls_fallback {
                     warn!(
                         route_id = %route.id,
@@ -324,16 +324,19 @@ impl RouteTable {
                     route: route.clone(),
                 }
             }
-            Some(routes) => {
-                // Multiple routes, ambiguous without SNI
-                RoutingDecision::Ambiguous {
-                    reason: format!(
-                        "Multiple routes ({}) bound to port {}, SNI required",
-                        routes.len(),
-                        port
-                    ),
-                }
-            }
+            n => RoutingDecision::Ambiguous {
+                reason: format!(
+                    "Multiple routes ({}) bound to port {}, SNI required",
+                    n, port
+                ),
+            },
+        }
+    }
+
+    fn route_matches_listener(listener_ipv4: &Option<String>, route: &Route) -> bool {
+        match listener_ipv4 {
+            Some(ip) => route.env_ipv4_address.as_ref() == Some(ip),
+            None => true,
         }
     }
 
@@ -393,6 +396,7 @@ mod tests {
             backend_process_type: "web".to_string(),
             backend_port: 8080,
             allow_non_tls_fallback: false,
+            env_ipv4_address: None,
         }
     }
 

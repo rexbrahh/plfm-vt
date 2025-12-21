@@ -456,7 +456,8 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
             "image_ref": format!("example.com/{app_name}:demo"),
             "image_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
             "manifest_schema_version": 1,
-            "manifest_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            "manifest_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "command": ["./start", "--port", "8080"]
         }))
         .send()
         .await

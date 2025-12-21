@@ -340,11 +340,17 @@ pub struct EnvDesiredReleaseSetPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvIpv4AddonEnabledPayload {
     pub env_id: EnvId,
+    pub org_id: OrgId,
+    pub app_id: AppId,
+    pub allocation_id: String,
+    pub ipv4_address: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EnvIpv4AddonDisabledPayload {
     pub env_id: EnvId,
+    pub org_id: OrgId,
+    pub allocation_id: String,
 }
 
 // -----------------------------------------------------------------------------
@@ -357,6 +363,7 @@ pub struct ReleaseCreatedPayload {
     pub app_id: AppId,
     pub image_digest: String,
     pub manifest_hash: String,
+    pub command: Vec<String>,
 }
 
 // -----------------------------------------------------------------------------
@@ -399,6 +406,8 @@ pub struct RouteCreatedPayload {
     pub proxy_protocol: RouteProxyProtocol,
     pub backend_expects_proxy_protocol: bool,
     pub ipv4_required: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env_ipv4_address: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -416,6 +425,8 @@ pub struct RouteUpdatedPayload {
     pub backend_expects_proxy_protocol: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ipv4_required: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub env_ipv4_address: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
