@@ -1,0 +1,24 @@
+[package]
+name = "plfm-e2e"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[test]]
+name = "happy_path"
+path = "happy_path.rs"
+
+[dependencies]
+plfm-control-plane = { path = "../../services/control-plane" }
+plfm-id = { path = "../../libs/id" }
+
+tokio = { workspace = true, features = ["full", "test-util"] }
+reqwest = { workspace = true, features = ["json"] }
+axum = { workspace = true }
+chrono = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+testcontainers = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
