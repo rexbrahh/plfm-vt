@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package plfm.events.v1;
+
+message ReleaseCreatedPayload {
+  string release_id = 1;
+  string app_id = 2;
+  string image_digest = 3;
+  string manifest_hash = 4;
+  repeated string command = 5;
+}

@@ -638,6 +638,7 @@ mod tests {
         Config {
             node_id: NodeId::new(),
             control_plane_url: "http://localhost:8080".to_string(),
+            control_plane_grpc_url: "http://localhost:9090".to_string(),
             data_dir: "/tmp/test".to_string(),
             heartbeat_interval_secs: 30,
             log_level: "info".to_string(),

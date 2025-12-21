@@ -4,6 +4,7 @@ resolver = "2"
 members = [
     "libs/id",
     "libs/events",
+    "libs/proto",
     "libs/reconcile",
     "libs/secrets-format",
     "libs/networking",
@@ -101,9 +102,15 @@ rand = "0.9"
 aes-gcm = { version = "0.10", features = ["std"] }
 hex = "0.4"
 
+# Protobuf / gRPC
+prost = "0.13"
+prost-types = "0.13"
+tonic = { version = "0.12", features = ["tls", "gzip"] }
+
 # Internal crates
 plfm-id = { path = "libs/id" }
 plfm-events = { path = "libs/events" }
+plfm-proto = { path = "libs/proto" }
 plfm-reconcile = { path = "libs/reconcile" }
 plfm-secrets-format = { path = "libs/secrets-format" }
 plfm-networking = { path = "libs/networking" }

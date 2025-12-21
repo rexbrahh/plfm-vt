@@ -1,20 +1,17 @@
-//! plfm-vt Control Plane
-//!
-//! The control plane is the central coordination service for the platform.
-//! It provides the REST API for all platform operations and drives
-//! reconciliation of desired vs current state.
-
 use anyhow::Result;
 use plfm_control_plane::{
     api,
     cleanup::{CleanupWorker, CleanupWorkerConfig},
     config,
     db::Database,
+    grpc::NodeAgentService,
     projections::{worker::WorkerConfig, ProjectionWorker},
     scheduler::SchedulerWorker,
     state::AppState,
 };
+use plfm_proto::agent::v1::NodeAgentServer;
 use tokio::sync::watch;
+use tonic::transport::Server as TonicServer;
 use tracing::{error, info, warn};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -30,7 +27,11 @@ async fn main() -> Result<()> {
         .init();
 
     info!("Starting plfm-vt control plane");
-    info!(listen_addr = %config.listen_addr, "Configuration loaded");
+    info!(
+        listen_addr = %config.listen_addr,
+        grpc_listen_addr = %config.grpc_listen_addr,
+        "Configuration loaded"
+    );
 
     // Connect to database
     let db = match Database::connect(&config.database).await {
@@ -86,20 +87,17 @@ async fn main() -> Result<()> {
         }
     });
 
-    // Create application state
     let state = AppState::new(db);
 
-    // Build and run the server
-    let app = api::create_router(state);
-
+    let app = api::create_router(state.clone());
     let listener = tokio::net::TcpListener::bind(&config.listen_addr).await?;
-    info!(addr = %config.listen_addr, "Listening for connections");
+    info!(addr = %config.listen_addr, "Listening for HTTP connections");
 
-    // Spawn the server with graceful shutdown
+    let http_shutdown_rx = shutdown_rx.clone();
     let server_handle = tokio::spawn(async move {
         axum::serve(listener, app)
             .with_graceful_shutdown(async move {
-                let mut shutdown_rx = shutdown_rx;
+                let mut shutdown_rx = http_shutdown_rx;
                 loop {
                     if *shutdown_rx.borrow() {
                         break;
@@ -113,24 +111,51 @@ async fn main() -> Result<()> {
             .await
     });
 
-    // Wait for shutdown signal (Ctrl+C)
+    let node_agent_service = NodeAgentService::new(state);
+    let grpc_addr = config.grpc_listen_addr;
+    info!(addr = %grpc_addr, "Listening for gRPC connections");
+
+    let grpc_shutdown_rx = shutdown_rx.clone();
+    let grpc_handle = tokio::spawn(async move {
+        TonicServer::builder()
+            .add_service(NodeAgentServer::new(node_agent_service))
+            .serve_with_shutdown(grpc_addr, async move {
+                let mut shutdown_rx = grpc_shutdown_rx;
+                loop {
+                    if *shutdown_rx.borrow() {
+                        break;
+                    }
+                    if shutdown_rx.changed().await.is_err() {
+                        break;
+                    }
+                }
+                info!("gRPC server shutting down");
+            })
+            .await
+    });
+
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {
             info!("Received shutdown signal");
         }
         result = server_handle => {
             match result {
-                Ok(Ok(())) => info!("Server exited normally"),
-                Ok(Err(e)) => error!(error = %e, "Server error"),
-                Err(e) => error!(error = %e, "Server task panicked"),
+                Ok(Ok(())) => info!("HTTP server exited normally"),
+                Ok(Err(e)) => error!(error = %e, "HTTP server error"),
+                Err(e) => error!(error = %e, "HTTP server task panicked"),
+            }
+        }
+        result = grpc_handle => {
+            match result {
+                Ok(Ok(())) => info!("gRPC server exited normally"),
+                Ok(Err(e)) => error!(error = %e, "gRPC server error"),
+                Err(e) => error!(error = %e, "gRPC server task panicked"),
             }
         }
     }
 
-    // Signal shutdown to all workers
     let _ = shutdown_tx.send(true);
 
-    // Wait for workers to finish
     info!("Waiting for workers to shut down...");
     let shutdown_timeout = std::time::Duration::from_secs(10);
 

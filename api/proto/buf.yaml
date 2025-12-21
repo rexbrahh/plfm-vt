@@ -1,0 +1,29 @@
+# buf.yaml - Buf configuration for plfm-vt proto definitions
+# See: https://buf.build/docs/configuration/v2/buf-yaml
+version: v2
+
+modules:
+  - path: .
+    name: buf.build/plfm/plfm-vt
+
+lint:
+  use:
+    - DEFAULT
+    - COMMENTS
+  except:
+    # We use SCREAMING_SNAKE_CASE for enum values which is idiomatic
+    - ENUM_VALUE_PREFIX
+    # Allow service names without "Service" suffix for cleaner API
+    - SERVICE_SUFFIX
+  disallow_comment_ignores: true
+
+breaking:
+  use:
+    - FILE
+  except: []
+
+# Compatibility rules per docs/specs/wire-formats/wire-formats.md section 8:
+# - Never reuse field numbers once shipped
+# - When removing a field, reserve the field number and name
+# - First enum value must be *_UNSPECIFIED = 0
+# - Never repurpose an enum value

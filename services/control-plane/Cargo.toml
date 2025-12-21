@@ -14,9 +14,13 @@ path = "src/main.rs"
 [dependencies]
 plfm-id = { workspace = true }
 plfm-events = { workspace = true }
+plfm-proto = { workspace = true }
 plfm-secrets-format = { workspace = true }
 
-# Async runtime
+prost = { workspace = true }
+prost-types = { workspace = true }
+tonic = { workspace = true }
+
 tokio = { workspace = true }
 
 # HTTP framework

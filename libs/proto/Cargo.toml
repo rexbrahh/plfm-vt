@@ -1,0 +1,17 @@
+[package]
+name = "plfm-proto"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+prost = "0.13"
+prost-types = "0.13"
+tonic = { version = "0.12", features = ["tls", "gzip"] }
+bytes = "1.10"
+
+[build-dependencies]
+prost-build = "0.13"
+tonic-build = { version = "0.12", features = ["prost"] }

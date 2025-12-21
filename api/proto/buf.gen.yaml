@@ -1,0 +1,21 @@
+version: v2
+
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/plfm-vt/plfm-vt/gen/go
+
+plugins:
+  - remote: buf.build/protocolbuffers/prost:v0.7.0
+    out: ../../libs/proto/src/gen
+    opt:
+      - bytes=bytes
+      - compile_well_known_types
+      - extern_path=.google.protobuf=::prost_types
+
+  - remote: buf.build/protocolbuffers/tonic:v0.4.1
+    out: ../../libs/proto/src/gen
+    opt:
+      - compile_well_known_types
+      - extern_path=.google.protobuf=::prost_types

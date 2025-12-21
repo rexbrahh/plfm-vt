@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package plfm.events.v1;
+
+import "google/protobuf/timestamp.proto";
+import "plfm/common/v1/ids.proto";
+
+message EventEnvelope {
+  string event_id = 1;
+  uint64 sequence = 2;
+  google.protobuf.Timestamp observed_at = 3;
+
+  string org_id = 10;
+  string project_id = 11;
+  string app_id = 12;
+  string env_id = 13;
+
+  plfm.common.v1.AggregateType aggregate_type = 20;
+  string aggregate_id = 21;
+
+  string event_type = 30;
+  uint32 schema_version = 31;
+  string payload_type_url = 32;
+  bytes payload = 33;
+
+  string traceparent = 40;
+  map<string, string> tags = 41;
+
+  plfm.common.v1.ActorType actor_type = 50;
+  string actor_id = 51;
+  string request_id = 52;
+  string idempotency_key = 53;
+  string correlation_id = 54;
+  string causation_id = 55;
+}

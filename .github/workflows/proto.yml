@@ -1,0 +1,47 @@
+name: Proto CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "api/proto/**"
+      - ".github/workflows/proto.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "api/proto/**"
+      - ".github/workflows/proto.yml"
+
+jobs:
+  lint:
+    name: buf lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Lint
+        run: buf lint api/proto
+
+  breaking:
+    name: buf breaking
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Check breaking changes
+        run: buf breaking api/proto --against '.git#branch=main,subdir=api/proto'

@@ -7,6 +7,7 @@ pub mod api;
 pub mod cleanup;
 pub mod config;
 pub mod db;
+pub mod grpc;
 pub mod projections;
 pub mod scheduler;
 pub mod secrets;

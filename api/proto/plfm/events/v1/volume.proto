@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package plfm.events.v1;
+
+enum JobStatus {
+  JOB_STATUS_UNSPECIFIED = 0;
+  JOB_STATUS_QUEUED = 1;
+  JOB_STATUS_RUNNING = 2;
+  JOB_STATUS_SUCCEEDED = 3;
+  JOB_STATUS_FAILED = 4;
+}
+
+message VolumeCreatedPayload {
+  string volume_id = 1;
+  string org_id = 2;
+  optional string name = 3;
+  int64 size_bytes = 4;
+  string filesystem = 5;
+  bool backup_enabled = 6;
+}
+
+message VolumeDeletedPayload {
+  string volume_id = 1;
+  string org_id = 2;
+}
+
+message VolumeAttachmentCreatedPayload {
+  string attachment_id = 1;
+  string org_id = 2;
+  string volume_id = 3;
+  string app_id = 4;
+  string env_id = 5;
+  string process_type = 6;
+  string mount_path = 7;
+  bool read_only = 8;
+}
+
+message VolumeAttachmentDeletedPayload {
+  string attachment_id = 1;
+  string org_id = 2;
+  string volume_id = 3;
+  string env_id = 4;
+  string process_type = 5;
+}
+
+message SnapshotCreatedPayload {
+  string snapshot_id = 1;
+  string org_id = 2;
+  string volume_id = 3;
+  JobStatus status = 4;
+  optional string note = 5;
+}
+
+message SnapshotStatusChangedPayload {
+  string snapshot_id = 1;
+  string org_id = 2;
+  string volume_id = 3;
+  JobStatus status = 4;
+  optional int64 size_bytes = 5;
+  optional string failed_reason = 6;
+}
+
+message RestoreJobCreatedPayload {
+  string restore_id = 1;
+  string org_id = 2;
+  string snapshot_id = 3;
+  string source_volume_id = 4;
+  optional string new_volume_name = 5;
+  JobStatus status = 6;
+}
+
+message RestoreJobStatusChangedPayload {
+  string restore_id = 1;
+  string org_id = 2;
+  JobStatus status = 3;
+  optional string new_volume_id = 4;
+  optional string failed_reason = 5;
+}

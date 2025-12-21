@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package plfm.common.v1;
+
+message ErrorDetail {
+  string request_id = 1;
+  string resource_type = 2;
+  string resource_id = 3;
+  bool retryable = 4;
+  uint32 retry_after_seconds = 5;
+  string human_hint = 6;
+  map<string, string> tags = 7;
+}

@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package plfm.events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message ExecSessionGrantedPayload {
+  string exec_session_id = 1;
+  string org_id = 2;
+  string app_id = 3;
+  string env_id = 4;
+  string instance_id = 5;
+  repeated string requested_command = 6;
+  bool tty = 7;
+  google.protobuf.Timestamp expires_at = 8;
+}
+
+message ExecSessionConnectedPayload {
+  string exec_session_id = 1;
+  string org_id = 2;
+  string instance_id = 3;
+  google.protobuf.Timestamp connected_at = 4;
+}
+
+message ExecSessionEndedPayload {
+  string exec_session_id = 1;
+  string org_id = 2;
+  string instance_id = 3;
+  google.protobuf.Timestamp ended_at = 4;
+  optional int32 exit_code = 5;
+  optional string end_reason = 6;
+}

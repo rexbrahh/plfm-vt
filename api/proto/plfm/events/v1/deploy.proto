@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package plfm.events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+enum DeployStatus {
+  DEPLOY_STATUS_UNSPECIFIED = 0;
+  DEPLOY_STATUS_QUEUED = 1;
+  DEPLOY_STATUS_ROLLING = 2;
+  DEPLOY_STATUS_SUCCEEDED = 3;
+  DEPLOY_STATUS_FAILED = 4;
+}
+
+message DeployCreatedPayload {
+  string deploy_id = 1;
+  string org_id = 2;
+  string app_id = 3;
+  string env_id = 4;
+  string kind = 5;
+  string release_id = 6;
+  repeated string process_types = 7;
+  string strategy = 8;
+  google.protobuf.Timestamp initiated_at = 9;
+}
+
+message DeployStatusChangedPayload {
+  string deploy_id = 1;
+  string org_id = 2;
+  string env_id = 3;
+  DeployStatus status = 4;
+  optional string message = 5;
+  optional string failed_reason = 6;
+  google.protobuf.Timestamp updated_at = 7;
+}

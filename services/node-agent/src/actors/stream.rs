@@ -404,6 +404,7 @@ mod tests {
         let config = crate::config::Config {
             node_id: plfm_id::NodeId::new(),
             control_plane_url: "https://api.example.com".to_string(),
+            control_plane_grpc_url: "https://api.example.com:9090".to_string(),
             data_dir: "/tmp/test".to_string(),
             heartbeat_interval_secs: 30,
             log_level: "info".to_string(),

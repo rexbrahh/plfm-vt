@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package plfm.events.v1;
+
+enum MemberRole {
+  MEMBER_ROLE_UNSPECIFIED = 0;
+  MEMBER_ROLE_OWNER = 1;
+  MEMBER_ROLE_ADMIN = 2;
+  MEMBER_ROLE_DEVELOPER = 3;
+  MEMBER_ROLE_READONLY = 4;
+}
+
+message OrgCreatedPayload {
+  string org_id = 1;
+  string name = 2;
+}
+
+message OrgUpdatedPayload {
+  string org_id = 1;
+  optional string name = 2;
+  optional string billing_email = 3;
+}
+
+message OrgMemberAddedPayload {
+  string member_id = 1;
+  string org_id = 2;
+  string email = 3;
+  MemberRole role = 4;
+}
+
+message OrgMemberRoleUpdatedPayload {
+  string member_id = 1;
+  string org_id = 2;
+  MemberRole old_role = 3;
+  MemberRole new_role = 4;
+}
+
+message OrgMemberRemovedPayload {
+  string member_id = 1;
+  string org_id = 2;
+  string email = 3;
+}
+
+message ServicePrincipalCreatedPayload {
+  string sp_id = 1;
+  string org_id = 2;
+  string name = 3;
+  repeated string scopes = 4;
+}
+
+message ServicePrincipalScopesUpdatedPayload {
+  string sp_id = 1;
+  repeated string old_scopes = 2;
+  repeated string new_scopes = 3;
+}
+
+message ServicePrincipalSecretRotatedPayload {
+  string sp_id = 1;
+}
+
+message ServicePrincipalDeletedPayload {
+  string sp_id = 1;
+}

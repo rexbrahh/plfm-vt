@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package plfm.events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+enum InstanceDesiredState {
+  INSTANCE_DESIRED_STATE_UNSPECIFIED = 0;
+  INSTANCE_DESIRED_STATE_RUNNING = 1;
+  INSTANCE_DESIRED_STATE_DRAINING = 2;
+  INSTANCE_DESIRED_STATE_STOPPED = 3;
+}
+
+enum InstanceStatus {
+  INSTANCE_STATUS_UNSPECIFIED = 0;
+  INSTANCE_STATUS_BOOTING = 1;
+  INSTANCE_STATUS_READY = 2;
+  INSTANCE_STATUS_DRAINING = 3;
+  INSTANCE_STATUS_STOPPED = 4;
+  INSTANCE_STATUS_FAILED = 5;
+}
+
+enum InstanceFailureReason {
+  INSTANCE_FAILURE_REASON_UNSPECIFIED = 0;
+  INSTANCE_FAILURE_REASON_IMAGE_PULL_FAILED = 1;
+  INSTANCE_FAILURE_REASON_ROOTFS_BUILD_FAILED = 2;
+  INSTANCE_FAILURE_REASON_FIRECRACKER_START_FAILED = 3;
+  INSTANCE_FAILURE_REASON_NETWORK_SETUP_FAILED = 4;
+  INSTANCE_FAILURE_REASON_VOLUME_ATTACH_FAILED = 5;
+  INSTANCE_FAILURE_REASON_SECRETS_MISSING = 6;
+  INSTANCE_FAILURE_REASON_SECRETS_INJECTION_FAILED = 7;
+  INSTANCE_FAILURE_REASON_HEALTHCHECK_FAILED = 8;
+  INSTANCE_FAILURE_REASON_OOM_KILLED = 9;
+  INSTANCE_FAILURE_REASON_CRASH_LOOP_BACKOFF = 10;
+  INSTANCE_FAILURE_REASON_TERMINATED_BY_OPERATOR = 11;
+  INSTANCE_FAILURE_REASON_NODE_DRAINING = 12;
+}
+
+message InstanceResourcesSnapshot {
+  double cpu_request = 1;
+  int64 memory_limit_bytes = 2;
+  int64 ephemeral_disk_bytes = 3;
+}
+
+message InstanceAllocatedPayload {
+  string instance_id = 1;
+  string org_id = 2;
+  string app_id = 3;
+  string env_id = 4;
+  string process_type = 5;
+  string node_id = 6;
+  InstanceDesiredState desired_state = 7;
+  string release_id = 8;
+  optional string secrets_version_id = 9;
+  string overlay_ipv6 = 10;
+  InstanceResourcesSnapshot resources_snapshot = 11;
+  string spec_hash = 12;
+}
+
+message InstanceDesiredStateChangedPayload {
+  string instance_id = 1;
+  string org_id = 2;
+  string env_id = 3;
+  InstanceDesiredState desired_state = 4;
+  optional int32 drain_grace_seconds = 5;
+  optional string reason = 6;
+}
+
+message InstanceStatusChangedPayload {
+  string instance_id = 1;
+  string org_id = 2;
+  string env_id = 3;
+  string node_id = 4;
+  InstanceStatus status = 5;
+  optional string boot_id = 6;
+  optional string microvm_id = 7;
+  optional int32 exit_code = 8;
+  optional InstanceFailureReason reason_code = 9;
+  optional string reason_detail = 10;
+  google.protobuf.Timestamp reported_at = 11;
+}

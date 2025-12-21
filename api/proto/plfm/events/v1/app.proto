@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package plfm.events.v1;
+
+message AppCreatedPayload {
+  string app_id = 1;
+  string org_id = 2;
+  string name = 3;
+  optional string description = 4;
+}
+
+message AppUpdatedPayload {
+  string app_id = 1;
+  string org_id = 2;
+  optional string name = 3;
+  optional string description = 4;
+}
+
+message AppDeletedPayload {
+  string app_id = 1;
+}

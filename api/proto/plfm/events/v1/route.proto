@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package plfm.events.v1;
+
+enum RouteProtocolHint {
+  ROUTE_PROTOCOL_HINT_UNSPECIFIED = 0;
+  ROUTE_PROTOCOL_HINT_TLS_PASSTHROUGH = 1;
+  ROUTE_PROTOCOL_HINT_TCP_RAW = 2;
+}
+
+enum RouteProxyProtocol {
+  ROUTE_PROXY_PROTOCOL_UNSPECIFIED = 0;
+  ROUTE_PROXY_PROTOCOL_OFF = 1;
+  ROUTE_PROXY_PROTOCOL_V2 = 2;
+}
+
+message RouteCreatedPayload {
+  string route_id = 1;
+  string org_id = 2;
+  string app_id = 3;
+  string env_id = 4;
+  string hostname = 5;
+  int32 listen_port = 6;
+  RouteProtocolHint protocol_hint = 7;
+  string backend_process_type = 8;
+  int32 backend_port = 9;
+  RouteProxyProtocol proxy_protocol = 10;
+  bool backend_expects_proxy_protocol = 11;
+  bool ipv4_required = 12;
+  optional string env_ipv4_address = 13;
+}
+
+message RouteUpdatedPayload {
+  string route_id = 1;
+  string org_id = 2;
+  string env_id = 3;
+  optional string backend_process_type = 4;
+  optional int32 backend_port = 5;
+  optional RouteProxyProtocol proxy_protocol = 6;
+  optional bool backend_expects_proxy_protocol = 7;
+  optional bool ipv4_required = 8;
+  optional string env_ipv4_address = 9;
+}
+
+message RouteDeletedPayload {
+  string route_id = 1;
+  string org_id = 2;
+  string env_id = 3;
+  string hostname = 4;
+}

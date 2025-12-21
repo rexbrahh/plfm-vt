@@ -1,0 +1,128 @@
+syntax = "proto3";
+
+package plfm.agent.v1;
+
+import "plfm/events/v1/instance.proto";
+import "plfm/events/v1/node.proto";
+
+message WorkloadImage {
+  optional string image_ref = 1;
+  string digest = 2;
+  optional string index_digest = 3;
+  string resolved_digest = 4;
+  string os = 5;
+  string arch = 6;
+}
+
+message WorkloadResources {
+  double cpu_request = 1;
+  int64 memory_limit_bytes = 2;
+  optional int64 ephemeral_disk_bytes = 3;
+  optional int32 vcpu_count = 4;
+  optional int32 cpu_weight = 5;
+}
+
+message WorkloadPort {
+  string name = 1;
+  int32 port = 2;
+  string protocol = 3;
+}
+
+message WorkloadNetwork {
+  string overlay_ipv6 = 1;
+  string gateway_ipv6 = 2;
+  optional int32 mtu = 3;
+  repeated string dns = 4;
+  repeated WorkloadPort ports = 5;
+}
+
+message WorkloadMount {
+  string volume_id = 1;
+  string mount_path = 2;
+  bool read_only = 3;
+  string filesystem = 4;
+  optional string device_hint = 5;
+}
+
+message WorkloadSecrets {
+  bool required = 1;
+  optional string secret_version_id = 2;
+  string mount_path = 3;
+  optional int32 mode = 4;
+  optional int32 uid = 5;
+  optional int32 gid = 6;
+}
+
+message WorkloadSpec {
+  string spec_version = 1;
+  string org_id = 2;
+  string app_id = 3;
+  string env_id = 4;
+  string process_type = 5;
+  string instance_id = 6;
+  int32 generation = 7;
+  string release_id = 8;
+  WorkloadImage image = 9;
+  string manifest_hash = 10;
+  repeated string command = 11;
+  optional string workdir = 12;
+  map<string, string> env_vars = 13;
+  WorkloadResources resources = 14;
+  WorkloadNetwork network = 15;
+  repeated WorkloadMount mounts = 16;
+  optional WorkloadSecrets secrets = 17;
+  optional string spec_hash = 18;
+}
+
+message DesiredInstanceAssignment {
+  string assignment_id = 1;
+  string node_id = 2;
+  string instance_id = 3;
+  int32 generation = 4;
+  plfm.events.v1.InstanceDesiredState desired_state = 5;
+  optional int32 drain_grace_seconds = 6;
+  optional WorkloadSpec workload = 7;
+}
+
+message NodePlan {
+  string spec_version = 1;
+  string node_id = 2;
+  string plan_id = 3;
+  int64 cursor_event_id = 4;
+  repeated DesiredInstanceAssignment instances = 5;
+}
+
+message InstanceStatusReport {
+  string instance_id = 1;
+  plfm.events.v1.InstanceStatus status = 2;
+  optional string boot_id = 3;
+  optional string error_message = 4;
+  optional int32 exit_code = 5;
+}
+
+message HeartbeatRequest {
+  plfm.events.v1.NodeState state = 1;
+  int32 available_cpu_cores = 2;
+  int64 available_memory_bytes = 3;
+  int32 instance_count = 4;
+}
+
+message HeartbeatResponse {
+  bool accepted = 1;
+  int32 next_heartbeat_secs = 2;
+}
+
+message SecretMaterial {
+  string version_id = 1;
+  string format = 2;
+  string data_hash = 3;
+  string data = 4;
+}
+
+message WorkloadLogEntry {
+  int64 timestamp_nanos = 1;
+  string instance_id = 2;
+  string stream = 3;
+  string line = 4;
+  bool truncated = 5;
+}

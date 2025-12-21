@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package plfm.agent.v1;
+
+import "plfm/agent/v1/workload.proto";
+import "plfm/events/v1/node.proto";
+
+service NodeAgent {
+  rpc Enroll(EnrollRequest) returns (EnrollResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc GetPlan(GetPlanRequest) returns (NodePlan);
+  rpc ReportInstanceStatus(ReportInstanceStatusRequest) returns (ReportInstanceStatusResponse);
+  rpc GetSecretMaterial(GetSecretMaterialRequest) returns (SecretMaterial);
+  rpc SendWorkloadLogs(SendWorkloadLogsRequest) returns (SendWorkloadLogsResponse);
+}
+
+message EnrollRequest {
+  string hostname = 1;
+  string region = 2;
+  string wireguard_public_key = 3;
+  string agent_mtls_subject = 4;
+  string public_ipv6 = 5;
+  optional string public_ipv4 = 6;
+  int32 cpu_cores = 7;
+  int64 memory_bytes = 8;
+  optional int32 mtu = 9;
+  map<string, string> labels = 10;
+}
+
+message EnrollResponse {
+  string node_id = 1;
+  string overlay_ipv6 = 2;
+  plfm.events.v1.NodeState state = 3;
+}
+
+message GetPlanRequest {
+  string node_id = 1;
+}
+
+message ReportInstanceStatusRequest {
+  string node_id = 1;
+  InstanceStatusReport status = 2;
+}
+
+message ReportInstanceStatusResponse {
+  bool accepted = 1;
+}
+
+message GetSecretMaterialRequest {
+  string node_id = 1;
+  string version_id = 2;
+}
+
+message SendWorkloadLogsRequest {
+  string node_id = 1;
+  repeated WorkloadLogEntry entries = 2;
+}
+
+message SendWorkloadLogsResponse {
+  int32 accepted = 1;
+  int32 rejected = 2;
+}
