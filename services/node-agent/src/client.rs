@@ -156,50 +156,32 @@ pub struct NodePlan {
     /// Plan version (monotonically increasing).
     pub plan_version: i64,
 
+    /// Node overlay IPv6 address (/128).
+    #[serde(default)]
+    pub node_overlay_ipv6: Option<String>,
+
     /// Instances assigned to this node.
     pub instances: Vec<InstancePlan>,
 }
 
-/// Plan for a single instance.
 #[derive(Debug, Clone, Deserialize)]
 pub struct InstancePlan {
-    /// Instance ID.
     pub instance_id: String,
-
-    /// App ID.
     pub app_id: String,
-
-    /// Env ID.
     pub env_id: String,
-
-    /// Process type (web, worker, etc).
     pub process_type: String,
-
-    /// Release ID to run.
     pub release_id: String,
-
-    /// Deploy ID that triggered this instance.
     pub deploy_id: String,
-
-    /// OCI image reference.
     pub image: String,
-
-    /// Resource requests.
+    #[serde(default)]
+    pub command: Vec<String>,
     pub resources: InstanceResources,
-
-    /// Overlay IPv6 address for this instance.
     #[serde(default)]
     pub overlay_ipv6: String,
-
-    /// Secrets version ID (node-agent fetches secrets separately).
     #[serde(default)]
     pub secrets_version_id: Option<String>,
-
-    /// Environment variables (non-secret config).
     #[serde(default)]
     pub env_vars: serde_json::Value,
-
-    /// Volume mounts.
     #[serde(default)]
     pub volumes: Vec<VolumeMount>,
 }
@@ -346,6 +328,7 @@ mod tests {
     fn test_node_plan_deserialization() {
         let json = r#"{
             "plan_version": 42,
+            "node_overlay_ipv6": "fd00::ffff",
             "instances": [
                 {
                     "instance_id": "inst_123",
@@ -366,6 +349,7 @@ mod tests {
 
         let plan: NodePlan = serde_json::from_str(json).unwrap();
         assert_eq!(plan.plan_version, 42);
+        assert_eq!(plan.node_overlay_ipv6.as_deref(), Some("fd00::ffff"));
         assert_eq!(plan.instances.len(), 1);
         assert_eq!(plan.instances[0].instance_id, "inst_123");
         assert_eq!(plan.instances[0].process_type, "web");

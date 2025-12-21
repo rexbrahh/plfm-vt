@@ -113,6 +113,10 @@ impl Reconciler {
             return Ok(());
         }
 
+        self.instance_manager
+            .set_node_overlay_ipv6(plan.node_overlay_ipv6.clone())
+            .await;
+
         // Apply the plan
         self.instance_manager
             .apply_plan(plan.plan_version, plan.instances)

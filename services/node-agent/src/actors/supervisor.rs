@@ -557,6 +557,7 @@ mod tests {
             release_id: "rel_test".to_string(),
             deploy_id: "dep_test".to_string(),
             image: "test:latest".to_string(),
+            command: vec!["./start".to_string()],
             resources: InstanceResources {
                 cpu: 1.0,
                 memory_bytes: 512 * 1024 * 1024,

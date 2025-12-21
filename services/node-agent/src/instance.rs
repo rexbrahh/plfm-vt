@@ -74,6 +74,9 @@ pub struct InstanceManager {
     /// Last applied plan version.
     last_plan_version: RwLock<i64>,
 
+    /// Node overlay IPv6 address (/128).
+    node_overlay_ipv6: RwLock<Option<String>>,
+
     /// Config store for guest-init handshake.
     config_store: Arc<ConfigStore>,
 
@@ -95,6 +98,7 @@ impl InstanceManager {
             runtime,
             instances: RwLock::new(HashMap::new()),
             last_plan_version: RwLock::new(0),
+            node_overlay_ipv6: RwLock::new(None),
             config_store,
             control_plane,
             config_generation: AtomicU64::new(1),
@@ -113,6 +117,18 @@ impl InstanceManager {
     /// Get the last applied plan version.
     pub async fn last_plan_version(&self) -> i64 {
         *self.last_plan_version.read().await
+    }
+
+    pub async fn set_node_overlay_ipv6(&self, overlay_ipv6: Option<String>) {
+        let mut current = self.node_overlay_ipv6.write().await;
+        if *current == overlay_ipv6 {
+            return;
+        }
+        *current = overlay_ipv6.clone();
+        match overlay_ipv6 {
+            Some(value) => info!(node_overlay_ipv6 = %value, "Updated node overlay IPv6"),
+            None => info!("Cleared node overlay IPv6"),
+        }
     }
 
     /// Apply a new plan, converging the local state to match.
@@ -380,6 +396,7 @@ mod tests {
             release_id: "rel_abc".to_string(),
             deploy_id: "dep_xyz".to_string(),
             image: "ghcr.io/org/app:v1".to_string(),
+            command: vec!["./start".to_string()],
             resources: crate::client::InstanceResources {
                 cpu: 1.0,
                 memory_bytes: 512 * 1024 * 1024,
@@ -405,6 +422,7 @@ mod tests {
             release_id: "rel_abc".to_string(),
             deploy_id: "dep_xyz".to_string(),
             image: "ghcr.io/org/app:v1".to_string(),
+            command: vec!["./start".to_string()],
             resources: crate::client::InstanceResources {
                 cpu: 1.0,
                 memory_bytes: 512 * 1024 * 1024,

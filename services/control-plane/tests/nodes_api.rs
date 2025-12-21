@@ -239,6 +239,8 @@ async fn test_node_enrollment() {
         node_id.starts_with("node_"),
         "Node ID should have correct prefix"
     );
+    let overlay_ipv6 = body["overlay_ipv6"].as_str().expect("missing overlay_ipv6");
+    assert!(!overlay_ipv6.is_empty(), "overlay_ipv6 should be set");
 
     // Verify the node appears in the list
     tokio::time::sleep(Duration::from_millis(200)).await; // Wait for projection
@@ -429,7 +431,8 @@ async fn test_node_plan_with_scheduled_instance() {
             "image_ref": "ghcr.io/example/app:v1",
             "image_digest": "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
             "manifest_schema_version": 2,
-            "manifest_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+            "manifest_hash": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+            "command": ["./start"]
         }))
         .send()
         .await

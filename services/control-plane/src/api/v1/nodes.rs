@@ -109,6 +109,10 @@ pub struct NodeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub public_ipv4: Option<String>,
 
+    /// Overlay IPv6 address (/128).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub overlay_ipv6: Option<String>,
+
     /// Labels for scheduling.
     pub labels: serde_json::Value,
 
@@ -184,50 +188,31 @@ pub struct NodePlanResponse {
     /// Plan version (monotonically increasing).
     pub plan_version: i64,
 
+    /// Node overlay IPv6 address (/128).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node_overlay_ipv6: Option<String>,
+
     /// Instances assigned to this node.
     pub instances: Vec<InstancePlan>,
 }
 
-/// Plan for a single instance.
 #[derive(Debug, Serialize)]
 pub struct InstancePlan {
-    /// Instance ID.
     pub instance_id: String,
-
-    /// App ID.
     pub app_id: String,
-
-    /// Env ID.
     pub env_id: String,
-
-    /// Process type.
     pub process_type: String,
-
-    /// Release ID to run.
     pub release_id: String,
-
-    /// Deploy ID that triggered this instance.
     pub deploy_id: String,
-
-    /// OCI image reference.
     pub image: String,
-
-    /// Resource requests.
+    pub command: Vec<String>,
     pub resources: InstanceResources,
-
-    /// Overlay IPv6 address for this instance.
     #[serde(default)]
     pub overlay_ipv6: String,
-
-    /// Secrets version ID (if configured).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub secrets_version_id: Option<String>,
-
-    /// Environment variables.
     #[serde(default)]
     pub env_vars: serde_json::Value,
-
-    /// Volume mounts.
     #[serde(default)]
     pub volumes: Vec<VolumeMount>,
 }
@@ -396,6 +381,7 @@ async fn enroll_node(
     }
 
     let node_id = NodeId::new();
+    let overlay_ipv6 = allocate_node_ipv6(state.db().pool(), &node_id, &request_id).await?;
 
     // Build allocatable resources
     let allocatable = serde_json::json!({
@@ -427,6 +413,7 @@ async fn enroll_node(
             "agent_mtls_subject": req.agent_mtls_subject,
             "public_ipv6": req.public_ipv6.to_string(),
             "public_ipv4": req.public_ipv4.map(|ip| ip.to_string()),
+            "overlay_ipv6": overlay_ipv6.clone(),
             "cpu_cores": req.cpu_cores,
             "memory_bytes": req.memory_bytes,
             "mtu": req.mtu,
@@ -451,6 +438,7 @@ async fn enroll_node(
         agent_mtls_subject: req.agent_mtls_subject,
         public_ipv6: Some(req.public_ipv6.to_string()),
         public_ipv4: req.public_ipv4.map(|ip| ip.to_string()),
+        overlay_ipv6: Some(overlay_ipv6.clone()),
         labels: req.labels,
         allocatable,
         mtu: req.mtu,
@@ -468,6 +456,107 @@ async fn enroll_node(
     );
 
     Ok((StatusCode::CREATED, Json(response)))
+}
+
+async fn allocate_node_ipv6(
+    pool: &sqlx::PgPool,
+    node_id: &NodeId,
+    request_id: &str,
+) -> Result<String, ApiError> {
+    let request_id = request_id.to_string();
+    let prefix = std::env::var("PLFM_NODE_IPV6_PREFIX")
+        .or_else(|_| std::env::var("GHOST_NODE_IPV6_PREFIX"))
+        .unwrap_or_else(|_| "fd00:0:0:1::".to_string());
+
+    let base: Ipv6Addr = prefix.parse().map_err(|_| {
+        ApiError::internal(
+            "ipam_error",
+            format!(
+                "invalid node IPv6 prefix '{}'; expected /64 base address",
+                prefix
+            ),
+        )
+        .with_request_id(request_id.clone())
+    })?;
+
+    let base_u128 = u128::from(base) & (!0u128 << 64);
+    let mut attempts = 0;
+
+    loop {
+        let suffix: i64 = sqlx::query_scalar("SELECT nextval('ipam_node_suffix_seq')")
+            .fetch_one(pool)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, request_id = %request_id, "Failed to allocate node IPv6 suffix");
+                ApiError::internal("ipam_error", "Failed to allocate node IPv6 suffix")
+                    .with_request_id(request_id.clone())
+            })?;
+
+        if suffix < 0 {
+            attempts += 1;
+            if attempts > 5 {
+                return Err(ApiError::internal(
+                    "ipam_error",
+                    "Failed to allocate node IPv6 suffix",
+                )
+                .with_request_id(request_id.clone()));
+            }
+            continue;
+        }
+
+        let addr = Ipv6Addr::from(base_u128 | suffix as u128);
+
+        let insert = sqlx::query(
+            r#"
+            INSERT INTO ipam_nodes (node_id, ipv6_suffix, overlay_ipv6)
+            VALUES ($1, $2, $3::inet)
+            "#,
+        )
+        .bind(node_id.to_string())
+        .bind(suffix)
+        .bind(addr.to_string())
+        .execute(pool)
+        .await;
+
+        match insert {
+            Ok(_) => return Ok(addr.to_string()),
+            Err(sqlx::Error::Database(db_err)) => {
+                let constraint = db_err.constraint().unwrap_or_default();
+                if constraint == "ipam_nodes_pkey"
+                    || constraint == "ipam_nodes_ipv6_suffix_key"
+                    || constraint == "ipam_nodes_overlay_ipv6_key"
+                {
+                    attempts += 1;
+                    if attempts > 5 {
+                        return Err(ApiError::internal(
+                            "ipam_error",
+                            "ipam allocation retry limit reached",
+                        )
+                        .with_request_id(request_id.clone()));
+                    }
+                    continue;
+                }
+                tracing::error!(
+                    error = %db_err,
+                    request_id = %request_id,
+                    "Failed to allocate node overlay IPv6"
+                );
+                return Err(ApiError::internal(
+                    "ipam_error",
+                    "Failed to allocate node overlay IPv6",
+                )
+                .with_request_id(request_id.clone()));
+            }
+            Err(e) => {
+                tracing::error!(error = %e, request_id = %request_id, "Failed to allocate node overlay IPv6");
+                return Err(ApiError::internal(
+                    "ipam_error",
+                    "Failed to allocate node overlay IPv6",
+                )
+                .with_request_id(request_id.clone()));
+            }
+        }
+    }
 }
 
 /// List all nodes.
@@ -488,6 +577,7 @@ async fn list_nodes(
         SELECT node_id, state, wireguard_public_key, agent_mtls_subject,
                host(public_ipv6)::TEXT as public_ipv6,
                host(public_ipv4)::TEXT as public_ipv4,
+               host(overlay_ipv6)::TEXT as overlay_ipv6,
                labels, allocatable, mtu,
                resource_version, created_at, updated_at
         FROM nodes_view
@@ -537,6 +627,7 @@ async fn get_node(
         SELECT node_id, state, wireguard_public_key, agent_mtls_subject,
                host(public_ipv6)::TEXT as public_ipv6,
                host(public_ipv4)::TEXT as public_ipv4,
+               host(overlay_ipv6)::TEXT as overlay_ipv6,
                labels, allocatable, mtu,
                resource_version, created_at, updated_at
         FROM nodes_view
@@ -721,24 +812,28 @@ async fn get_plan(
             .with_request_id(request_id.clone())
     })?;
 
-    // Check node exists
-    let node_exists =
-        sqlx::query_scalar::<_, bool>("SELECT EXISTS(SELECT 1 FROM nodes_view WHERE node_id = $1)")
-            .bind(&node_id)
-            .fetch_one(state.db().pool())
-            .await
-            .map_err(|e| {
-                tracing::error!(error = %e, "Failed to check node existence");
-                ApiError::internal("internal_error", "Failed to get plan")
-                    .with_request_id(request_id.clone())
-            })?;
+    let node_overlay_ipv6 = sqlx::query_scalar::<_, Option<String>>(
+        "SELECT host(overlay_ipv6)::TEXT FROM nodes_view WHERE node_id = $1",
+    )
+    .bind(&node_id)
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load node overlay IPv6");
+        ApiError::internal("internal_error", "Failed to get plan")
+            .with_request_id(request_id.clone())
+    })?;
 
-    if !node_exists {
-        return Err(
-            ApiError::not_found("node_not_found", format!("Node {} not found", node_id))
-                .with_request_id(request_id.clone()),
-        );
-    }
+    let node_overlay_ipv6 = match node_overlay_ipv6 {
+        Some(value) => value,
+        None => {
+            return Err(ApiError::not_found(
+                "node_not_found",
+                format!("Node {} not found", node_id),
+            )
+            .with_request_id(request_id.clone()));
+        }
+    };
 
     // Query instances assigned to this node from instances_desired_view
     // Instances are allocated by the scheduler
@@ -752,6 +847,7 @@ async fn get_plan(
                COALESCE(i.deploy_id, '') as deploy_id,
                r.image_ref as image_ref,
                r.index_or_manifest_digest as image_digest,
+               r.command as command,
                i.secrets_version_id,
                host(i.overlay_ipv6)::TEXT as overlay_ipv6,
                i.resources_snapshot,
@@ -788,6 +884,7 @@ async fn get_plan(
 
     Ok(Json(NodePlanResponse {
         plan_version,
+        node_overlay_ipv6,
         instances: instance_plans,
     }))
 }
@@ -1229,6 +1326,7 @@ struct NodeRow {
     agent_mtls_subject: String,
     public_ipv6: Option<String>,
     public_ipv4: Option<String>,
+    overlay_ipv6: Option<String>,
     labels: serde_json::Value,
     allocatable: serde_json::Value,
     mtu: Option<i32>,
@@ -1249,6 +1347,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for NodeRow {
             // These come as TEXT from the query since we cast with host()::TEXT
             public_ipv6: row.try_get("public_ipv6")?,
             public_ipv4: row.try_get("public_ipv4")?,
+            overlay_ipv6: row.try_get("overlay_ipv6")?,
             labels: row.try_get("labels")?,
             allocatable: row.try_get("allocatable")?,
             mtu: row.try_get("mtu")?,
@@ -1268,6 +1367,7 @@ impl From<NodeRow> for NodeResponse {
             agent_mtls_subject: row.agent_mtls_subject,
             public_ipv6: row.public_ipv6,
             public_ipv4: row.public_ipv4,
+            overlay_ipv6: row.overlay_ipv6,
             labels: row.labels,
             allocatable: row.allocatable,
             mtu: row.mtu,
@@ -1288,6 +1388,7 @@ struct InstancePlanRow {
     deploy_id: String,
     image_ref: String,
     image_digest: String,
+    command: serde_json::Value,
     secrets_version_id: Option<String>,
     overlay_ipv6: Option<String>,
     resources_snapshot: serde_json::Value,
@@ -1307,6 +1408,7 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for InstancePlanRow {
             deploy_id: row.try_get("deploy_id")?,
             image_ref: row.try_get("image_ref")?,
             image_digest: row.try_get("image_digest")?,
+            command: row.try_get("command")?,
             secrets_version_id: row.try_get("secrets_version_id")?,
             overlay_ipv6: row.try_get("overlay_ipv6")?,
             resources_snapshot: row.try_get("resources_snapshot")?,
@@ -1323,6 +1425,7 @@ impl InstancePlan {
             .get(&(row.env_id.clone(), row.process_type.clone()))
             .cloned()
             .unwrap_or_default();
+        let command: Vec<String> = serde_json::from_value(row.command).unwrap_or_default();
 
         Self {
             instance_id: row.instance_id,
@@ -1332,6 +1435,7 @@ impl InstancePlan {
             release_id: row.release_id,
             deploy_id: row.deploy_id,
             image,
+            command,
             resources,
             overlay_ipv6: row.overlay_ipv6.unwrap_or_default(),
             secrets_version_id: row.secrets_version_id,
@@ -1613,6 +1717,7 @@ mod tests {
             agent_mtls_subject: "CN=test".to_string(),
             public_ipv6: Some("2001:db8::1".to_string()),
             public_ipv4: None,
+            overlay_ipv6: Some("fd00::1".to_string()),
             labels: serde_json::json!({"region": "us-west-2"}),
             allocatable: serde_json::json!({"cpu_cores": 8}),
             mtu: Some(1500),

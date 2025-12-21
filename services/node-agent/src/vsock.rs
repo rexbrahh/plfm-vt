@@ -375,11 +375,14 @@ fn build_config_message(instance_id: &str, pending: &PendingConfig) -> ConfigMes
         None => HashMap::new(),
     };
 
-    // Build workload config
-    // Note: argv would come from the image or release config
-    // For now, we use a placeholder
+    let argv = if plan.command.is_empty() {
+        vec!["./start".to_string()]
+    } else {
+        plan.command.clone()
+    };
+
     let workload = WorkloadConfig {
-        argv: vec!["./start".to_string()], // TODO: Get from release config
+        argv,
         cwd: "/app".to_string(),
         env,
         uid: 1000,
@@ -561,6 +564,11 @@ mod tests {
             release_id: "rel_test".to_string(),
             deploy_id: "dep_test".to_string(),
             image: "test:latest".to_string(),
+            command: vec![
+                "./start".to_string(),
+                "--port".to_string(),
+                "8080".to_string(),
+            ],
             resources: crate::client::InstanceResources {
                 cpu: 1.0,
                 memory_bytes: 512 * 1024 * 1024,

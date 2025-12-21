@@ -25,6 +25,8 @@ struct NodeEnrolledPayload {
     public_ipv6: String,
     #[serde(default)]
     public_ipv4: Option<String>,
+    #[serde(default)]
+    overlay_ipv6: Option<String>,
     cpu_cores: i32,
     memory_bytes: i64,
     #[serde(default)]
@@ -128,13 +130,13 @@ impl NodesProjection {
             r#"
             INSERT INTO nodes_view (
                 node_id, state, wireguard_public_key, agent_mtls_subject,
-                public_ipv6, public_ipv4, labels, allocatable, mtu,
+                public_ipv6, public_ipv4, overlay_ipv6, labels, allocatable, mtu,
                 resource_version, created_at, updated_at
             )
             VALUES (
                 $1, 'active', $2, $3,
-                $4::INET, $5::INET, $6, $7, $8,
-                1, $9, $9
+                $4::INET, $5::INET, $6::INET, $7, $8, $9,
+                1, $10, $10
             )
             ON CONFLICT (node_id) DO UPDATE SET
                 state = 'active',
@@ -142,6 +144,7 @@ impl NodesProjection {
                 agent_mtls_subject = EXCLUDED.agent_mtls_subject,
                 public_ipv6 = EXCLUDED.public_ipv6,
                 public_ipv4 = EXCLUDED.public_ipv4,
+                overlay_ipv6 = EXCLUDED.overlay_ipv6,
                 labels = EXCLUDED.labels,
                 allocatable = EXCLUDED.allocatable,
                 mtu = EXCLUDED.mtu,
@@ -154,6 +157,7 @@ impl NodesProjection {
         .bind(&payload.agent_mtls_subject)
         .bind(&payload.public_ipv6)
         .bind(payload.public_ipv4.as_deref())
+        .bind(payload.overlay_ipv6.as_deref())
         .bind(&labels)
         .bind(&allocatable)
         .bind(payload.mtu)

@@ -4,7 +4,6 @@
 
 use plfm_node_agent::client::{InstancePlan, InstanceResources};
 
-/// Helper to create a test InstancePlan
 fn test_plan(id: &str) -> InstancePlan {
     InstancePlan {
         instance_id: id.to_string(),
@@ -14,6 +13,7 @@ fn test_plan(id: &str) -> InstancePlan {
         release_id: "rel_test".to_string(),
         deploy_id: "dep_test".to_string(),
         image: "test:latest".to_string(),
+        command: vec!["./start".to_string()],
         resources: InstanceResources {
             cpu: 1.0,
             memory_bytes: 512 * 1024 * 1024,
