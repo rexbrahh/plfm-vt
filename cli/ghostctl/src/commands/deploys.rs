@@ -11,7 +11,7 @@ use tokio::time::{sleep, Instant};
 use crate::client::ApiClient;
 use crate::error::CliError;
 use crate::output::{
-    print_info, print_output, print_receipt, print_single, OutputFormat, ReceiptNextStep,
+    print_info, print_output, print_receipt, print_single, OutputFormat, Receipt, ReceiptNextStep,
 };
 
 use super::CommandContext;
@@ -388,22 +388,24 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
     if !args.wait {
         print_receipt(
             ctx.format,
-            &format!(
-                "Created deploy {} for env {}",
-                deploy_id.as_str(),
-                env_id_str.as_str()
-            ),
-            "accepted",
-            "deploys.create",
-            "deploy",
-            &response,
-            serde_json::json!({
-                "deploy_id": deploy_id,
-                "env_id": env_id_str,
-                "app_id": app_id_str,
-                "org_id": org_id_str
-            }),
-            &next,
+            Receipt {
+                message: format!(
+                    "Created deploy {} for env {}",
+                    deploy_id.as_str(),
+                    env_id_str.as_str()
+                ),
+                status: "accepted",
+                kind: "deploys.create",
+                resource_key: "deploy",
+                resource: &response,
+                ids: serde_json::json!({
+                    "deploy_id": deploy_id,
+                    "env_id": env_id_str,
+                    "app_id": app_id_str,
+                    "org_id": org_id_str
+                }),
+                next: &next,
+            },
         );
         return Ok(());
     }
@@ -421,22 +423,24 @@ async fn create_deploy(ctx: CommandContext, args: CreateDeployArgs) -> Result<()
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Deploy {} completed with status {}",
-            deploy_id.as_str(),
-            final_response.status.as_str()
-        ),
-        final_response.status.as_str(),
-        "deploys.create",
-        "deploy",
-        &final_response,
-        serde_json::json!({
-            "deploy_id": deploy_id,
-            "env_id": env_id.to_string(),
-            "app_id": app_id.to_string(),
-            "org_id": org_id.to_string()
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Deploy {} completed with status {}",
+                deploy_id.as_str(),
+                final_response.status.as_str()
+            ),
+            status: final_response.status.as_str(),
+            kind: "deploys.create",
+            resource_key: "deploy",
+            resource: &final_response,
+            ids: serde_json::json!({
+                "deploy_id": deploy_id,
+                "env_id": env_id.to_string(),
+                "app_id": app_id.to_string(),
+                "org_id": org_id.to_string()
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -514,22 +518,24 @@ async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
     if !args.wait {
         print_receipt(
             ctx.format,
-            &format!(
-                "Created rollback {} for env {}",
-                deploy_id.as_str(),
-                env_id_str.as_str()
-            ),
-            "accepted",
-            "rollbacks.create",
-            "deploy",
-            &response,
-            serde_json::json!({
-                "deploy_id": deploy_id,
-                "env_id": env_id_str,
-                "app_id": app_id_str,
-                "org_id": org_id_str
-            }),
-            &next,
+            Receipt {
+                message: format!(
+                    "Created rollback {} for env {}",
+                    deploy_id.as_str(),
+                    env_id_str.as_str()
+                ),
+                status: "accepted",
+                kind: "rollbacks.create",
+                resource_key: "deploy",
+                resource: &response,
+                ids: serde_json::json!({
+                    "deploy_id": deploy_id,
+                    "env_id": env_id_str,
+                    "app_id": app_id_str,
+                    "org_id": org_id_str
+                }),
+                next: &next,
+            },
         );
         return Ok(());
     }
@@ -547,22 +553,24 @@ async fn rollback(ctx: CommandContext, args: RollbackArgs) -> Result<()> {
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Rollback {} completed with status {}",
-            deploy_id.as_str(),
-            final_response.status.as_str()
-        ),
-        final_response.status.as_str(),
-        "rollbacks.create",
-        "deploy",
-        &final_response,
-        serde_json::json!({
-            "deploy_id": deploy_id,
-            "env_id": env_id.to_string(),
-            "app_id": app_id.to_string(),
-            "org_id": org_id.to_string()
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Rollback {} completed with status {}",
+                deploy_id.as_str(),
+                final_response.status.as_str()
+            ),
+            status: final_response.status.as_str(),
+            kind: "rollbacks.create",
+            resource_key: "deploy",
+            resource: &final_response,
+            ids: serde_json::json!({
+                "deploy_id": deploy_id,
+                "env_id": env_id.to_string(),
+                "app_id": app_id.to_string(),
+                "org_id": org_id.to_string()
+            }),
+            next: &next,
+        },
     );
 
     Ok(())

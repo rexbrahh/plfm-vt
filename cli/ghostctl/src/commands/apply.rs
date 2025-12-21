@@ -14,7 +14,9 @@ use tokio::time::{sleep, Instant};
 
 use crate::client::ApiClient;
 use crate::manifest::ManifestValidationError;
-use crate::output::{print_info, print_receipt, print_single, OutputFormat, ReceiptNextStep};
+use crate::output::{
+    print_info, print_receipt, print_single, OutputFormat, Receipt, ReceiptNextStep,
+};
 
 use super::CommandContext;
 
@@ -394,17 +396,19 @@ impl ApplyCommand {
 
             print_receipt(
                 ctx.format,
-                &format!(
-                    "Deploy {} completed with status {}",
-                    deploy_id.as_str(),
-                    final_deploy.status.as_str()
-                ),
-                final_deploy.status.as_str(),
-                "deploys.apply",
-                "apply",
-                &receipt_payload,
-                ids,
-                &next,
+                Receipt {
+                    message: format!(
+                        "Deploy {} completed with status {}",
+                        deploy_id.as_str(),
+                        final_deploy.status.as_str()
+                    ),
+                    status: final_deploy.status.as_str(),
+                    kind: "deploys.apply",
+                    resource_key: "apply",
+                    resource: &receipt_payload,
+                    ids,
+                    next: &next,
+                },
             );
 
             return Ok(());
@@ -412,17 +416,19 @@ impl ApplyCommand {
 
         print_receipt(
             ctx.format,
-            &format!(
-                "Applied manifest (release {}, deploy {})",
-                receipt_payload.release_id.as_str(),
-                deploy_id.as_str()
-            ),
-            "accepted",
-            "deploys.apply",
-            "apply",
-            &receipt_payload,
-            ids,
-            &next,
+            Receipt {
+                message: format!(
+                    "Applied manifest (release {}, deploy {})",
+                    receipt_payload.release_id.as_str(),
+                    deploy_id.as_str()
+                ),
+                status: "accepted",
+                kind: "deploys.apply",
+                resource_key: "apply",
+                resource: &receipt_payload,
+                ids,
+                next: &next,
+            },
         );
 
         Ok(())

@@ -3,8 +3,6 @@
 //! v1 contract: releases pin an OCI image digest plus a manifest content hash.
 //! We compute the hash from a canonicalized representation of the TOML.
 
-use std::path::Path;
-
 use anyhow::{Context, Result};
 use jsonschema::Draft;
 use sha2::{Digest, Sha256};
@@ -67,13 +65,6 @@ pub fn validate_manifest_toml_str(contents: &str) -> Result<Vec<ManifestValidati
     });
 
     Ok(out)
-}
-
-pub fn manifest_hash_from_path(path: &Path) -> Result<String> {
-    let contents = std::fs::read_to_string(path)
-        .with_context(|| format!("failed to read manifest: {}", path.display()))?;
-    manifest_hash_from_toml_str(&contents)
-        .with_context(|| format!("failed to compute manifest hash: {}", path.display()))
 }
 
 #[cfg(test)]

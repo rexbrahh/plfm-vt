@@ -62,6 +62,24 @@ pub struct ReceiptNextStep {
     pub cmd: String,
 }
 
+pub struct Receipt<'a, T: Serialize> {
+    pub message: String,
+    pub status: &'a str,
+    pub kind: &'a str,
+    pub resource_key: &'a str,
+    pub resource: &'a T,
+    pub ids: serde_json::Value,
+    pub next: &'a [ReceiptNextStep],
+}
+
+pub struct ReceiptNoResource<'a> {
+    pub message: String,
+    pub status: &'a str,
+    pub kind: &'a str,
+    pub ids: serde_json::Value,
+    pub next: &'a [ReceiptNextStep],
+}
+
 pub fn receipt_value<T: Serialize>(
     status: &str,
     kind: &str,
@@ -102,47 +120,39 @@ pub fn receipt_value_no_resource(
     serde_json::json!({ "receipt": receipt })
 }
 
-pub fn print_receipt<T: Serialize>(
-    format: OutputFormat,
-    message: &str,
-    status: &str,
-    kind: &str,
-    resource_key: &str,
-    resource: &T,
-    ids: serde_json::Value,
-    next: &[ReceiptNextStep],
-) {
+pub fn print_receipt<T: Serialize>(format: OutputFormat, receipt: Receipt<'_, T>) {
     match format {
         OutputFormat::Table => {
-            print_success(message);
-            for step in next {
+            print_success(&receipt.message);
+            for step in receipt.next {
                 print_info(&format!("{}: {}", step.label, step.cmd));
             }
         }
         OutputFormat::Json => {
-            let out = receipt_value(status, kind, resource_key, resource, ids, next);
+            let out = receipt_value(
+                receipt.status,
+                receipt.kind,
+                receipt.resource_key,
+                receipt.resource,
+                receipt.ids,
+                receipt.next,
+            );
             print_single(&out, OutputFormat::Json);
         }
     }
 }
 
-pub fn print_receipt_no_resource(
-    format: OutputFormat,
-    message: &str,
-    status: &str,
-    kind: &str,
-    ids: serde_json::Value,
-    next: &[ReceiptNextStep],
-) {
+pub fn print_receipt_no_resource(format: OutputFormat, receipt: ReceiptNoResource<'_>) {
     match format {
         OutputFormat::Table => {
-            print_success(message);
-            for step in next {
+            print_success(&receipt.message);
+            for step in receipt.next {
                 print_info(&format!("{}: {}", step.label, step.cmd));
             }
         }
         OutputFormat::Json => {
-            let out = receipt_value_no_resource(status, kind, ids, next);
+            let out =
+                receipt_value_no_resource(receipt.status, receipt.kind, receipt.ids, receipt.next);
             print_single(&out, OutputFormat::Json);
         }
     }

@@ -9,8 +9,8 @@ use tabled::Tabled;
 
 use crate::error::CliError;
 use crate::output::{
-    print_output, print_receipt, print_receipt_no_resource, print_single, OutputFormat,
-    ReceiptNextStep,
+    print_output, print_receipt, print_receipt_no_resource, print_single, OutputFormat, Receipt,
+    ReceiptNextStep, ReceiptNoResource,
 };
 
 use super::CommandContext;
@@ -343,20 +343,22 @@ async fn create_volume(ctx: CommandContext, args: CreateVolumeArgs) -> Result<()
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Created volume {} ({} bytes)",
-            response.id.as_str(),
-            response.size_bytes
-        ),
-        "accepted",
-        "volumes.create",
-        "volume",
-        &response,
-        serde_json::json!({
-            "volume_id": response.id,
-            "org_id": org_id_str
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Created volume {} ({} bytes)",
+                response.id.as_str(),
+                response.size_bytes
+            ),
+            status: "accepted",
+            kind: "volumes.create",
+            resource_key: "volume",
+            resource: &response,
+            ids: serde_json::json!({
+                "volume_id": response.id,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -396,14 +398,16 @@ async fn delete_volume(ctx: CommandContext, args: DeleteVolumeArgs) -> Result<()
 
     print_receipt_no_resource(
         ctx.format,
-        &format!("Deleted volume {}", volume_id),
-        "accepted",
-        "volumes.delete",
-        serde_json::json!({
-            "volume_id": volume_id,
-            "org_id": org_id_str
-        }),
-        &next,
+        ReceiptNoResource {
+            message: format!("Deleted volume {}", volume_id),
+            status: "accepted",
+            kind: "volumes.delete",
+            ids: serde_json::json!({
+                "volume_id": volume_id,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -460,24 +464,26 @@ async fn attach_volume(ctx: CommandContext, args: AttachVolumeArgs) -> Result<()
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Attached volume {} at {} ({})",
-            response.volume_id.as_str(),
-            response.mount_path.as_str(),
-            attachment_id.as_str()
-        ),
-        "accepted",
-        "volume_attachments.create",
-        "volume_attachment",
-        &response,
-        serde_json::json!({
-            "attachment_id": attachment_id,
-            "volume_id": response.volume_id,
-            "env_id": env_id_str,
-            "app_id": app_id_str,
-            "org_id": org_id_str
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Attached volume {} at {} ({})",
+                response.volume_id.as_str(),
+                response.mount_path.as_str(),
+                attachment_id.as_str()
+            ),
+            status: "accepted",
+            kind: "volume_attachments.create",
+            resource_key: "volume_attachment",
+            resource: &response,
+            ids: serde_json::json!({
+                "attachment_id": attachment_id,
+                "volume_id": response.volume_id,
+                "env_id": env_id_str,
+                "app_id": app_id_str,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -507,16 +513,18 @@ async fn detach_volume(ctx: CommandContext, args: DetachVolumeArgs) -> Result<()
 
     print_receipt_no_resource(
         ctx.format,
-        &format!("Detached attachment {}", attachment_id),
-        "accepted",
-        "volume_attachments.delete",
-        serde_json::json!({
-            "attachment_id": attachment_id,
-            "env_id": env_id_str,
-            "app_id": app_id_str,
-            "org_id": org_id_str
-        }),
-        &next,
+        ReceiptNoResource {
+            message: format!("Detached attachment {}", attachment_id),
+            status: "accepted",
+            kind: "volume_attachments.delete",
+            ids: serde_json::json!({
+                "attachment_id": attachment_id,
+                "env_id": env_id_str,
+                "app_id": app_id_str,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -558,21 +566,23 @@ async fn snapshot_create(ctx: CommandContext, args: SnapshotCreateArgs) -> Resul
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Created snapshot {} for volume {}",
-            snapshot_id.as_str(),
-            response.volume_id.as_str()
-        ),
-        "accepted",
-        "snapshots.create",
-        "snapshot",
-        &response,
-        serde_json::json!({
-            "snapshot_id": snapshot_id,
-            "volume_id": response.volume_id,
-            "org_id": org_id_str
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Created snapshot {} for volume {}",
+                snapshot_id.as_str(),
+                response.volume_id.as_str()
+            ),
+            status: "accepted",
+            kind: "snapshots.create",
+            resource_key: "snapshot",
+            resource: &response,
+            ids: serde_json::json!({
+                "snapshot_id": snapshot_id,
+                "volume_id": response.volume_id,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -633,16 +643,18 @@ async fn restore_volume(ctx: CommandContext, args: RestoreVolumeArgs) -> Result<
 
     print_receipt(
         ctx.format,
-        &format!("Restored volume {}", response.id.as_str()),
-        "accepted",
-        "volumes.restore",
-        "volume",
-        &response,
-        serde_json::json!({
-            "volume_id": response.id,
-            "org_id": org_id_str
-        }),
-        &next,
+        Receipt {
+            message: format!("Restored volume {}", response.id.as_str()),
+            status: "accepted",
+            kind: "volumes.restore",
+            resource_key: "volume",
+            resource: &response,
+            ids: serde_json::json!({
+                "volume_id": response.id,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())

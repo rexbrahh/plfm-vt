@@ -8,7 +8,7 @@ use tabled::Tabled;
 use crate::error::CliError;
 use crate::output::{
     print_output, print_receipt, print_receipt_no_resource, print_single, print_success,
-    OutputFormat, ReceiptNextStep,
+    OutputFormat, Receipt, ReceiptNextStep, ReceiptNoResource,
 };
 
 use super::CommandContext;
@@ -271,22 +271,24 @@ async fn add_member(ctx: CommandContext, args: AddMemberArgs) -> Result<()> {
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Added member '{}' ({}) to org {} as {}",
-            member_email,
-            member_id.as_str(),
-            org_id_str.as_str(),
-            member_role
-        ),
-        "accepted",
-        "orgs.members.add",
-        "member",
-        &response,
-        serde_json::json!({
-            "org_id": org_id_str,
-            "member_id": member_id
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Added member '{}' ({}) to org {} as {}",
+                member_email,
+                member_id.as_str(),
+                org_id_str.as_str(),
+                member_role
+            ),
+            status: "accepted",
+            kind: "orgs.members.add",
+            resource_key: "member",
+            resource: &response,
+            ids: serde_json::json!({
+                "org_id": org_id_str,
+                "member_id": member_id
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -331,22 +333,24 @@ async fn update_member(ctx: CommandContext, args: UpdateMemberArgs) -> Result<()
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Updated member '{}' ({}) in org {} to {}",
-            member_email,
-            member_id.as_str(),
-            org_id_str.as_str(),
-            member_role
-        ),
-        "accepted",
-        "orgs.members.update",
-        "member",
-        &response,
-        serde_json::json!({
-            "org_id": org_id_str,
-            "member_id": member_id
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Updated member '{}' ({}) in org {} to {}",
+                member_email,
+                member_id.as_str(),
+                org_id_str.as_str(),
+                member_role
+            ),
+            status: "accepted",
+            kind: "orgs.members.update",
+            resource_key: "member",
+            resource: &response,
+            ids: serde_json::json!({
+                "org_id": org_id_str,
+                "member_id": member_id
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -389,14 +393,16 @@ async fn remove_member(ctx: CommandContext, args: RemoveMemberArgs) -> Result<()
 
     print_receipt_no_resource(
         ctx.format,
-        &format!("Removed member {} from org {}", member_id, org_id_str),
-        "accepted",
-        "orgs.members.remove",
-        serde_json::json!({
-            "org_id": org_id_str,
-            "member_id": member_id
-        }),
-        &next,
+        ReceiptNoResource {
+            message: format!("Removed member {} from org {}", member_id, org_id_str),
+            status: "accepted",
+            kind: "orgs.members.remove",
+            ids: serde_json::json!({
+                "org_id": org_id_str,
+                "member_id": member_id
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -447,13 +453,15 @@ async fn create_org(ctx: CommandContext, args: CreateOrgArgs) -> Result<()> {
 
     print_receipt(
         ctx.format,
-        &format!("Created organization '{}' ({})", org_name, org_id.as_str()),
-        "accepted",
-        "orgs.create",
-        "org",
-        &response,
-        serde_json::json!({ "org_id": org_id }),
-        &next,
+        Receipt {
+            message: format!("Created organization '{}' ({})", org_name, org_id.as_str()),
+            status: "accepted",
+            kind: "orgs.create",
+            resource_key: "org",
+            resource: &response,
+            ids: serde_json::json!({ "org_id": org_id }),
+            next: &next,
+        },
     );
 
     Ok(())

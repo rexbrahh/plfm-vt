@@ -7,7 +7,8 @@ use tabled::Tabled;
 
 use crate::error::CliError;
 use crate::output::{
-    print_output, print_receipt, print_single, print_success, OutputFormat, ReceiptNextStep,
+    print_output, print_receipt, print_single, print_success, OutputFormat, Receipt,
+    ReceiptNextStep,
 };
 
 use super::CommandContext;
@@ -188,21 +189,23 @@ async fn create_app(ctx: CommandContext, args: CreateAppArgs) -> Result<()> {
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Created application '{}' ({}) in org {}",
-            app_name,
-            app_id.as_str(),
-            org_id_str.as_str()
-        ),
-        "accepted",
-        "apps.create",
-        "app",
-        &response,
-        serde_json::json!({
-            "app_id": app_id,
-            "org_id": org_id_str
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Created application '{}' ({}) in org {}",
+                app_name,
+                app_id.as_str(),
+                org_id_str.as_str()
+            ),
+            status: "accepted",
+            kind: "apps.create",
+            resource_key: "app",
+            resource: &response,
+            ids: serde_json::json!({
+                "app_id": app_id,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())

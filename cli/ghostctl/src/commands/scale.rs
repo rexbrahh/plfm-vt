@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_receipt, OutputFormat, ReceiptNextStep};
+use crate::output::{print_output, print_receipt, OutputFormat, Receipt, ReceiptNextStep};
 
 use super::CommandContext;
 
@@ -164,24 +164,26 @@ impl ScaleCommand {
 
         print_receipt(
             ctx.format,
-            &format!(
-                "Updated scale for environment {} in {}/{} (resource_version {})",
-                env_id_str.as_str(),
-                org_id_str.as_str(),
-                app_id_str.as_str(),
-                version
-            ),
-            "accepted",
-            "envs.scale",
-            "scale",
-            &response,
-            serde_json::json!({
-                "org_id": org_id_str,
-                "app_id": app_id_str,
-                "env_id": env_id_str,
-                "resource_version": version
-            }),
-            &next,
+            Receipt {
+                message: format!(
+                    "Updated scale for environment {} in {}/{} (resource_version {})",
+                    env_id_str.as_str(),
+                    org_id_str.as_str(),
+                    app_id_str.as_str(),
+                    version
+                ),
+                status: "accepted",
+                kind: "envs.scale",
+                resource_key: "scale",
+                resource: &response,
+                ids: serde_json::json!({
+                    "org_id": org_id_str,
+                    "app_id": app_id_str,
+                    "env_id": env_id_str,
+                    "resource_version": version
+                }),
+                next: &next,
+            },
         );
 
         if matches!(ctx.format, OutputFormat::Table) {

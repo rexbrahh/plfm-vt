@@ -8,7 +8,9 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_receipt, print_single, OutputFormat, ReceiptNextStep};
+use crate::output::{
+    print_output, print_receipt, print_single, OutputFormat, Receipt, ReceiptNextStep,
+};
 
 use super::CommandContext;
 
@@ -229,21 +231,23 @@ async fn create_release(ctx: CommandContext, args: CreateReleaseArgs) -> Result<
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Created release {} for app {}",
-            release_id.as_str(),
-            app_id_str.as_str()
-        ),
-        "accepted",
-        "releases.create",
-        "release",
-        &response,
-        serde_json::json!({
-            "release_id": release_id,
-            "app_id": app_id_str,
-            "org_id": org_id_str
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Created release {} for app {}",
+                release_id.as_str(),
+                app_id_str.as_str()
+            ),
+            status: "accepted",
+            kind: "releases.create",
+            resource_key: "release",
+            resource: &response,
+            ids: serde_json::json!({
+                "release_id": release_id,
+                "app_id": app_id_str,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())

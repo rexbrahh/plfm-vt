@@ -7,7 +7,8 @@ use tabled::Tabled;
 
 use crate::error::CliError;
 use crate::output::{
-    print_output, print_receipt, print_single, print_success, OutputFormat, ReceiptNextStep,
+    print_output, print_receipt, print_single, print_success, OutputFormat, Receipt,
+    ReceiptNextStep,
 };
 
 use super::CommandContext;
@@ -181,23 +182,25 @@ async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Created environment '{}' ({}) in {}/{}",
-            env_name,
-            env_id.as_str(),
-            org_id_str.as_str(),
-            app_id_str.as_str()
-        ),
-        "accepted",
-        "envs.create",
-        "env",
-        &response,
-        serde_json::json!({
-            "env_id": env_id,
-            "app_id": app_id_str,
-            "org_id": org_id_str
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Created environment '{}' ({}) in {}/{}",
+                env_name,
+                env_id.as_str(),
+                org_id_str.as_str(),
+                app_id_str.as_str()
+            ),
+            status: "accepted",
+            kind: "envs.create",
+            resource_key: "env",
+            resource: &response,
+            ids: serde_json::json!({
+                "env_id": env_id,
+                "app_id": app_id_str,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())

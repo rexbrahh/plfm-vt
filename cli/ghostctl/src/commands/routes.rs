@@ -7,8 +7,8 @@ use tabled::Tabled;
 
 use crate::error::CliError;
 use crate::output::{
-    print_output, print_receipt, print_receipt_no_resource, print_single, OutputFormat,
-    ReceiptNextStep,
+    print_output, print_receipt, print_receipt_no_resource, print_single, OutputFormat, Receipt,
+    ReceiptNextStep, ReceiptNoResource,
 };
 
 use super::CommandContext;
@@ -326,24 +326,26 @@ async fn create_route(ctx: CommandContext, args: CreateRouteArgs) -> Result<()> 
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Created route '{}' ({}) -> {}:{}",
-            hostname,
-            route_id.as_str(),
-            response.backend_process_type.as_str(),
-            response.backend_port
-        ),
-        "accepted",
-        "routes.create",
-        "route",
-        &response,
-        serde_json::json!({
-            "route_id": route_id,
-            "env_id": env_id_str,
-            "app_id": app_id_str,
-            "org_id": org_id_str
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Created route '{}' ({}) -> {}:{}",
+                hostname,
+                route_id.as_str(),
+                response.backend_process_type.as_str(),
+                response.backend_port
+            ),
+            status: "accepted",
+            kind: "routes.create",
+            resource_key: "route",
+            resource: &response,
+            ids: serde_json::json!({
+                "route_id": route_id,
+                "env_id": env_id_str,
+                "app_id": app_id_str,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -412,18 +414,20 @@ async fn update_route(ctx: CommandContext, args: UpdateRouteArgs) -> Result<()> 
 
     print_receipt(
         ctx.format,
-        &format!("Updated route '{}' ({})", hostname, route_id.as_str()),
-        "accepted",
-        "routes.update",
-        "route",
-        &response,
-        serde_json::json!({
-            "route_id": route_id,
-            "env_id": env_id_str,
-            "app_id": app_id_str,
-            "org_id": org_id_str
-        }),
-        &next,
+        Receipt {
+            message: format!("Updated route '{}' ({})", hostname, route_id.as_str()),
+            status: "accepted",
+            kind: "routes.update",
+            resource_key: "route",
+            resource: &response,
+            ids: serde_json::json!({
+                "route_id": route_id,
+                "env_id": env_id_str,
+                "app_id": app_id_str,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -482,16 +486,18 @@ async fn delete_route(ctx: CommandContext, args: DeleteRouteArgs) -> Result<()> 
 
     print_receipt_no_resource(
         ctx.format,
-        &format!("Deleted route '{}'", route_id),
-        "accepted",
-        "routes.delete",
-        serde_json::json!({
-            "route_id": route_id,
-            "env_id": env_id_str,
-            "app_id": app_id_str,
-            "org_id": org_id_str
-        }),
-        &next,
+        ReceiptNoResource {
+            message: format!("Deleted route '{}'", route_id),
+            status: "accepted",
+            kind: "routes.delete",
+            ids: serde_json::json!({
+                "route_id": route_id,
+                "env_id": env_id_str,
+                "app_id": app_id_str,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())

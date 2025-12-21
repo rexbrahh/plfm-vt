@@ -6,7 +6,9 @@ use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
 use crate::error::CliError;
-use crate::output::{print_output, print_receipt, print_single, OutputFormat, ReceiptNextStep};
+use crate::output::{
+    print_output, print_receipt, print_single, OutputFormat, Receipt, ReceiptNextStep,
+};
 
 use super::CommandContext;
 
@@ -145,21 +147,23 @@ async fn create_project(ctx: CommandContext, args: CreateProjectArgs) -> Result<
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Created project '{}' ({}) in org {}",
-            project_name,
-            project_id.as_str(),
-            org_id_str.as_str()
-        ),
-        "accepted",
-        "projects.create",
-        "project",
-        &response,
-        serde_json::json!({
-            "project_id": project_id,
-            "org_id": org_id_str
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Created project '{}' ({}) in org {}",
+                project_name,
+                project_id.as_str(),
+                org_id_str.as_str()
+            ),
+            status: "accepted",
+            kind: "projects.create",
+            resource_key: "project",
+            resource: &response,
+            ids: serde_json::json!({
+                "project_id": project_id,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
     );
 
     Ok(())

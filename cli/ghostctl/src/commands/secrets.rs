@@ -10,7 +10,7 @@ use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
 use tabled::Tabled;
 
-use crate::output::{print_receipt, print_single, OutputFormat, ReceiptNextStep};
+use crate::output::{print_receipt, print_single, OutputFormat, Receipt, ReceiptNextStep};
 
 use super::CommandContext;
 
@@ -215,25 +215,27 @@ async fn set_secrets(ctx: CommandContext, args: SetSecretsArgs) -> Result<()> {
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Updated secrets for {}/{}/{} (version {})",
-            org_id_str.as_str(),
-            app_id_str.as_str(),
-            env_id_str.as_str(),
-            version_id
-        ),
-        "accepted",
-        "secrets.set",
-        "secrets",
-        &response,
-        serde_json::json!({
-            "org_id": org_id_str,
-            "app_id": app_id_str,
-            "env_id": env_id_str,
-            "bundle_id": bundle_id,
-            "version_id": version_id
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Updated secrets for {}/{}/{} (version {})",
+                org_id_str.as_str(),
+                app_id_str.as_str(),
+                env_id_str.as_str(),
+                version_id
+            ),
+            status: "accepted",
+            kind: "secrets.set",
+            resource_key: "secrets",
+            resource: &response,
+            ids: serde_json::json!({
+                "org_id": org_id_str,
+                "app_id": app_id_str,
+                "env_id": env_id_str,
+                "bundle_id": bundle_id,
+                "version_id": version_id
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
@@ -294,25 +296,27 @@ async fn confirm_secrets_none(ctx: CommandContext, args: ConfirmSecretsArgs) -> 
 
     print_receipt(
         ctx.format,
-        &format!(
-            "Confirmed no secrets for {}/{}/{} (version {})",
-            org_id_str.as_str(),
-            app_id_str.as_str(),
-            env_id_str.as_str(),
-            version_id
-        ),
-        "accepted",
-        "secrets.confirm_none",
-        "secrets",
-        &response,
-        serde_json::json!({
-            "org_id": org_id_str,
-            "app_id": app_id_str,
-            "env_id": env_id_str,
-            "bundle_id": bundle_id,
-            "version_id": version_id
-        }),
-        &next,
+        Receipt {
+            message: format!(
+                "Confirmed no secrets for {}/{}/{} (version {})",
+                org_id_str.as_str(),
+                app_id_str.as_str(),
+                env_id_str.as_str(),
+                version_id
+            ),
+            status: "accepted",
+            kind: "secrets.confirm_none",
+            resource_key: "secrets",
+            resource: &response,
+            ids: serde_json::json!({
+                "org_id": org_id_str,
+                "app_id": app_id_str,
+                "env_id": env_id_str,
+                "bundle_id": bundle_id,
+                "version_id": version_id
+            }),
+            next: &next,
+        },
     );
 
     Ok(())
