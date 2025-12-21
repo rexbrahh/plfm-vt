@@ -628,9 +628,8 @@ mod tests {
 
         actor.vm_handle = Some(handle);
         actor.state.phase = InstancePhase::Draining;
-        actor.state.drain_started_at = Some(
-            std::time::Instant::now() - (DRAIN_TIMEOUT + std::time::Duration::from_secs(1)),
-        );
+        actor.state.drain_started_at =
+            Some(std::time::Instant::now() - (DRAIN_TIMEOUT + std::time::Duration::from_secs(1)));
 
         actor.handle_tick(1).await.unwrap();
 

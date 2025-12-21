@@ -219,7 +219,11 @@ async fn update_project(ctx: CommandContext, args: UpdateProjectArgs) -> Result<
     let next = vec![
         ReceiptNextStep {
             label: "Next",
-            cmd: format!("vt --org {} projects get {}", org_id_str.clone(), project_id),
+            cmd: format!(
+                "vt --org {} projects get {}",
+                org_id_str.clone(),
+                project_id
+            ),
         },
         ReceiptNextStep {
             label: "Debug",
@@ -230,7 +234,11 @@ async fn update_project(ctx: CommandContext, args: UpdateProjectArgs) -> Result<
     print_receipt(
         ctx.format,
         Receipt {
-            message: format!("Updated project '{}' ({})", project_name, response.id.as_str()),
+            message: format!(
+                "Updated project '{}' ({})",
+                project_name,
+                response.id.as_str()
+            ),
             status: "accepted",
             kind: "projects.update",
             resource_key: "project",

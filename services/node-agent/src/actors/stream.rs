@@ -244,7 +244,8 @@ impl ControlPlaneStreamActor {
         debug!(node_id = %self.node_id, "Sending heartbeat");
 
         if let Err(e) = self.client.send_heartbeat(&request).await {
-            self.handle_disconnected(format!("heartbeat failed: {e}")).await?;
+            self.handle_disconnected(format!("heartbeat failed: {e}"))
+                .await?;
             return Ok(());
         }
 

@@ -309,10 +309,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         .unwrap();
     assert!(resp_app.status().is_success());
     let app_body: serde_json::Value = resp_app.json().await.unwrap();
-    let app_id = app_body["id"]
-        .as_str()
-        .expect("missing app id")
-        .to_string();
+    let app_id = app_body["id"].as_str().expect("missing app id").to_string();
     let app_version = app_body["resource_version"]
         .as_i64()
         .expect("missing app resource_version");
@@ -350,10 +347,7 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         .unwrap();
     assert!(resp_env.status().is_success());
     let env_body: serde_json::Value = resp_env.json().await.unwrap();
-    let env_id = env_body["id"]
-        .as_str()
-        .expect("missing env id")
-        .to_string();
+    let env_id = env_body["id"].as_str().expect("missing env id").to_string();
     let env_version = env_body["resource_version"]
         .as_i64()
         .expect("missing env resource_version");

@@ -527,7 +527,11 @@ async fn update_org(ctx: CommandContext, args: UpdateOrgArgs) -> Result<()> {
     print_receipt(
         ctx.format,
         Receipt {
-            message: format!("Updated organization '{}' ({})", org_name, org_id_str.as_str()),
+            message: format!(
+                "Updated organization '{}' ({})",
+                org_name,
+                org_id_str.as_str()
+            ),
             status: "accepted",
             kind: "orgs.update",
             resource_key: "org",

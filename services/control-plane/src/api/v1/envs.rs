@@ -591,8 +591,10 @@ async fn update_env(
 
     if let Some(name) = req.name.as_ref() {
         if name.is_empty() {
-            return Err(ApiError::bad_request("invalid_name", "Environment name cannot be empty")
-                .with_request_id(request_id.clone()));
+            return Err(
+                ApiError::bad_request("invalid_name", "Environment name cannot be empty")
+                    .with_request_id(request_id.clone()),
+            );
         }
         if name.len() > 100 {
             return Err(ApiError::bad_request(
@@ -613,7 +615,8 @@ async fn update_env(
                 "env_id": env_id.to_string(),
                 "body": &req
             });
-            idempotency::request_hash(endpoint_name, &hash_input).map(|hash| (key.to_string(), hash))
+            idempotency::request_hash(endpoint_name, &hash_input)
+                .map(|hash| (key.to_string(), hash))
         })
         .transpose()
         .map_err(|e| e.with_request_id(request_id.clone()))?;
@@ -659,8 +662,10 @@ async fn update_env(
     })?;
 
     if req.expected_version != current.resource_version {
-        return Err(ApiError::conflict("version_conflict", "Resource version mismatch")
-            .with_request_id(request_id.clone()));
+        return Err(
+            ApiError::conflict("version_conflict", "Resource version mismatch")
+                .with_request_id(request_id.clone()),
+        );
     }
 
     if let Some(name) = req.name.as_ref() {
@@ -820,7 +825,8 @@ async fn delete_env(
                 "app_id": app_id.to_string(),
                 "env_id": env_id.to_string()
             });
-            idempotency::request_hash(endpoint_name, &hash_input).map(|hash| (key.to_string(), hash))
+            idempotency::request_hash(endpoint_name, &hash_input)
+                .map(|hash| (key.to_string(), hash))
         })
         .transpose()
         .map_err(|e| e.with_request_id(request_id.clone()))?;

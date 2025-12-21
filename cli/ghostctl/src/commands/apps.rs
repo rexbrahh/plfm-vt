@@ -267,18 +267,30 @@ async fn update_app(ctx: CommandContext, args: UpdateAppArgs) -> Result<()> {
     let next = vec![
         ReceiptNextStep {
             label: "Next",
-            cmd: format!("vt --org {} apps get {}", org_id_str.clone(), app_id_str.clone()),
+            cmd: format!(
+                "vt --org {} apps get {}",
+                org_id_str.clone(),
+                app_id_str.clone()
+            ),
         },
         ReceiptNextStep {
             label: "Debug",
-            cmd: format!("vt events tail --org {} --app {}", org_id_str.clone(), app_id_str.clone()),
+            cmd: format!(
+                "vt events tail --org {} --app {}",
+                org_id_str.clone(),
+                app_id_str.clone()
+            ),
         },
     ];
 
     print_receipt(
         ctx.format,
         Receipt {
-            message: format!("Updated application '{}' ({})", app_name, app_id_str.as_str()),
+            message: format!(
+                "Updated application '{}' ({})",
+                app_name,
+                app_id_str.as_str()
+            ),
             status: "accepted",
             kind: "apps.update",
             resource_key: "app",

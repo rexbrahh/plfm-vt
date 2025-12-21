@@ -280,7 +280,11 @@ async fn update_env(ctx: CommandContext, args: UpdateEnvArgs) -> Result<()> {
     print_receipt(
         ctx.format,
         Receipt {
-            message: format!("Updated environment '{}' ({})", env_name, env_id_str.as_str()),
+            message: format!(
+                "Updated environment '{}' ({})",
+                env_name,
+                env_id_str.as_str()
+            ),
             status: "accepted",
             kind: "envs.update",
             resource_key: "env",
