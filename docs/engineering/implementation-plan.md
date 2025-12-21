@@ -114,6 +114,19 @@ DoD:
 - web terminal can run curated workflows and CLI onboarding
 - log streaming UX does not require page reloads
 
+## Solo engineer sequencing (thin slice first)
+
+This plan assumes multiple teams. For a solo engineer, sequence work to validate the core loop early. The thin slice is: deploy stateless HTTP -> IPv6 L4 endpoint -> logs/events -> rollback. This is sequencing, not a scope change.
+
+Suggested order:
+1) M0 + M1 + M2: lock the contracts used by the thin slice (OpenAPI + schemas), add a conformance gate with fixtures, and ensure CLI receipts/idempotency.
+2) M3: node-agent can pull image and report instance state (runtime can be stubbed initially).
+3) M4: L4 endpoint plumbing with IPv6 default (ingress can be stubbed to start).
+4) M7: events and logs tailing; publish a thin-slice demo script that runs deploy -> endpoint -> logs/events -> rollback.
+5) M6 + minimal ops/security: rollback flows tied to desired release, plus audit/redaction guardrails for the slice.
+
+After the thin slice is stable, complete M5 (secrets) and M8 (frontend), then harden for v1.
+
 ## Cross-cutting quality bars
 
 - Compatibility: no breaking schema changes without versioning and tests.

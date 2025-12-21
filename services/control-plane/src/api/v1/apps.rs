@@ -6,11 +6,11 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{delete, get, patch, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use plfm_events::AggregateType;
+use plfm_events::{event_types, AggregateType};
 use plfm_id::{AppId, OrgId};
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +28,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_app))
         .route("/", get(list_apps))
+        .route("/{app_id}", patch(update_app))
+        .route("/{app_id}", delete(delete_app))
         .route("/{app_id}", get(get_app))
 }
 
@@ -44,6 +46,20 @@ pub struct CreateAppRequest {
     /// Optional description.
     #[serde(default)]
     pub description: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdateAppRequest {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub expected_version: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteResponse {
+    pub ok: bool,
 }
 
 /// Response for a single application.
@@ -302,6 +318,412 @@ async fn create_app(
     Ok((StatusCode::OK, Json(response)).into_response())
 }
 
+async fn update_app(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    Path((org_id, app_id)): Path<(String, String)>,
+    Json(req): Json<UpdateAppRequest>,
+) -> Result<Response, ApiError> {
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
+    let endpoint_name = "apps.update";
+
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
+    let app_id: AppId = app_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_app_id", "Invalid application ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
+
+    if req.expected_version < 0 {
+        return Err(ApiError::bad_request(
+            "invalid_expected_version",
+            "expected_version must be >= 0",
+        )
+        .with_request_id(request_id.clone()));
+    }
+
+    if req.name.is_none() && req.description.is_none() {
+        return Err(
+            ApiError::bad_request("invalid_update", "No updatable fields provided")
+                .with_request_id(request_id.clone()),
+        );
+    }
+
+    if let Some(name) = req.name.as_ref() {
+        if name.is_empty() {
+            return Err(ApiError::bad_request("invalid_name", "Application name cannot be empty")
+                .with_request_id(request_id.clone()));
+        }
+        if name.len() > 100 {
+            return Err(ApiError::bad_request(
+                "invalid_name",
+                "Application name cannot exceed 100 characters",
+            )
+            .with_request_id(request_id.clone()));
+        }
+    }
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "org_id": org_scope.clone(),
+                "app_id": app_id.to_string(),
+                "body": &req
+            });
+            idempotency::request_hash(endpoint_name, &hash_input).map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
+
+    let current = sqlx::query_as::<_, AppRow>(
+        r#"
+        SELECT app_id, org_id, name, description, resource_version, created_at, updated_at
+        FROM apps_view
+        WHERE app_id = $1 AND org_id = $2 AND NOT is_deleted
+        "#,
+    )
+    .bind(app_id.to_string())
+    .bind(org_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, app_id = %app_id, "Failed to load app");
+        ApiError::internal("internal_error", "Failed to update application")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::not_found("app_not_found", format!("Application {} not found", app_id))
+            .with_request_id(request_id.clone())
+    })?;
+
+    if req.expected_version != current.resource_version {
+        return Err(ApiError::conflict("version_conflict", "Resource version mismatch")
+            .with_request_id(request_id.clone()));
+    }
+
+    if let Some(name) = req.name.as_ref() {
+        if name != &current.name {
+            let name_exists = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM apps_view WHERE org_id = $1 AND name = $2 AND NOT is_deleted AND app_id != $3)",
+            )
+            .bind(org_scope.clone())
+            .bind(name)
+            .bind(app_id.to_string())
+            .fetch_one(state.db().pool())
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, request_id = %request_id, "Failed to check app name uniqueness");
+                ApiError::internal("internal_error", "Failed to verify application name")
+                    .with_request_id(request_id.clone())
+            })?;
+
+            if name_exists {
+                return Err(ApiError::conflict(
+                    "app_name_exists",
+                    format!("Application '{}' already exists in this organization", name),
+                )
+                .with_request_id(request_id.clone()));
+            }
+        }
+    }
+
+    let next_version = current.resource_version + 1;
+    let payload = serde_json::json!({
+        "name": req.name,
+        "description": req.description
+    });
+
+    let event = AppendEvent {
+        aggregate_type: AggregateType::App,
+        aggregate_id: app_id.to_string(),
+        aggregate_seq: next_version,
+        event_type: event_types::APP_UPDATED.to_string(),
+        event_version: 1,
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: None,
+        correlation_id: None,
+        causation_id: None,
+        payload,
+    };
+
+    let event_id = state.db().event_store().append(event).await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to update app");
+        ApiError::internal("internal_error", "Failed to update application")
+            .with_request_id(request_id.clone())
+    })?;
+
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "apps",
+            event_id.value(),
+            crate::api::projection_wait_timeout(),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
+
+    let row = sqlx::query_as::<_, AppRow>(
+        r#"
+        SELECT app_id, org_id, name, description, resource_version, created_at, updated_at
+        FROM apps_view
+        WHERE app_id = $1 AND org_id = $2 AND NOT is_deleted
+        "#,
+    )
+    .bind(app_id.to_string())
+    .bind(org_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load app");
+        ApiError::internal("internal_error", "Failed to update application")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::internal("internal_error", "Application was not materialized")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let response = AppResponse::from(row);
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to update application")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+async fn delete_app(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    Path((org_id, app_id)): Path<(String, String)>,
+) -> Result<Response, ApiError> {
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
+    let endpoint_name = "apps.delete";
+
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
+    let app_id: AppId = app_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_app_id", "Invalid application ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "org_id": org_scope.clone(),
+                "app_id": app_id.to_string()
+            });
+            idempotency::request_hash(endpoint_name, &hash_input).map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
+
+    let row = sqlx::query_as::<_, AppDeleteRow>(
+        r#"
+        SELECT resource_version, is_deleted
+        FROM apps_view
+        WHERE app_id = $1 AND org_id = $2
+        "#,
+    )
+    .bind(app_id.to_string())
+    .bind(org_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, app_id = %app_id, "Failed to load app");
+        ApiError::internal("internal_error", "Failed to delete application")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let Some(row) = row else {
+        return Err(ApiError::not_found(
+            "app_not_found",
+            format!("Application {} not found", app_id),
+        )
+        .with_request_id(request_id.clone()));
+    };
+
+    let response = DeleteResponse { ok: true };
+    if row.is_deleted {
+        if let Some((key, hash)) = request_hash {
+            let body = serde_json::to_value(&response).map_err(|e| {
+                tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+                ApiError::internal("internal_error", "Failed to delete application")
+                    .with_request_id(request_id.clone())
+            })?;
+
+            let _ = idempotency::store(
+                &state,
+                idempotency::StoreIdempotencyParams {
+                    org_scope: &org_scope,
+                    actor_id: &actor_id,
+                    endpoint_name,
+                    idempotency_key: &key,
+                    request_hash: &hash,
+                    status: StatusCode::OK,
+                    body: Some(body),
+                },
+                &request_id,
+            )
+            .await;
+        }
+
+        return Ok((StatusCode::OK, Json(response)).into_response());
+    }
+
+    let next_version = row.resource_version + 1;
+    let payload = serde_json::json!({});
+
+    let event = AppendEvent {
+        aggregate_type: AggregateType::App,
+        aggregate_id: app_id.to_string(),
+        aggregate_seq: next_version,
+        event_type: event_types::APP_DELETED.to_string(),
+        event_version: 1,
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: None,
+        correlation_id: None,
+        causation_id: None,
+        payload,
+    };
+
+    let event_id = state.db().event_store().append(event).await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to delete app");
+        ApiError::internal("internal_error", "Failed to delete application")
+            .with_request_id(request_id.clone())
+    })?;
+
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "apps",
+            event_id.value(),
+            crate::api::projection_wait_timeout(),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to delete application")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
+}
+
 /// List applications in an organization.
 ///
 /// GET /v1/orgs/{org_id}/apps
@@ -438,6 +860,11 @@ struct AppRow {
     updated_at: DateTime<Utc>,
 }
 
+struct AppDeleteRow {
+    resource_version: i32,
+    is_deleted: bool,
+}
+
 impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for AppRow {
     fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
         use sqlx::Row;
@@ -449,6 +876,16 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for AppRow {
             resource_version: row.try_get("resource_version")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
+        })
+    }
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for AppDeleteRow {
+    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            resource_version: row.try_get("resource_version")?,
+            is_deleted: row.try_get("is_deleted")?,
         })
     }
 }

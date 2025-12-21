@@ -203,6 +203,35 @@ paths:
                 $ref: "#/components/schemas/ListOrgsResponse"
         "401":
           $ref: "#/components/responses/Error401"
+    post:
+      tags: [Orgs]
+      summary: Create org
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrgRequest"
+      responses:
+        "200":
+          description: Org created
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "409":
+          $ref: "#/components/responses/Error409"
 
   /orgs/{org_id}:
     get:
@@ -226,6 +255,38 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+    patch:
+      tags: [Orgs]
+      summary: Update org
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrgRequest"
+      responses:
+        "200":
+          description: Org updated
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Org"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
 
   /orgs/{org_id}/projects:
     get:
@@ -303,6 +364,39 @@ paths:
           $ref: "#/components/responses/Error403"
         "404":
           $ref: "#/components/responses/Error404"
+    patch:
+      tags: [Projects]
+      summary: Update project
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/ProjectId"
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProjectRequest"
+      responses:
+        "200":
+          description: Project updated
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/Error400"
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+        "404":
+          $ref: "#/components/responses/Error404"
+        "409":
+          $ref: "#/components/responses/Error409"
 
   /orgs/{org_id}/members:
     get:
@@ -495,6 +589,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/OrgId"
         - $ref: "#/components/parameters/AppId"
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -630,6 +725,7 @@ paths:
         - $ref: "#/components/parameters/OrgId"
         - $ref: "#/components/parameters/AppId"
         - $ref: "#/components/parameters/EnvId"
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -1963,16 +2059,35 @@ components:
 
     Org:
       type: object
-      required: [id, name, created_at]
+      required: [id, name, resource_version, created_at, updated_at]
       properties:
         id:
           type: string
         name:
           type: string
+        resource_version:
+          type: integer
         created_at:
           type: string
         updated_at:
           type: string
+
+    CreateOrgRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+
+    UpdateOrgRequest:
+      type: object
+      required: [expected_version]
+      properties:
+        name:
+          type: string
+        expected_version:
+          type: integer
+          minimum: 0
 
     Project:
       type: object
@@ -2009,14 +2124,26 @@ components:
         name:
           type: string
 
+    UpdateProjectRequest:
+      type: object
+      required: [expected_version]
+      properties:
+        name:
+          type: string
+        expected_version:
+          type: integer
+          minimum: 0
+
     ListOrgsResponse:
       type: object
-      required: [items]
+      required: [items, total]
       properties:
         items:
           type: array
           items:
             $ref: "#/components/schemas/Org"
+        total:
+          type: integer
 
     Member:
       type: object

@@ -39,6 +39,24 @@ The goal is to keep the v1 promise small but complete: deploy real services, exp
 - CLI as the primary interface
 - Web console that is a terminal, not a form-based dashboard (libghostty-vt embedded via WASM)
 
+## v1 thin slice (implementation focus)
+
+This is the minimum end-to-end loop built first. It does not change the v1 scope; it defines sequencing for a solo engineer.
+
+### Scope
+- Stateless HTTP workload from OCI image + manifest
+- L4 endpoint with IPv6 default (SNI passthrough; IPv4 add-on explicit)
+- Logs and events tailing for deploy and runtime
+- Rollback to a prior release via desired state change
+- CLI receipts, idempotency, deterministic output
+
+### Acceptance criteria
+- Deploy returns a receipt with release ID, target env, and suggested follow-ups (wait/events/status).
+- Endpoint is reachable over IPv6 and maps to the running workload.
+- Logs and events streams show deploy progress and runtime output.
+- Rollback re-points desired release without mutating artifacts and reaches prior state.
+- Repeating deploy/rollback with the same idempotency key returns the same receipt and no duplicate change.
+
 ## v1 explicitly does not include
 
 These are intentionally deferred to keep v1 focused and shippable.

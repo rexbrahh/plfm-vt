@@ -103,6 +103,8 @@ struct ApplyPlan {
     image_ref: String,
     image_digest: String,
     process_types: Vec<String>,
+    command: Vec<String>,
+    strategy: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -239,22 +241,32 @@ impl ApplyCommand {
                 image_ref: image_ref.clone(),
                 image_digest: image_digest.clone(),
                 process_types: process_types.clone(),
+                command: command.clone(),
+                strategy: "rolling".to_string(),
             };
 
             match ctx.format {
                 OutputFormat::Json => print_single(&plan, ctx.format),
                 OutputFormat::Table => {
-                    print_info("Plan (dry-run):");
-                    println!("- validate manifest: ok");
-                    println!(
-                        "- create release: image_ref={}, manifest_hash={}",
-                        image_ref, manifest_hash
-                    );
-                    println!(
-                        "- create deploy: env_id={}, process_types={}",
-                        env_ident,
-                        process_types.join(",")
-                    );
+                    let process_list = process_types.join(",");
+                    let command_list = if command.is_empty() {
+                        "(none)".to_string()
+                    } else {
+                        command.join(" ")
+                    };
+                    print_info("Preview (dry-run):");
+                    println!("- org: {}", org_ident);
+                    println!("- app: {}", app_ident);
+                    println!("- env: {}", env_ident);
+                    println!("- manifest: {}", manifest_path.display());
+                    println!("- manifest_hash: {}", manifest_hash);
+                    println!("- image_ref: {}", image_ref);
+                    println!("- image_digest: {}", image_digest);
+                    println!("- process_types: {}", process_list);
+                    println!("- command: {}", command_list);
+                    println!("- actions:");
+                    println!("  - create release (schema=v1)");
+                    println!("  - create deploy (strategy=rolling)");
                 }
             }
             return Ok(());

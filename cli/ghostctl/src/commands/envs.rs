@@ -28,6 +28,9 @@ enum EnvsSubcommand {
     /// Create a new environment.
     Create(CreateEnvArgs),
 
+    #[command(about = "Update environment")]
+    Update(UpdateEnvArgs),
+
     /// Get environment details.
     Get(GetEnvArgs),
 
@@ -53,6 +56,15 @@ struct CreateEnvArgs {
 }
 
 #[derive(Debug, Args)]
+struct UpdateEnvArgs {
+    env: String,
+    #[arg(long)]
+    name: Option<String>,
+    #[arg(long)]
+    expected_version: i32,
+}
+
+#[derive(Debug, Args)]
 struct GetEnvArgs {
     /// Environment ID or name.
     env: String,
@@ -69,6 +81,7 @@ impl EnvsCommand {
         match self.command {
             EnvsSubcommand::List(args) => list_envs(ctx, args).await,
             EnvsSubcommand::Create(args) => create_env(ctx, args).await,
+            EnvsSubcommand::Update(args) => update_env(ctx, args).await,
             EnvsSubcommand::Get(args) => get_env(ctx, args).await,
             EnvsSubcommand::Use(args) => use_env(ctx, args).await,
         }
@@ -105,6 +118,13 @@ struct ListEnvsResponse {
 #[derive(Debug, Serialize)]
 struct CreateEnvRequest {
     name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateEnvRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    expected_version: i32,
 }
 
 /// List all environments in the current app.
@@ -196,6 +216,77 @@ async fn create_env(ctx: CommandContext, args: CreateEnvArgs) -> Result<()> {
             resource: &response,
             ids: serde_json::json!({
                 "env_id": env_id,
+                "app_id": app_id_str,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
+    );
+
+    Ok(())
+}
+
+async fn update_env(ctx: CommandContext, args: UpdateEnvArgs) -> Result<()> {
+    let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, ctx.require_app()?).await?;
+    let env_id = crate::resolve::resolve_env_id(&client, org_id, app_id, &args.env).await?;
+
+    let request = UpdateEnvRequest {
+        name: args.name.clone(),
+        expected_version: args.expected_version,
+    };
+    let path = format!("/v1/orgs/{}/apps/{}/envs/{}", org_id, app_id, env_id);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("envs.update", &path, &request)?,
+    };
+
+    let response: EnvResponse = client
+        .patch_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
+        .await
+        .map_err(|e| match e {
+            CliError::Api { status: 404, .. } => {
+                CliError::NotFound(format!("Environment '{}' not found", args.env))
+            }
+            other => other,
+        })?;
+
+    let env_id_str = env_id.to_string();
+    let env_name = response.name.clone();
+    let org_id_str = org_id.to_string();
+    let app_id_str = app_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!(
+                "vt --org {} --app {} envs get {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!(
+                "vt events tail --org {} --app {} --env {}",
+                org_id_str.clone(),
+                app_id_str.clone(),
+                env_id_str.clone()
+            ),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        Receipt {
+            message: format!("Updated environment '{}' ({})", env_name, env_id_str.as_str()),
+            status: "accepted",
+            kind: "envs.update",
+            resource_key: "env",
+            resource: &response,
+            ids: serde_json::json!({
+                "env_id": env_id_str,
                 "app_id": app_id_str,
                 "org_id": org_id_str
             }),

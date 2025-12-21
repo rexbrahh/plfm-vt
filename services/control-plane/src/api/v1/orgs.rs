@@ -6,7 +6,7 @@ use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, patch, post},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
@@ -26,6 +26,7 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_org))
         .route("/", get(list_orgs))
+        .route("/{org_id}", patch(update_org))
         .route("/{org_id}", get(get_org))
 }
 
@@ -38,6 +39,13 @@ pub fn routes() -> Router<AppState> {
 pub struct CreateOrgRequest {
     /// Organization name.
     pub name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdateOrgRequest {
+    #[serde(default)]
+    pub name: Option<String>,
+    pub expected_version: i32,
 }
 
 /// Response for a single organization.
@@ -282,6 +290,209 @@ async fn create_org(
             &state,
             idempotency::StoreIdempotencyParams {
                 org_scope: idempotency::IDEMPOTENCY_SCOPE_GLOBAL,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+async fn update_org(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    Path(org_id): Path<String>,
+    Json(req): Json<UpdateOrgRequest>,
+) -> Result<Response, ApiError> {
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
+    let endpoint_name = "orgs.update";
+
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
+
+    if req.expected_version < 0 {
+        return Err(ApiError::bad_request(
+            "invalid_expected_version",
+            "expected_version must be >= 0",
+        )
+        .with_request_id(request_id.clone()));
+    }
+
+    if req.name.is_none() {
+        return Err(
+            ApiError::bad_request("invalid_update", "No updatable fields provided")
+                .with_request_id(request_id.clone()),
+        );
+    }
+
+    if let Some(name) = req.name.as_ref() {
+        if name.is_empty() {
+            return Err(ApiError::bad_request("invalid_name", "Organization name cannot be empty")
+                .with_request_id(request_id.clone()));
+        }
+        if name.len() > 100 {
+            return Err(ApiError::bad_request(
+                "invalid_name",
+                "Organization name cannot exceed 100 characters",
+            )
+            .with_request_id(request_id.clone()));
+        }
+    }
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "org_id": org_scope.clone(),
+                "body": &req
+            });
+            idempotency::request_hash(endpoint_name, &hash_input).map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
+
+    let current = sqlx::query_as::<_, OrgRow>(
+        r#"
+        SELECT org_id, name, resource_version, created_at, updated_at
+        FROM orgs_view
+        WHERE org_id = $1
+        "#,
+    )
+    .bind(org_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, org_id = %org_id, "Failed to load org");
+        ApiError::internal("internal_error", "Failed to update organization")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::not_found("org_not_found", format!("Organization {} not found", org_id))
+            .with_request_id(request_id.clone())
+    })?;
+
+    if req.expected_version != current.resource_version {
+        return Err(ApiError::conflict("version_conflict", "Resource version mismatch")
+            .with_request_id(request_id.clone()));
+    }
+
+    let next_version = current.resource_version + 1;
+    let payload = serde_json::json!({
+        "name": req.name
+    });
+
+    let event = AppendEvent {
+        aggregate_type: AggregateType::Org,
+        aggregate_id: org_id.to_string(),
+        aggregate_seq: next_version,
+        event_type: event_types::ORG_UPDATED.to_string(),
+        event_version: 1,
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: None,
+        env_id: None,
+        correlation_id: None,
+        causation_id: None,
+        payload,
+    };
+
+    let event_id = state.db().event_store().append(event).await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to update org");
+        ApiError::internal("internal_error", "Failed to update organization")
+            .with_request_id(request_id.clone())
+    })?;
+
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "orgs",
+            event_id.value(),
+            crate::api::projection_wait_timeout(),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
+
+    let row = sqlx::query_as::<_, OrgRow>(
+        r#"
+        SELECT org_id, name, resource_version, created_at, updated_at
+        FROM orgs_view
+        WHERE org_id = $1
+        "#,
+    )
+    .bind(org_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load org");
+        ApiError::internal("internal_error", "Failed to update organization")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::internal("internal_error", "Organization was not materialized")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let response = OrgResponse {
+        id: row.org_id,
+        name: row.name,
+        resource_version: row.resource_version,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    };
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to update organization")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
                 actor_id: &actor_id,
                 endpoint_name,
                 idempotency_key: &key,

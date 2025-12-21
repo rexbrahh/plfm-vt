@@ -194,6 +194,9 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
 
     let body1: serde_json::Value = resp1.json().await.unwrap();
     let org_id = body1["id"].as_str().expect("missing org id").to_string();
+    let org_version = body1["resource_version"]
+        .as_i64()
+        .expect("missing org resource_version");
 
     let resp2 = client
         .post(&create_url)
@@ -228,6 +231,67 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
     let body_get: serde_json::Value = resp_get.json().await.unwrap();
     assert_eq!(body_get["id"], body1["id"]);
 
+    let updated_org_name = format!("itest-org-{}-updated", unique_suffix());
+    let update_org_url = format!("{base_url}/v1/orgs/{org_id}");
+    let resp_org_update = client
+        .patch(&update_org_url)
+        .header("Authorization", &auth_header)
+        .json(&serde_json::json!({
+            "name": updated_org_name,
+            "expected_version": org_version
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_org_update.status().is_success());
+    let org_updated: serde_json::Value = resp_org_update.json().await.unwrap();
+    assert_eq!(org_updated["name"], updated_org_name);
+    assert_eq!(
+        org_updated["resource_version"].as_i64().unwrap(),
+        org_version + 1
+    );
+
+    let project_name = format!("itest-project-{}", unique_suffix());
+    let create_project_url = format!("{base_url}/v1/orgs/{org_id}/projects");
+    let idem_project = format!("itest-project-{}-key", unique_suffix());
+    let resp_project = client
+        .post(&create_project_url)
+        .header("Authorization", &auth_header)
+        .header("Idempotency-Key", &idem_project)
+        .json(&serde_json::json!({ "name": project_name }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_project.status().is_success());
+    let project_body: serde_json::Value = resp_project.json().await.unwrap();
+    let project_id = project_body["id"]
+        .as_str()
+        .expect("missing project id")
+        .to_string();
+    let project_version = project_body["resource_version"]
+        .as_i64()
+        .expect("missing project resource_version");
+
+    let updated_project_name = format!("itest-project-{}-updated", unique_suffix());
+    let update_project_url = format!("{base_url}/v1/orgs/{org_id}/projects/{project_id}");
+    let resp_project_update = client
+        .patch(&update_project_url)
+        .header("Authorization", &auth_header)
+        .json(&serde_json::json!({
+            "name": updated_project_name,
+            "expected_version": project_version
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_project_update.status().is_success());
+    let project_updated: serde_json::Value = resp_project_update.json().await.unwrap();
+    assert_eq!(project_updated["name"], updated_project_name);
+    assert_eq!(
+        project_updated["resource_version"].as_i64().unwrap(),
+        project_version + 1
+    );
+
     // Create an app in the org.
     let app_name = format!("itest-app-{}", unique_suffix());
     let create_app_url = format!("{base_url}/v1/orgs/{org_id}/apps");
@@ -244,10 +308,34 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         .await
         .unwrap();
     assert!(resp_app.status().is_success());
-    let app_id = resp_app.json::<serde_json::Value>().await.unwrap()["id"]
+    let app_body: serde_json::Value = resp_app.json().await.unwrap();
+    let app_id = app_body["id"]
         .as_str()
         .expect("missing app id")
         .to_string();
+    let app_version = app_body["resource_version"]
+        .as_i64()
+        .expect("missing app resource_version");
+
+    let updated_app_name = format!("itest-app-{}-updated", unique_suffix());
+    let update_app_url = format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}");
+    let resp_app_update = client
+        .patch(&update_app_url)
+        .header("Authorization", &auth_header)
+        .json(&serde_json::json!({
+            "name": updated_app_name,
+            "expected_version": app_version
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_app_update.status().is_success());
+    let app_updated: serde_json::Value = resp_app_update.json().await.unwrap();
+    assert_eq!(app_updated["name"], updated_app_name);
+    assert_eq!(
+        app_updated["resource_version"].as_i64().unwrap(),
+        app_version + 1
+    );
 
     // Create an env.
     let create_env_url = format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}/envs");
@@ -261,10 +349,33 @@ async fn core_loop_request_id_idempotency_ryw_scale_and_instances() {
         .await
         .unwrap();
     assert!(resp_env.status().is_success());
-    let env_id = resp_env.json::<serde_json::Value>().await.unwrap()["id"]
+    let env_body: serde_json::Value = resp_env.json().await.unwrap();
+    let env_id = env_body["id"]
         .as_str()
         .expect("missing env id")
         .to_string();
+    let env_version = env_body["resource_version"]
+        .as_i64()
+        .expect("missing env resource_version");
+
+    let update_env_url = format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}");
+    let resp_env_update = client
+        .patch(&update_env_url)
+        .header("Authorization", &auth_header)
+        .json(&serde_json::json!({
+            "name": "prod-updated",
+            "expected_version": env_version
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert!(resp_env_update.status().is_success());
+    let env_updated: serde_json::Value = resp_env_update.json().await.unwrap();
+    assert_eq!(env_updated["name"], "prod-updated");
+    assert_eq!(
+        env_updated["resource_version"].as_i64().unwrap(),
+        env_version + 1
+    );
 
     // Secrets: initially not configured.
     let secrets_url = format!("{base_url}/v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/secrets");

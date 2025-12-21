@@ -28,6 +28,9 @@ enum AppsSubcommand {
     /// Create a new application.
     Create(CreateAppArgs),
 
+    #[command(about = "Update application")]
+    Update(UpdateAppArgs),
+
     /// Get application details.
     Get(GetAppArgs),
 
@@ -57,6 +60,17 @@ struct CreateAppArgs {
 }
 
 #[derive(Debug, Args)]
+struct UpdateAppArgs {
+    app: String,
+    #[arg(long)]
+    name: Option<String>,
+    #[arg(long)]
+    description: Option<String>,
+    #[arg(long)]
+    expected_version: i32,
+}
+
+#[derive(Debug, Args)]
 struct GetAppArgs {
     /// Application ID or name.
     app: String,
@@ -73,6 +87,7 @@ impl AppsCommand {
         match self.command {
             AppsSubcommand::List(args) => list_apps(ctx, args).await,
             AppsSubcommand::Create(args) => create_app(ctx, args).await,
+            AppsSubcommand::Update(args) => update_app(ctx, args).await,
             AppsSubcommand::Get(args) => get_app(ctx, args).await,
             AppsSubcommand::Use(args) => use_app(ctx, args).await,
         }
@@ -116,6 +131,15 @@ struct CreateAppRequest {
     name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     description: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateAppRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    description: Option<String>,
+    expected_version: i32,
 }
 
 /// List all applications in the current org.
@@ -202,6 +226,65 @@ async fn create_app(ctx: CommandContext, args: CreateAppArgs) -> Result<()> {
             resource: &response,
             ids: serde_json::json!({
                 "app_id": app_id,
+                "org_id": org_id_str
+            }),
+            next: &next,
+        },
+    );
+
+    Ok(())
+}
+
+async fn update_app(ctx: CommandContext, args: UpdateAppArgs) -> Result<()> {
+    let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, ctx.require_org()?).await?;
+    let app_id = crate::resolve::resolve_app_id(&client, org_id, &args.app).await?;
+
+    let request = UpdateAppRequest {
+        name: args.name.clone(),
+        description: args.description.clone(),
+        expected_version: args.expected_version,
+    };
+    let path = format!("/v1/orgs/{}/apps/{}", org_id, app_id);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("apps.update", &path, &request)?,
+    };
+
+    let response: AppResponse = client
+        .patch_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
+        .await
+        .map_err(|e| match e {
+            CliError::Api { status: 404, .. } => {
+                CliError::NotFound(format!("Application '{}' not found", args.app))
+            }
+            other => other,
+        })?;
+
+    let app_id_str = app_id.to_string();
+    let app_name = response.name.clone();
+    let org_id_str = org_id.to_string();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt --org {} apps get {}", org_id_str.clone(), app_id_str.clone()),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!("vt events tail --org {} --app {}", org_id_str.clone(), app_id_str.clone()),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        Receipt {
+            message: format!("Updated application '{}' ({})", app_name, app_id_str.as_str()),
+            status: "accepted",
+            kind: "apps.update",
+            resource_key: "app",
+            resource: &response,
+            ids: serde_json::json!({
+                "app_id": app_id_str,
                 "org_id": org_id_str
             }),
             next: &next,

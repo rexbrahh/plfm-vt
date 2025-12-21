@@ -6,11 +6,11 @@ use axum::{
     extract::{Path, Query, State},
     http::StatusCode,
     response::{IntoResponse, Response},
-    routing::{get, post, put},
+    routing::{delete, get, patch, post, put},
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use plfm_events::AggregateType;
+use plfm_events::{event_types, AggregateType};
 use plfm_id::{AppId, EnvId, OrgId};
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +28,8 @@ pub fn routes() -> Router<AppState> {
     Router::new()
         .route("/", post(create_env))
         .route("/", get(list_envs))
+        .route("/{env_id}", patch(update_env))
+        .route("/{env_id}", delete(delete_env))
         .route("/{env_id}", get(get_env))
 }
 
@@ -58,6 +60,18 @@ pub fn scale_routes() -> Router<AppState> {
 pub struct CreateEnvRequest {
     /// Environment name (unique within app, e.g., "production", "staging").
     pub name: String,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct UpdateEnvRequest {
+    #[serde(default)]
+    pub name: Option<String>,
+    pub expected_version: i32,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteResponse {
+    pub ok: bool,
 }
 
 /// Response for a single environment.
@@ -510,6 +524,425 @@ async fn create_env(
         let body = serde_json::to_value(&response).map_err(|e| {
             tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
             ApiError::internal("internal_error", "Failed to create environment")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+async fn update_env(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    Path((org_id, app_id, env_id)): Path<(String, String, String)>,
+    Json(req): Json<UpdateEnvRequest>,
+) -> Result<Response, ApiError> {
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
+    let endpoint_name = "envs.update";
+
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
+    let app_id: AppId = app_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_app_id", "Invalid application ID format")
+            .with_request_id(request_id.clone())
+    })?;
+    let env_id: EnvId = env_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
+
+    if req.expected_version < 0 {
+        return Err(ApiError::bad_request(
+            "invalid_expected_version",
+            "expected_version must be >= 0",
+        )
+        .with_request_id(request_id.clone()));
+    }
+
+    if req.name.is_none() {
+        return Err(
+            ApiError::bad_request("invalid_update", "No updatable fields provided")
+                .with_request_id(request_id.clone()),
+        );
+    }
+
+    if let Some(name) = req.name.as_ref() {
+        if name.is_empty() {
+            return Err(ApiError::bad_request("invalid_name", "Environment name cannot be empty")
+                .with_request_id(request_id.clone()));
+        }
+        if name.len() > 100 {
+            return Err(ApiError::bad_request(
+                "invalid_name",
+                "Environment name cannot exceed 100 characters",
+            )
+            .with_request_id(request_id.clone()));
+        }
+    }
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "org_id": org_scope.clone(),
+                "app_id": app_id.to_string(),
+                "env_id": env_id.to_string(),
+                "body": &req
+            });
+            idempotency::request_hash(endpoint_name, &hash_input).map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
+
+    let current = sqlx::query_as::<_, EnvRow>(
+        r#"
+        SELECT env_id, org_id, app_id, name, resource_version, created_at, updated_at
+        FROM envs_view
+        WHERE env_id = $1 AND org_id = $2 AND app_id = $3 AND NOT is_deleted
+        "#,
+    )
+    .bind(env_id.to_string())
+    .bind(org_id.to_string())
+    .bind(app_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, env_id = %env_id, "Failed to load env");
+        ApiError::internal("internal_error", "Failed to update environment")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::not_found("env_not_found", format!("Environment {} not found", env_id))
+            .with_request_id(request_id.clone())
+    })?;
+
+    if req.expected_version != current.resource_version {
+        return Err(ApiError::conflict("version_conflict", "Resource version mismatch")
+            .with_request_id(request_id.clone()));
+    }
+
+    if let Some(name) = req.name.as_ref() {
+        if name != &current.name {
+            let name_exists = sqlx::query_scalar::<_, bool>(
+                "SELECT EXISTS(SELECT 1 FROM envs_view WHERE org_id = $1 AND app_id = $2 AND name = $3 AND NOT is_deleted AND env_id != $4)",
+            )
+            .bind(org_scope.clone())
+            .bind(app_id.to_string())
+            .bind(name)
+            .bind(env_id.to_string())
+            .fetch_one(state.db().pool())
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, request_id = %request_id, "Failed to check env name uniqueness");
+                ApiError::internal("internal_error", "Failed to verify environment name")
+                    .with_request_id(request_id.clone())
+            })?;
+
+            if name_exists {
+                return Err(ApiError::conflict(
+                    "env_name_exists",
+                    format!("Environment '{}' already exists in this application", name),
+                )
+                .with_request_id(request_id.clone()));
+            }
+        }
+    }
+
+    let next_version = current.resource_version + 1;
+    let payload = serde_json::json!({
+        "name": req.name
+    });
+
+    let event = AppendEvent {
+        aggregate_type: AggregateType::Env,
+        aggregate_id: env_id.to_string(),
+        aggregate_seq: next_version,
+        event_type: event_types::ENV_UPDATED.to_string(),
+        event_version: 1,
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: Some(env_id),
+        correlation_id: None,
+        causation_id: None,
+        payload,
+    };
+
+    let event_id = state.db().event_store().append(event).await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to update env");
+        ApiError::internal("internal_error", "Failed to update environment")
+            .with_request_id(request_id.clone())
+    })?;
+
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "envs",
+            event_id.value(),
+            crate::api::projection_wait_timeout(),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
+
+    let row = sqlx::query_as::<_, EnvRow>(
+        r#"
+        SELECT env_id, org_id, app_id, name, resource_version, created_at, updated_at
+        FROM envs_view
+        WHERE env_id = $1 AND org_id = $2 AND app_id = $3 AND NOT is_deleted
+        "#,
+    )
+    .bind(env_id.to_string())
+    .bind(org_id.to_string())
+    .bind(app_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to load env");
+        ApiError::internal("internal_error", "Failed to update environment")
+            .with_request_id(request_id.clone())
+    })?
+    .ok_or_else(|| {
+        ApiError::internal("internal_error", "Environment was not materialized")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let response = EnvResponse::from(row);
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to update environment")
+                .with_request_id(request_id.clone())
+        })?;
+
+        let _ = idempotency::store(
+            &state,
+            idempotency::StoreIdempotencyParams {
+                org_scope: &org_scope,
+                actor_id: &actor_id,
+                endpoint_name,
+                idempotency_key: &key,
+                request_hash: &hash,
+                status: StatusCode::OK,
+                body: Some(body),
+            },
+            &request_id,
+        )
+        .await;
+    }
+
+    Ok((StatusCode::OK, Json(response)).into_response())
+}
+
+async fn delete_env(
+    State(state): State<AppState>,
+    ctx: RequestContext,
+    Path((org_id, app_id, env_id)): Path<(String, String, String)>,
+) -> Result<Response, ApiError> {
+    let request_id = ctx.request_id.clone();
+    let idempotency_key = ctx.idempotency_key.clone();
+    let actor_type = ctx.actor_type;
+    let actor_id = ctx.actor_id.clone();
+    let endpoint_name = "envs.delete";
+
+    let org_id: OrgId = org_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_org_id", "Invalid organization ID format")
+            .with_request_id(request_id.clone())
+    })?;
+    let app_id: AppId = app_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_app_id", "Invalid application ID format")
+            .with_request_id(request_id.clone())
+    })?;
+    let env_id: EnvId = env_id.parse().map_err(|_| {
+        ApiError::bad_request("invalid_env_id", "Invalid environment ID format")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let role = authz::require_org_member(&state, &org_id, &ctx).await?;
+    authz::require_org_write(role, &request_id)?;
+
+    let org_scope = org_id.to_string();
+    let request_hash = idempotency_key
+        .as_deref()
+        .map(|key| {
+            let hash_input = serde_json::json!({
+                "org_id": org_scope.clone(),
+                "app_id": app_id.to_string(),
+                "env_id": env_id.to_string()
+            });
+            idempotency::request_hash(endpoint_name, &hash_input).map(|hash| (key.to_string(), hash))
+        })
+        .transpose()
+        .map_err(|e| e.with_request_id(request_id.clone()))?;
+
+    if let Some((key, hash)) = request_hash.as_ref() {
+        if let Some((status, body)) = idempotency::check(
+            &state,
+            &org_scope,
+            &actor_id,
+            endpoint_name,
+            key,
+            hash,
+            &request_id,
+        )
+        .await?
+        {
+            return Ok(
+                (status, Json(body.unwrap_or_else(|| serde_json::json!({})))).into_response(),
+            );
+        }
+    }
+
+    let row = sqlx::query_as::<_, EnvDeleteRow>(
+        r#"
+        SELECT resource_version, is_deleted
+        FROM envs_view
+        WHERE env_id = $1 AND org_id = $2 AND app_id = $3
+        "#,
+    )
+    .bind(env_id.to_string())
+    .bind(org_id.to_string())
+    .bind(app_id.to_string())
+    .fetch_optional(state.db().pool())
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, env_id = %env_id, "Failed to load env");
+        ApiError::internal("internal_error", "Failed to delete environment")
+            .with_request_id(request_id.clone())
+    })?;
+
+    let Some(row) = row else {
+        return Err(ApiError::not_found(
+            "env_not_found",
+            format!("Environment {} not found", env_id),
+        )
+        .with_request_id(request_id.clone()));
+    };
+
+    let response = DeleteResponse { ok: true };
+    if row.is_deleted {
+        if let Some((key, hash)) = request_hash {
+            let body = serde_json::to_value(&response).map_err(|e| {
+                tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+                ApiError::internal("internal_error", "Failed to delete environment")
+                    .with_request_id(request_id.clone())
+            })?;
+
+            let _ = idempotency::store(
+                &state,
+                idempotency::StoreIdempotencyParams {
+                    org_scope: &org_scope,
+                    actor_id: &actor_id,
+                    endpoint_name,
+                    idempotency_key: &key,
+                    request_hash: &hash,
+                    status: StatusCode::OK,
+                    body: Some(body),
+                },
+                &request_id,
+            )
+            .await;
+        }
+
+        return Ok((StatusCode::OK, Json(response)).into_response());
+    }
+
+    let next_version = row.resource_version + 1;
+    let payload = serde_json::json!({});
+
+    let event = AppendEvent {
+        aggregate_type: AggregateType::Env,
+        aggregate_id: env_id.to_string(),
+        aggregate_seq: next_version,
+        event_type: event_types::ENV_DELETED.to_string(),
+        event_version: 1,
+        actor_type,
+        actor_id: actor_id.clone(),
+        org_id: Some(org_id),
+        request_id: request_id.clone(),
+        idempotency_key: idempotency_key.clone(),
+        app_id: Some(app_id),
+        env_id: Some(env_id),
+        correlation_id: None,
+        causation_id: None,
+        payload,
+    };
+
+    let event_id = state.db().event_store().append(event).await.map_err(|e| {
+        tracing::error!(error = %e, request_id = %request_id, "Failed to delete env");
+        ApiError::internal("internal_error", "Failed to delete environment")
+            .with_request_id(request_id.clone())
+    })?;
+
+    state
+        .db()
+        .projection_store()
+        .wait_for_checkpoint(
+            "envs",
+            event_id.value(),
+            crate::api::projection_wait_timeout(),
+        )
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Projection wait failed");
+            ApiError::gateway_timeout("projection_timeout", "Request timed out waiting for state")
+                .with_request_id(request_id.clone())
+        })?;
+
+    if let Some((key, hash)) = request_hash {
+        let body = serde_json::to_value(&response).map_err(|e| {
+            tracing::error!(error = %e, request_id = %request_id, "Failed to serialize response");
+            ApiError::internal("internal_error", "Failed to delete environment")
                 .with_request_id(request_id.clone())
         })?;
 
@@ -1229,6 +1662,11 @@ struct EnvRow {
     updated_at: DateTime<Utc>,
 }
 
+struct EnvDeleteRow {
+    resource_version: i32,
+    is_deleted: bool,
+}
+
 impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for EnvRow {
     fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
         use sqlx::Row;
@@ -1240,6 +1678,16 @@ impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for EnvRow {
             resource_version: row.try_get("resource_version")?,
             created_at: row.try_get("created_at")?,
             updated_at: row.try_get("updated_at")?,
+        })
+    }
+}
+
+impl<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> for EnvDeleteRow {
+    fn from_row(row: &'r sqlx::postgres::PgRow) -> Result<Self, sqlx::Error> {
+        use sqlx::Row;
+        Ok(Self {
+            resource_version: row.try_get("resource_version")?,
+            is_deleted: row.try_get("is_deleted")?,
         })
     }
 }

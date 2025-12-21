@@ -28,6 +28,9 @@ enum OrgsSubcommand {
     /// Create a new organization.
     Create(CreateOrgArgs),
 
+    #[command(about = "Update organization")]
+    Update(UpdateOrgArgs),
+
     /// Get organization details.
     Get(GetOrgArgs),
 
@@ -42,6 +45,15 @@ enum OrgsSubcommand {
 struct CreateOrgArgs {
     /// Organization name.
     name: String,
+}
+
+#[derive(Debug, Args)]
+struct UpdateOrgArgs {
+    org: String,
+    #[arg(long)]
+    name: Option<String>,
+    #[arg(long)]
+    expected_version: i32,
 }
 
 #[derive(Debug, Args)]
@@ -61,6 +73,7 @@ impl OrgsCommand {
         match self.command {
             OrgsSubcommand::List => list_orgs(ctx).await,
             OrgsSubcommand::Create(args) => create_org(ctx, args).await,
+            OrgsSubcommand::Update(args) => update_org(ctx, args).await,
             OrgsSubcommand::Get(args) => get_org(ctx, args).await,
             OrgsSubcommand::Use(args) => use_org(ctx, args).await,
             OrgsSubcommand::Members(cmd) => cmd.run(ctx).await,
@@ -93,6 +106,13 @@ struct ListOrgsResponse {
 #[derive(Debug, Serialize)]
 struct CreateOrgRequest {
     name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct UpdateOrgRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    name: Option<String>,
+    expected_version: i32,
 }
 
 // =============================================================================
@@ -460,6 +480,59 @@ async fn create_org(ctx: CommandContext, args: CreateOrgArgs) -> Result<()> {
             resource_key: "org",
             resource: &response,
             ids: serde_json::json!({ "org_id": org_id }),
+            next: &next,
+        },
+    );
+
+    Ok(())
+}
+
+async fn update_org(ctx: CommandContext, args: UpdateOrgArgs) -> Result<()> {
+    let client = ctx.client()?;
+    let org_id = crate::resolve::resolve_org_id(&client, &args.org).await?;
+
+    let request = UpdateOrgRequest {
+        name: args.name.clone(),
+        expected_version: args.expected_version,
+    };
+    let path = format!("/v1/orgs/{}", org_id);
+    let idempotency_key = match ctx.idempotency_key.as_deref() {
+        Some(key) => key.to_string(),
+        None => crate::idempotency::default_idempotency_key("orgs.update", &path, &request)?,
+    };
+
+    let response: OrgResponse = client
+        .patch_with_idempotency_key(&path, &request, Some(idempotency_key.as_str()))
+        .await
+        .map_err(|e| match e {
+            CliError::Api { status: 404, .. } => {
+                CliError::NotFound(format!("Organization '{}' not found", args.org))
+            }
+            other => other,
+        })?;
+
+    let org_id_str = org_id.to_string();
+    let org_name = response.name.clone();
+    let next = vec![
+        ReceiptNextStep {
+            label: "Next",
+            cmd: format!("vt orgs get {}", org_id_str.clone()),
+        },
+        ReceiptNextStep {
+            label: "Debug",
+            cmd: format!("vt events tail --org {}", org_id_str.clone()),
+        },
+    ];
+
+    print_receipt(
+        ctx.format,
+        Receipt {
+            message: format!("Updated organization '{}' ({})", org_name, org_id_str.as_str()),
+            status: "accepted",
+            kind: "orgs.update",
+            resource_key: "org",
+            resource: &response,
+            ids: serde_json::json!({ "org_id": org_id_str }),
             next: &next,
         },
     );

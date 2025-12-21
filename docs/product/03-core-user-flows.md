@@ -12,6 +12,12 @@ The same flows should work in both:
 - the CLI (primary)
 - the web console terminal (secondary, same commands and outputs)
 
+## Thin slice focus (v1 sequencing)
+
+For initial execution, prioritize the end-to-end loop:
+deploy stateless HTTP -> expose L4 endpoint (IPv6 default) -> logs/events -> rollback.
+This does not change the v1 scope; it defines sequencing for a solo engineer.
+
 ## Glossary of nouns
 
 - **Org**: billing and membership boundary
@@ -56,9 +62,10 @@ The same flows should work in both:
 ## 2) Deploy
 
 ### Goals
-- create a release from an OCI image (and optional build step)
+- create a release from an OCI image (stateless HTTP focus; optional build step)
 - roll out with clear progress
 - produce an audit trail: what changed, where, when
+- ensure idempotent mutations with deterministic receipts
 
 ### Flow
 1. User runs deploy with a manifest (and optionally an image tag)
