@@ -4,6 +4,7 @@
 //! library surface to enable integration testing and reuse.
 
 pub mod api;
+pub mod cleanup;
 pub mod config;
 pub mod db;
 pub mod projections;

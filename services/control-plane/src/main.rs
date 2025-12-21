@@ -6,7 +6,9 @@
 
 use anyhow::Result;
 use plfm_control_plane::{
-    api, config,
+    api,
+    cleanup::{CleanupWorker, CleanupWorkerConfig},
+    config,
     db::Database,
     projections::{worker::WorkerConfig, ProjectionWorker},
     scheduler::SchedulerWorker,
@@ -66,14 +68,21 @@ async fn main() -> Result<()> {
     });
 
     // Start scheduler worker in background
-    let scheduler_worker = SchedulerWorker::new(
-        db.pool().clone(),
-        std::time::Duration::from_secs(5), // 5 second reconciliation interval
-    );
+    let scheduler_worker =
+        SchedulerWorker::new(db.pool().clone(), std::time::Duration::from_secs(5));
     let scheduler_handle = tokio::spawn({
         let shutdown_rx = shutdown_rx.clone();
         async move {
             scheduler_worker.run(shutdown_rx).await;
+        }
+    });
+
+    // Start cleanup worker in background
+    let cleanup_worker = CleanupWorker::new(db.pool().clone(), CleanupWorkerConfig::default());
+    let cleanup_handle = tokio::spawn({
+        let shutdown_rx = shutdown_rx.clone();
+        async move {
+            cleanup_worker.run(shutdown_rx).await;
         }
     });
 
@@ -131,6 +140,10 @@ async fn main() -> Result<()> {
 
     if let Err(e) = tokio::time::timeout(shutdown_timeout, scheduler_handle).await {
         warn!(error = %e, "Scheduler worker did not shut down in time");
+    }
+
+    if let Err(e) = tokio::time::timeout(shutdown_timeout, cleanup_handle).await {
+        warn!(error = %e, "Cleanup worker did not shut down in time");
     }
 
     info!("Control plane shutdown complete");
