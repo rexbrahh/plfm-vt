@@ -6,12 +6,18 @@
 //! - Processes events from the control plane
 //! - Sends heartbeats
 
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
+use tokio::sync::mpsc;
 use tracing::{debug, info, warn};
 
 use super::framework::{Actor, ActorContext, ActorError, BackoffPolicy};
+use crate::client::{ControlPlaneClient, HeartbeatRequest, NodePlan, NodeState};
 
 // =============================================================================
 // Messages
@@ -59,6 +65,10 @@ pub struct StreamActorState {
     /// Last successful connection time.
     pub last_connected_at: Option<Instant>,
 
+    pub last_plan_version: i64,
+
+    pub next_reconnect_at: Option<Instant>,
+
     /// Consecutive connection failures.
     pub consecutive_failures: u32,
 }
@@ -74,6 +84,12 @@ pub struct ControlPlaneStreamActor {
 
     /// Control plane URL.
     control_plane_url: String,
+
+    client: Arc<ControlPlaneClient>,
+
+    plan_tx: mpsc::Sender<NodePlan>,
+
+    instance_count: Arc<AtomicUsize>,
 
     /// Current connection state.
     state: ConnectionState,
@@ -93,15 +109,25 @@ pub struct ControlPlaneStreamActor {
 
 impl ControlPlaneStreamActor {
     /// Create a new stream actor.
-    pub fn new(node_id: String, control_plane_url: String) -> Self {
+    pub fn new(
+        node_id: String,
+        control_plane_url: String,
+        client: Arc<ControlPlaneClient>,
+        plan_tx: mpsc::Sender<NodePlan>,
+        instance_count: Arc<AtomicUsize>,
+        heartbeat_interval: Duration,
+    ) -> Self {
         Self {
             node_id,
             control_plane_url,
+            client,
+            plan_tx,
+            instance_count,
             state: ConnectionState::Disconnected,
             persisted: StreamActorState::default(),
             backoff: BackoffPolicy::default(),
             last_heartbeat_at: None,
-            heartbeat_interval: Duration::from_secs(30),
+            heartbeat_interval,
         }
     }
 
@@ -134,37 +160,99 @@ impl ControlPlaneStreamActor {
 
         self.state = ConnectionState::Connecting;
 
-        // TODO: Actually establish connection
-        // For now, simulate successful connection
         self.state = ConnectionState::Connected;
         self.persisted.last_connected_at = Some(Instant::now());
         self.persisted.consecutive_failures = 0;
+        self.persisted.next_reconnect_at = None;
 
         info!(
             node_id = %self.node_id,
             "Connected to control plane"
         );
 
+        if let Err(e) = self.fetch_and_publish_plan().await {
+            self.handle_disconnected(format!("plan fetch failed: {e}"))
+                .await?;
+        }
+
+        Ok(())
+    }
+
+    async fn fetch_and_publish_plan(&mut self) -> Result<(), ActorError> {
+        let plan = self
+            .client
+            .fetch_plan()
+            .await
+            .map_err(|e| ActorError::Transient(e.to_string()))?;
+
+        if plan.plan_version <= self.persisted.last_plan_version {
+            return Ok(());
+        }
+
+        let plan_version = plan.plan_version;
+
+        if let Err(e) = self.plan_tx.try_send(plan) {
+            warn!(error = %e, "Failed to send plan update");
+            return Ok(());
+        }
+
+        self.persisted.last_plan_version = plan_version;
+
+        Ok(())
+    }
+
+    async fn maybe_reconnect(&mut self) -> Result<(), ActorError> {
+        if self.state == ConnectionState::Connecting {
+            return Ok(());
+        }
+
+        if self.state == ConnectionState::BackoffWait {
+            if let Some(next) = self.persisted.next_reconnect_at {
+                if Instant::now() < next {
+                    return Ok(());
+                }
+            }
+        }
+
+        if self.state != ConnectionState::Connected {
+            self.handle_connect(true).await?;
+        }
+
         Ok(())
     }
 
     async fn handle_heartbeat(&mut self, _tick_id: u64) -> Result<(), ActorError> {
         if self.state != ConnectionState::Connected {
-            debug!("Not connected, skipping heartbeat");
+            self.maybe_reconnect().await?;
             return Ok(());
         }
 
-        // Check if enough time has passed
         if let Some(last) = self.last_heartbeat_at {
             if last.elapsed() < self.heartbeat_interval {
                 return Ok(());
             }
         }
 
+        let instance_count = self.instance_count.load(Ordering::Relaxed) as i32;
+        let request = HeartbeatRequest {
+            state: NodeState::Active,
+            available_cpu_cores: 8,
+            available_memory_bytes: 16 * 1024 * 1024 * 1024,
+            instance_count,
+        };
+
         debug!(node_id = %self.node_id, "Sending heartbeat");
 
-        // TODO: Actually send heartbeat
+        if let Err(e) = self.client.send_heartbeat(&request).await {
+            self.handle_disconnected(format!("heartbeat failed: {e}")).await?;
+            return Ok(());
+        }
+
         self.last_heartbeat_at = Some(Instant::now());
+
+        if let Err(e) = self.fetch_and_publish_plan().await {
+            warn!(error = %e, "Plan fetch failed");
+        }
 
         Ok(())
     }
@@ -192,8 +280,8 @@ impl ControlPlaneStreamActor {
         self.state = ConnectionState::BackoffWait;
         self.persisted.consecutive_failures += 1;
 
-        // Calculate backoff delay
         let delay = self.backoff.delay(self.persisted.consecutive_failures);
+        self.persisted.next_reconnect_at = Some(Instant::now() + delay);
 
         info!(
             attempt = self.persisted.consecutive_failures,
@@ -201,10 +289,7 @@ impl ControlPlaneStreamActor {
             "Scheduling reconnect"
         );
 
-        // Wait and reconnect
-        tokio::time::sleep(delay).await;
-
-        self.handle_connect(true).await
+        Ok(())
     }
 }
 
@@ -292,6 +377,8 @@ mod tests {
         let state = StreamActorState::default();
         assert_eq!(state.last_event_cursor, 0);
         assert!(state.last_connected_at.is_none());
+        assert_eq!(state.last_plan_version, 0);
+        assert!(state.next_reconnect_at.is_none());
         assert_eq!(state.consecutive_failures, 0);
     }
 
@@ -303,9 +390,25 @@ mod tests {
 
     #[test]
     fn test_control_plane_stream_actor_new() {
+        let config = crate::config::Config {
+            node_id: plfm_id::NodeId::new(),
+            control_plane_url: "https://api.example.com".to_string(),
+            data_dir: "/tmp/test".to_string(),
+            heartbeat_interval_secs: 30,
+            log_level: "info".to_string(),
+            exec_listen_addr: "127.0.0.1:0".parse().unwrap(),
+        };
+        let client = std::sync::Arc::new(crate::client::ControlPlaneClient::new(&config));
+        let (plan_tx, _plan_rx) = tokio::sync::mpsc::channel(4);
+        let instance_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+
         let actor = ControlPlaneStreamActor::new(
-            "node_123".to_string(),
-            "https://api.example.com".to_string(),
+            config.node_id.to_string(),
+            config.control_plane_url.clone(),
+            client,
+            plan_tx,
+            instance_count,
+            std::time::Duration::from_secs(config.heartbeat_interval_secs),
         );
         assert_eq!(actor.connection_state(), ConnectionState::Disconnected);
         assert_eq!(actor.last_event_cursor(), 0);

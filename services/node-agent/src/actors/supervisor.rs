@@ -26,17 +26,20 @@
 //! 4. InstanceActor boots the VM using the prepared rootdisk
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use std::time::Duration;
 
-use tokio::sync::{oneshot, watch};
+use tokio::sync::{mpsc, oneshot, watch};
 use tracing::{debug, error, info, warn};
 
 use super::framework::{ActorHandle, RestartPolicy, Supervisor};
 use super::image::{ImageMessage, ImagePullActor};
 use super::instance::{DesiredInstanceState, InstanceActor, InstanceMessage};
 use super::stream::{ControlPlaneStreamActor, StreamMessage};
-use crate::client::InstancePlan;
+use crate::client::{ControlPlaneClient, InstancePlan, NodePlan};
 use crate::config::Config;
 use crate::runtime::Runtime;
 
@@ -62,6 +65,16 @@ pub struct NodeSupervisor<R: Runtime + Send + Sync + 'static> {
     /// Runtime for VM operations.
     runtime: Arc<R>,
 
+    control_plane: Arc<ControlPlaneClient>,
+
+    plan_rx: mpsc::Receiver<NodePlan>,
+
+    plan_tx: mpsc::Sender<NodePlan>,
+
+    instance_count: Arc<AtomicUsize>,
+
+    last_plan_version: i64,
+
     /// Core supervisor for static actors.
     supervisor: Supervisor,
 
@@ -86,12 +99,24 @@ pub struct NodeSupervisor<R: Runtime + Send + Sync + 'static> {
 
 impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
     /// Create a new node supervisor.
-    pub fn new(config: Config, runtime: Arc<R>, shutdown: watch::Receiver<bool>) -> Self {
+    pub fn new(
+        config: Config,
+        runtime: Arc<R>,
+        control_plane: Arc<ControlPlaneClient>,
+        shutdown: watch::Receiver<bool>,
+    ) -> Self {
         let supervisor = Supervisor::new(RestartPolicy::default(), shutdown.clone());
+        let (plan_tx, plan_rx) = mpsc::channel(16);
+        let instance_count = Arc::new(AtomicUsize::new(0));
 
         Self {
             config,
             runtime,
+            control_plane,
+            plan_rx,
+            plan_tx,
+            instance_count,
+            last_plan_version: 0,
             supervisor,
             stream_handle: None,
             image_handle: None,
@@ -113,6 +138,10 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
         let stream_actor = ControlPlaneStreamActor::new(
             self.config.node_id.to_string(),
             self.config.control_plane_url.clone(),
+            Arc::clone(&self.control_plane),
+            self.plan_tx.clone(),
+            Arc::clone(&self.instance_count),
+            Duration::from_secs(self.config.heartbeat_interval_secs),
         );
         self.stream_handle = Some(self.supervisor.spawn(stream_actor, 256));
 
@@ -170,6 +199,15 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
             running_instances = self.instance_handles.len(),
             "Instance reconciliation complete"
         );
+    }
+
+    async fn handle_plan(&mut self, plan: NodePlan) {
+        if plan.plan_version <= self.last_plan_version {
+            return;
+        }
+
+        self.last_plan_version = plan.plan_version;
+        self.apply_instances(plan.instances).await;
     }
 
     /// Ensure an instance actor exists and has the correct spec.
@@ -405,8 +443,16 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
                     }
                 }
 
+                plan = self.plan_rx.recv() => {
+                    if let Some(plan) = plan {
+                        self.handle_plan(plan).await;
+                    }
+                }
+
                 _ = check_interval.tick() => {
                     tick_id += 1;
+                    self.instance_count
+                        .store(self.instance_handles.len(), Ordering::Relaxed);
 
                     // Check and restart any crashed actors
                     self.supervisor.check_and_restart().await;
@@ -574,8 +620,9 @@ mod tests {
         let config = test_config();
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
+        let control_plane = Arc::new(ControlPlaneClient::new(&config));
 
-        let supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+        let supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
         assert_eq!(supervisor.instance_count(), 0);
     }
 
@@ -584,8 +631,9 @@ mod tests {
         let config = test_config();
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
+        let control_plane = Arc::new(ControlPlaneClient::new(&config));
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
         supervisor.start();
 
         assert!(supervisor.stream_handle().is_some());
@@ -597,8 +645,9 @@ mod tests {
         let config = test_config();
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
+        let control_plane = Arc::new(ControlPlaneClient::new(&config));
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
         supervisor.start();
 
         // Apply some instances - they go to pending first (waiting for image pull)
@@ -619,13 +668,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_node_supervisor_apply_plan_version() {
+        let config = test_config();
+        let runtime = Arc::new(MockRuntime::new());
+        let (_, shutdown_rx) = watch::channel(false);
+        let control_plane = Arc::new(ControlPlaneClient::new(&config));
+
+        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+
+        let plan = NodePlan {
+            plan_version: 1,
+            node_overlay_ipv6: None,
+            instances: vec![test_plan("inst_1")],
+        };
+        supervisor.handle_plan(plan).await;
+        assert_eq!(supervisor.instance_count(), 1);
+
+        let plan = NodePlan {
+            plan_version: 1,
+            node_overlay_ipv6: None,
+            instances: vec![test_plan("inst_2")],
+        };
+        supervisor.handle_plan(plan).await;
+        assert_eq!(supervisor.instance_count(), 1);
+
+        supervisor.supervisor.stop_all().await;
+    }
+
+    #[tokio::test]
     async fn test_node_supervisor_direct_spawn() {
         // Test direct spawn without image pull (for when image is already cached)
         let config = test_config();
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
+        let control_plane = Arc::new(ControlPlaneClient::new(&config));
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
         // Don't start() - this means no image actor, so instances spawn directly
 
         let plans = vec![test_plan("inst_1"), test_plan("inst_2")];

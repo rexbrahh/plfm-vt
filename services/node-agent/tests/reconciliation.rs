@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use plfm_id::NodeId;
 use plfm_node_agent::actors::supervisor::NodeSupervisor;
-use plfm_node_agent::client::{InstancePlan, InstanceResources};
+use plfm_node_agent::client::{ControlPlaneClient, InstancePlan, InstanceResources};
 use plfm_node_agent::config::Config;
 use plfm_node_agent::runtime::MockRuntime;
 use tokio::sync::watch;
@@ -26,6 +26,10 @@ fn test_config() -> Config {
         log_level: "debug".to_string(),
         exec_listen_addr: "127.0.0.1:0".parse().unwrap(),
     }
+}
+
+fn test_control_plane(config: &Config) -> Arc<ControlPlaneClient> {
+    Arc::new(ControlPlaneClient::new(config))
 }
 
 fn test_plan(id: &str, image: &str) -> InstancePlan {
@@ -53,9 +57,10 @@ fn test_plan(id: &str, image: &str) -> InstancePlan {
 async fn test_supervisor_lifecycle() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
+    let control_plane = test_control_plane(&config);
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
     supervisor.start();
 
     // Verify static actors are running
@@ -71,9 +76,10 @@ async fn test_supervisor_lifecycle() {
 async fn test_apply_single_instance() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
+    let control_plane = test_control_plane(&config);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
     supervisor.start();
 
     // Apply one instance
@@ -91,9 +97,10 @@ async fn test_apply_single_instance() {
 async fn test_apply_multiple_instances() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
+    let control_plane = test_control_plane(&config);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
     supervisor.start();
 
     // Apply multiple instances with same image (should deduplicate pulls)
@@ -112,10 +119,11 @@ async fn test_apply_multiple_instances() {
 async fn test_scale_up_and_down() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
+    let control_plane = test_control_plane(&config);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
     // Create supervisor without image actor (direct spawn)
-    let mut supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
     // Don't call start() - this bypasses image pull
 
     // Scale up to 3 instances
@@ -145,9 +153,10 @@ async fn test_scale_up_and_down() {
 async fn test_update_instance_spec() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
+    let control_plane = test_control_plane(&config);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
     // Don't call start() - direct spawn
 
     // Create instance
@@ -167,9 +176,10 @@ async fn test_update_instance_spec() {
 async fn test_instance_with_digest() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
+    let control_plane = test_control_plane(&config);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
     supervisor.start();
 
     // Apply instance with digest in image ref
@@ -186,9 +196,10 @@ async fn test_instance_with_digest() {
 async fn test_concurrent_apply() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
+    let control_plane = test_control_plane(&config);
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
     // Don't call start() - direct spawn
 
     // Rapidly apply different sets

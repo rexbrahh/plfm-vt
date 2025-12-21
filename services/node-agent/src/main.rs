@@ -147,8 +147,13 @@ async fn main() -> Result<()> {
         if runtime_kind == "firecracker" {
             let runtime =
                 build_firecracker_runtime(&config, Arc::clone(&control_plane_client)).await?;
-            let mut supervisor =
-                NodeSupervisor::new(config.clone(), Arc::clone(&runtime), shutdown_rx.clone());
+            let mut supervisor = NodeSupervisor::new(
+                config.clone(),
+                Arc::clone(&runtime),
+                Arc::clone(&control_plane_client),
+                shutdown_rx.clone(),
+            );
+
             supervisor.start();
 
             let supervisor_handle = tokio::spawn(async move {
@@ -165,8 +170,13 @@ async fn main() -> Result<()> {
             }
         } else {
             let runtime = Arc::new(MockRuntime::new());
-            let mut supervisor =
-                NodeSupervisor::new(config.clone(), Arc::clone(&runtime), shutdown_rx.clone());
+            let mut supervisor = NodeSupervisor::new(
+                config.clone(),
+                Arc::clone(&runtime),
+                Arc::clone(&control_plane_client),
+                shutdown_rx.clone(),
+            );
+
             supervisor.start();
 
             let supervisor_handle = tokio::spawn(async move {

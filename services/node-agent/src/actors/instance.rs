@@ -13,7 +13,7 @@
 //!                  +------> failed <-----+
 //! ```
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 use tracing::{debug, error, info, warn};
@@ -21,6 +21,9 @@ use tracing::{debug, error, info, warn};
 use super::framework::{Actor, ActorContext, ActorError};
 use crate::client::InstancePlan;
 use crate::runtime::{Runtime, VmHandle};
+
+const DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
+const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
 
 // =============================================================================
 // Messages
@@ -119,6 +122,8 @@ pub struct InstanceActorState {
     /// Last health check time.
     pub last_health_check_at: Option<Instant>,
 
+    pub drain_started_at: Option<Instant>,
+
     /// Error message if failed.
     pub error_message: Option<String>,
 }
@@ -136,6 +141,7 @@ impl InstanceActorState {
             overlay_ip: None,
             boot_started_at: None,
             last_health_check_at: None,
+            drain_started_at: None,
             error_message: None,
         }
     }
@@ -287,30 +293,45 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
     async fn handle_tick(&mut self, _tick_id: u64) -> Result<(), ActorError> {
         match self.state.phase {
             InstancePhase::Ready => {
-                // Health check
-                if let Some(handle) = &self.vm_handle {
-                    match self.runtime.check_vm_health(handle).await {
-                        Ok(true) => {
-                            self.state.last_health_check_at = Some(Instant::now());
-                        }
-                        Ok(false) => {
-                            warn!(instance_id = %self.instance_id, "Health check failed");
-                            self.transition_to_failed("Health check failed".to_string());
-                        }
-                        Err(e) => {
-                            warn!(
-                                instance_id = %self.instance_id,
-                                error = %e,
-                                "Error during health check"
-                            );
-                        }
+                if let Some(last) = self.state.last_health_check_at {
+                    if last.elapsed() < HEALTH_CHECK_INTERVAL {
+                        return Ok(());
+                    }
+                }
+
+                let Some(handle) = &self.vm_handle else {
+                    self.transition_to_failed("Missing VM handle".to_string());
+                    return Ok(());
+                };
+
+                match self.runtime.check_vm_health(handle).await {
+                    Ok(true) => {
+                        self.state.last_health_check_at = Some(Instant::now());
+                    }
+                    Ok(false) => {
+                        warn!(instance_id = %self.instance_id, "Health check failed");
+                        self.transition_to_failed("Health check failed".to_string());
+                    }
+                    Err(e) => {
+                        warn!(
+                            instance_id = %self.instance_id,
+                            error = %e,
+                            "Error during health check"
+                        );
                     }
                 }
             }
 
             InstancePhase::Draining => {
-                // Check drain timeout
-                // TODO: implement drain timeout handling
+                if self.state.drain_started_at.is_none() {
+                    self.state.drain_started_at = Some(Instant::now());
+                }
+
+                if let Some(started) = self.state.drain_started_at {
+                    if started.elapsed() >= DRAIN_TIMEOUT {
+                        self.stop_instance(StopReason::ScaleDown).await?;
+                    }
+                }
             }
 
             InstancePhase::Booting => {
@@ -352,6 +373,7 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
 
         self.state.phase = InstancePhase::Booting;
         self.state.boot_started_at = Some(Instant::now());
+        self.state.drain_started_at = None;
 
         // TODO: Prepare resources (image, directories, networking)
         // For now, go straight to starting the VM
@@ -411,10 +433,7 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
     async fn start_draining(&mut self) -> Result<(), ActorError> {
         info!(instance_id = %self.instance_id, "Starting drain");
         self.state.phase = InstancePhase::Draining;
-
-        // TODO: Notify load balancer to stop sending traffic
-        // TODO: Wait for in-flight requests to complete
-        // For now, just transition directly to stopped after a short delay
+        self.state.drain_started_at = Some(Instant::now());
 
         Ok(())
     }
@@ -431,6 +450,7 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
     fn transition_to_failed(&mut self, error_message: String) {
         self.state.phase = InstancePhase::Failed;
         self.state.error_message = Some(error_message);
+        self.state.drain_started_at = None;
         self.vm_handle = None;
     }
 }
@@ -494,8 +514,10 @@ impl<R: Runtime + Send + Sync + 'static> Actor for InstanceActor<R> {
 
         // Recovery: check if VM is still running
         if self.state.phase == InstancePhase::Ready || self.state.phase == InstancePhase::Booting {
-            // TODO: Check Firecracker socket to see if VM is still running
-            // For now, assume we need to restart
+            if self.vm_handle.is_none() {
+                self.transition_to_failed("Missing VM handle on restart".to_string());
+            }
+
             info!(
                 instance_id = %self.instance_id,
                 "Recovering from previous state - would check VM status"
@@ -553,5 +575,85 @@ mod tests {
     fn test_stop_reason() {
         let reason = StopReason::ScaleDown;
         assert_eq!(reason, StopReason::ScaleDown);
+    }
+
+    fn test_plan() -> InstancePlan {
+        InstancePlan {
+            instance_id: "inst_test".to_string(),
+            app_id: "app_test".to_string(),
+            env_id: "env_test".to_string(),
+            process_type: "web".to_string(),
+            release_id: "rel_test".to_string(),
+            deploy_id: "dep_test".to_string(),
+            image: "test:latest".to_string(),
+            command: vec!["./start".to_string()],
+            resources: crate::client::InstanceResources {
+                cpu: 1.0,
+                memory_bytes: 512 * 1024 * 1024,
+            },
+            overlay_ipv6: "fd00::1".to_string(),
+            secrets_version_id: None,
+            env_vars: serde_json::json!({}),
+            volumes: vec![],
+        }
+    }
+
+    struct UnhealthyRuntime;
+
+    #[async_trait::async_trait]
+    impl Runtime for UnhealthyRuntime {
+        async fn start_vm(&self, plan: &InstancePlan) -> anyhow::Result<VmHandle> {
+            Ok(VmHandle {
+                boot_id: "boot_test".to_string(),
+                instance_id: plan.instance_id.clone(),
+                guest_cid: 3,
+            })
+        }
+
+        async fn stop_vm(&self, _handle: &VmHandle) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn check_vm_health(&self, _handle: &VmHandle) -> anyhow::Result<bool> {
+            Ok(false)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_drain_timeout_stops_instance() {
+        let runtime = std::sync::Arc::new(crate::runtime::MockRuntime::new());
+        let mut actor = InstanceActor::new("inst_test".to_string(), runtime.clone());
+        let plan = test_plan();
+        let handle = runtime.start_vm(&plan).await.unwrap();
+
+        actor.vm_handle = Some(handle);
+        actor.state.phase = InstancePhase::Draining;
+        actor.state.drain_started_at = Some(
+            std::time::Instant::now() - (DRAIN_TIMEOUT + std::time::Duration::from_secs(1)),
+        );
+
+        actor.handle_tick(1).await.unwrap();
+
+        assert_eq!(actor.state.phase, InstancePhase::Stopped);
+        assert!(actor.vm_handle.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_health_check_failure_marks_failed() {
+        let runtime = std::sync::Arc::new(UnhealthyRuntime);
+        let mut actor = InstanceActor::new("inst_test".to_string(), runtime.clone());
+        let plan = test_plan();
+        let handle = runtime.start_vm(&plan).await.unwrap();
+
+        actor.vm_handle = Some(handle);
+        actor.state.phase = InstancePhase::Ready;
+        actor.state.last_health_check_at = Some(
+            std::time::Instant::now() - (HEALTH_CHECK_INTERVAL + std::time::Duration::from_secs(1)),
+        );
+
+        actor.handle_tick(1).await.unwrap();
+
+        assert_eq!(actor.state.phase, InstancePhase::Failed);
+        assert!(actor.state.error_message.is_some());
     }
 }
