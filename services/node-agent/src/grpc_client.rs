@@ -9,8 +9,7 @@ use plfm_proto::agent::v1::{
     SendWorkloadLogsRequest, WorkloadLogEntry,
 };
 use plfm_proto::events::v1::{
-    InstanceDesiredState as ProtoInstanceDesiredState,
-    InstanceStatus as ProtoInstanceStatus,
+    InstanceDesiredState as ProtoInstanceDesiredState, InstanceStatus as ProtoInstanceStatus,
     NodeState as ProtoNodeState,
 };
 use tonic::transport::Channel;
@@ -69,50 +68,73 @@ impl ControlPlaneGrpcClient {
                         instance_id: w.instance_id,
                         generation: w.generation,
                         release_id: w.release_id,
-                        image: w.image.map(|img| WorkloadImage {
-                            image_ref: img.image_ref,
-                            digest: img.digest,
-                            index_digest: img.index_digest,
-                            resolved_digest: img.resolved_digest,
-                            os: img.os,
-                            arch: img.arch,
-                        }).unwrap_or_default(),
+                        image: w
+                            .image
+                            .map(|img| WorkloadImage {
+                                image_ref: img.image_ref,
+                                digest: img.digest,
+                                index_digest: img.index_digest,
+                                resolved_digest: img.resolved_digest,
+                                os: img.os,
+                                arch: img.arch,
+                            })
+                            .unwrap_or_default(),
                         manifest_hash: w.manifest_hash,
                         command: w.command,
                         workdir: w.workdir,
-                        env_vars: if w.env_vars.is_empty() { None } else { Some(w.env_vars) },
-                        resources: w.resources.map(|r| WorkloadResources {
-                            cpu_request: r.cpu_request,
-                            memory_limit_bytes: r.memory_limit_bytes,
-                            ephemeral_disk_bytes: r.ephemeral_disk_bytes,
-                            vcpu_count: r.vcpu_count,
-                            cpu_weight: r.cpu_weight,
-                        }).unwrap_or_default(),
-                        network: w.network.map(|n| WorkloadNetwork {
-                            overlay_ipv6: n.overlay_ipv6,
-                            gateway_ipv6: n.gateway_ipv6,
-                            mtu: n.mtu,
-                            dns: if n.dns.is_empty() { None } else { Some(n.dns) },
-                            ports: if n.ports.is_empty() {
-                                None
-                            } else {
-                                Some(n.ports.into_iter().map(|p| WorkloadPort {
-                                    name: p.name,
-                                    port: p.port,
-                                    protocol: p.protocol,
-                                }).collect())
-                            },
-                        }).unwrap_or_default(),
+                        env_vars: if w.env_vars.is_empty() {
+                            None
+                        } else {
+                            Some(w.env_vars)
+                        },
+                        resources: w
+                            .resources
+                            .map(|r| WorkloadResources {
+                                cpu_request: r.cpu_request,
+                                memory_limit_bytes: r.memory_limit_bytes,
+                                ephemeral_disk_bytes: r.ephemeral_disk_bytes,
+                                vcpu_count: r.vcpu_count,
+                                cpu_weight: r.cpu_weight,
+                            })
+                            .unwrap_or_default(),
+                        network: w
+                            .network
+                            .map(|n| WorkloadNetwork {
+                                overlay_ipv6: n.overlay_ipv6,
+                                gateway_ipv6: n.gateway_ipv6,
+                                mtu: n.mtu,
+                                dns: if n.dns.is_empty() { None } else { Some(n.dns) },
+                                ports: if n.ports.is_empty() {
+                                    None
+                                } else {
+                                    Some(
+                                        n.ports
+                                            .into_iter()
+                                            .map(|p| WorkloadPort {
+                                                name: p.name,
+                                                port: p.port,
+                                                protocol: p.protocol,
+                                            })
+                                            .collect(),
+                                    )
+                                },
+                            })
+                            .unwrap_or_default(),
                         mounts: if w.mounts.is_empty() {
                             None
                         } else {
-                            Some(w.mounts.into_iter().map(|m| WorkloadMount {
-                                volume_id: m.volume_id,
-                                mount_path: m.mount_path,
-                                read_only: m.read_only,
-                                filesystem: m.filesystem,
-                                device_hint: m.device_hint,
-                            }).collect())
+                            Some(
+                                w.mounts
+                                    .into_iter()
+                                    .map(|m| WorkloadMount {
+                                        volume_id: m.volume_id,
+                                        mount_path: m.mount_path,
+                                        read_only: m.read_only,
+                                        filesystem: m.filesystem,
+                                        device_hint: m.device_hint,
+                                    })
+                                    .collect(),
+                            )
                         },
                         secrets: w.secrets.map(|s| WorkloadSecrets {
                             required: s.required,
@@ -168,7 +190,10 @@ impl ControlPlaneGrpcClient {
         Ok(())
     }
 
-    pub async fn fetch_secret_material(&mut self, version_id: &str) -> Result<SecretMaterialResponse> {
+    pub async fn fetch_secret_material(
+        &mut self,
+        version_id: &str,
+    ) -> Result<SecretMaterialResponse> {
         debug!(version_id = %version_id, "Fetching secret material via gRPC");
 
         let request = GetSecretMaterialRequest {
@@ -212,7 +237,10 @@ impl ControlPlaneGrpcClient {
         Ok(())
     }
 
-    pub async fn send_heartbeat(&mut self, request: &ClientHeartbeatRequest) -> Result<ClientHeartbeatResponse> {
+    pub async fn send_heartbeat(
+        &mut self,
+        request: &ClientHeartbeatRequest,
+    ) -> Result<ClientHeartbeatResponse> {
         let mut grpc_request = Request::new(ProtoHeartbeatRequest {
             state: map_node_state_to_proto(&request.state).into(),
             available_cpu_cores: request.available_cpu_cores,
