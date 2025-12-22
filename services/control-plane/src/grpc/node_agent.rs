@@ -494,7 +494,7 @@ impl NodeAgent for NodeAgentService {
                 "status": status_str,
                 "boot_id": status_report.boot_id,
                 "exit_code": status_report.exit_code,
-                "reason_code": if status_str == "failed" { status_report.error_message.as_ref().map(|_| "unknown_error") } else { None },
+                "reason_code": if status_str == "failed" { status_report.error_message.as_ref().map(|_| "unspecified") } else { None },
                 "reason_detail": status_report.error_message,
                 "reported_at": chrono::Utc::now().to_rfc3339(),
             }),

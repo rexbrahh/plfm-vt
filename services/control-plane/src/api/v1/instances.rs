@@ -351,7 +351,7 @@ async fn report_status(
             "status": req.status,
             "boot_id": req.boot_id,
             "exit_code": req.exit_code,
-            "reason_code": if req.status == "failed" { req.error_message.as_ref().map(|_| "unknown_error") } else { None },
+            "reason_code": if req.status == "failed" { req.error_message.as_ref().map(|_| "unspecified") } else { None },
             "reason_detail": req.error_message,
             "reported_at": chrono::Utc::now().to_rfc3339(),
         }),
