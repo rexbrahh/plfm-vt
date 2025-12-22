@@ -4,9 +4,9 @@
 //! Events are versioned for schema evolution.
 
 use plfm_id::{
-    AppId, DeployId, EnvId, ExecSessionId, InstanceId, MemberId, NodeId, OrgId, ReleaseId,
-    RestoreJobId, RouteId, SecretBundleId, SecretVersionId, ServicePrincipalId, SnapshotId,
-    VolumeAttachmentId, VolumeId,
+    AppId, DeployId, EnvId, ExecSessionId, InstanceId, MemberId, NodeId, OrgId, ProjectId,
+    ReleaseId, RestoreJobId, RouteId, SecretBundleId, SecretVersionId, ServicePrincipalId,
+    SnapshotId, VolumeAttachmentId, VolumeId,
 };
 use serde::{Deserialize, Serialize};
 
@@ -28,6 +28,10 @@ pub mod event_types {
     pub const SERVICE_PRINCIPAL_SCOPES_UPDATED: &str = "service_principal.scopes_updated";
     pub const SERVICE_PRINCIPAL_SECRET_ROTATED: &str = "service_principal.secret_rotated";
     pub const SERVICE_PRINCIPAL_DELETED: &str = "service_principal.deleted";
+
+    pub const PROJECT_CREATED: &str = "project.created";
+    pub const PROJECT_UPDATED: &str = "project.updated";
+    pub const PROJECT_DELETED: &str = "project.deleted";
 
     // Application
     pub const APP_CREATED: &str = "app.created";
@@ -272,6 +276,27 @@ pub struct ServicePrincipalSecretRotatedPayload {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ServicePrincipalDeletedPayload {
     pub sp_id: ServicePrincipalId,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectCreatedPayload {
+    pub project_id: ProjectId,
+    pub org_id: OrgId,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectUpdatedPayload {
+    pub project_id: ProjectId,
+    pub org_id: OrgId,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectDeletedPayload {
+    pub project_id: ProjectId,
+    pub org_id: OrgId,
 }
 
 // -----------------------------------------------------------------------------

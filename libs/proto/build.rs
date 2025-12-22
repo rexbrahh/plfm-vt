@@ -9,6 +9,7 @@ fn main() -> Result<()> {
         "plfm/common/v1/errors.proto",
         "plfm/events/v1/envelope.proto",
         "plfm/events/v1/org.proto",
+        "plfm/events/v1/project.proto",
         "plfm/events/v1/app.proto",
         "plfm/events/v1/env.proto",
         "plfm/events/v1/release.proto",
@@ -29,10 +30,14 @@ fn main() -> Result<()> {
         .build_server(true)
         .build_client(true)
         .out_dir("src/gen")
+        .file_descriptor_set_path("src/gen/plfm_descriptor.bin")
         .compile_protos(&proto_paths, &[&proto_root])?;
 
     for proto in &protos {
-        println!("cargo:rerun-if-changed={}", proto_root.join(proto).display());
+        println!(
+            "cargo:rerun-if-changed={}",
+            proto_root.join(proto).display()
+        );
     }
 
     Ok(())

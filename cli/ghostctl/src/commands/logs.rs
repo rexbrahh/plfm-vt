@@ -36,11 +36,17 @@ pub struct LogsCommand {
 #[derive(Debug, Serialize, Deserialize)]
 struct LogLine {
     ts: String,
+    #[serde(rename = "type", default)]
+    entry_type: Option<String>,
     #[serde(default)]
     instance_id: Option<String>,
     #[serde(default)]
     process_type: Option<String>,
+    #[serde(default)]
+    stream: Option<String>,
     line: String,
+    #[serde(default)]
+    truncated: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -78,7 +84,7 @@ impl LogsCommand {
                 path.push_str(&format!("instance_id={instance_id}"));
             }
 
-            let mut response = client.get_event_stream(&path).await?;
+            let mut response = client.get_ndjson_stream(&path).await?;
             let mut buffer = String::new();
 
             loop {
@@ -87,17 +93,20 @@ impl LogsCommand {
 
                 buffer.push_str(&String::from_utf8_lossy(&chunk).replace("\r\n", "\n"));
 
-                while let Some(delim) = buffer.find("\n\n") {
-                    let event_block = buffer[..delim].to_string();
-                    buffer.drain(..delim + 2);
+                while let Some(delim) = buffer.find('\n') {
+                    let line = buffer[..delim].trim().to_string();
+                    buffer.drain(..delim + 1);
 
-                    if let Some(log) = parse_sse_log_event(&event_block) {
-                        match ctx.format {
-                            OutputFormat::Json => println!(
-                                "{}",
-                                serde_json::to_string(&log).unwrap_or_else(|_| "{}".to_string())
-                            ),
-                            OutputFormat::Table => print_log_line(&log, self.timestamps),
+                    if line.is_empty() {
+                        continue;
+                    }
+
+                    match ctx.format {
+                        OutputFormat::Json => println!("{}", line),
+                        OutputFormat::Table => {
+                            if let Ok(log) = serde_json::from_str::<LogLine>(&line) {
+                                print_log_line(&log, self.timestamps);
+                            }
                         }
                     }
                 }
@@ -135,39 +144,6 @@ impl LogsCommand {
 
         Ok(())
     }
-}
-
-fn parse_sse_log_event(event_block: &str) -> Option<LogLine> {
-    let mut event_type: Option<&str> = None;
-    let mut data_lines: Vec<&str> = Vec::new();
-
-    for raw_line in event_block.lines() {
-        let line = raw_line.trim_end();
-        if line.is_empty() || line.starts_with(':') {
-            continue;
-        }
-
-        if let Some(value) = line.strip_prefix("event:") {
-            event_type = Some(value.trim());
-            continue;
-        }
-
-        if let Some(value) = line.strip_prefix("data:") {
-            data_lines.push(value.trim_start());
-            continue;
-        }
-    }
-
-    if event_type.is_some_and(|t| t != "log") {
-        return None;
-    }
-
-    let data = data_lines.join("\n");
-    if data.is_empty() {
-        return None;
-    }
-
-    serde_json::from_str(&data).ok()
 }
 
 fn print_log_line(line: &LogLine, timestamps: bool) {

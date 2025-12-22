@@ -37,6 +37,9 @@ pub struct Cli {
     #[arg(long, global = true, default_value = "table")]
     format: String,
 
+    #[arg(long, global = true, help = "Output JSON (alias for --format json).")]
+    json: bool,
+
     /// Organization ID or name.
     #[arg(long, global = true, env = "VT_ORG")]
     org: Option<String>,
@@ -129,9 +132,13 @@ enum Commands {
 impl Cli {
     /// Run the CLI command.
     pub async fn run(self) -> Result<()> {
-        let format = match self.format.as_str() {
-            "json" => OutputFormat::Json,
-            _ => OutputFormat::Table,
+        let format = if self.json {
+            OutputFormat::Json
+        } else {
+            match self.format.as_str() {
+                "json" => OutputFormat::Json,
+                _ => OutputFormat::Table,
+            }
         };
 
         let config = Config::load()?;

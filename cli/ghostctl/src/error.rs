@@ -15,6 +15,8 @@ pub enum CliError {
         code: String,
         message: String,
         request_id: Option<String>,
+        retryable: bool,
+        retry_after_seconds: Option<u32>,
     },
 
     #[error("Network error: {0}")]
@@ -34,12 +36,16 @@ impl CliError {
         code: impl Into<String>,
         message: impl Into<String>,
         request_id: Option<String>,
+        retryable: bool,
+        retry_after_seconds: Option<u32>,
     ) -> Self {
         Self::Api {
             status,
             code: code.into(),
             message: message.into(),
             request_id,
+            retryable,
+            retry_after_seconds,
         }
     }
 }
@@ -70,10 +76,21 @@ pub fn print_error(err: &anyhow::Error) {
                 );
             }
             CliError::Api {
-                request_id: Some(request_id),
+                request_id,
+                retryable,
+                retry_after_seconds,
                 ..
             } => {
-                eprintln!("\nRequest ID: {}", request_id);
+                if let Some(request_id) = request_id {
+                    eprintln!("\nRequest ID: {}", request_id);
+                }
+                if *retryable {
+                    if let Some(seconds) = retry_after_seconds {
+                        eprintln!("\nRetry after {}s", seconds);
+                    } else {
+                        eprintln!("\nThis operation is retryable.");
+                    }
+                }
             }
             CliError::Network(_) => {
                 eprintln!(

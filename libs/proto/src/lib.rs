@@ -18,3 +18,5 @@ pub mod agent {
         pub use node_agent_server::{NodeAgent, NodeAgentServer};
     }
 }
+
+pub const FILE_DESCRIPTOR_SET: &[u8] = include_bytes!("gen/plfm_descriptor.bin");

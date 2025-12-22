@@ -60,6 +60,7 @@ reqwest = { version = "0.12", features = [
 ], default-features = false }
 futures-core = "0.3"
 futures-util = "0.3"
+bytes = "1.10"
 
 # CLI
 clap = { version = "4.5", features = ["derive", "env"] }
@@ -105,6 +106,7 @@ hex = "0.4"
 # Protobuf / gRPC
 prost = "0.13"
 prost-types = "0.13"
+prost-reflect = { version = "0.13", features = ["serde"] }
 tonic = { version = "0.12", features = ["tls", "gzip"] }
 
 # Internal crates

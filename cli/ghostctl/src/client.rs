@@ -51,12 +51,12 @@ impl ApiClient {
         self.handle_response(response).await
     }
 
-    /// Make a GET request to an SSE endpoint and return the raw response body.
-    pub async fn get_event_stream(&self, path: &str) -> Result<reqwest::Response, CliError> {
+    /// Make a GET request to an NDJSON endpoint and return the raw response body.
+    pub async fn get_ndjson_stream(&self, path: &str) -> Result<reqwest::Response, CliError> {
         let response = self
             .client
             .get(self.url(path))
-            .header(ACCEPT, "text/event-stream")
+            .header(ACCEPT, "application/x-ndjson")
             .send()
             .await?;
 
@@ -155,31 +155,73 @@ impl ApiClient {
     /// Handle an error response.
     async fn handle_error<T>(&self, response: reqwest::Response) -> Result<T, CliError> {
         let status = response.status().as_u16();
+        let body = response.text().await.unwrap_or_default();
 
-        // Try to parse error response
-        let error_body: ApiErrorResponse =
-            response.json().await.unwrap_or_else(|_| ApiErrorResponse {
-                code: "unknown".to_string(),
-                message: "Unknown error".to_string(),
-                request_id: None,
-            });
+        let problem = serde_json::from_str::<ProblemDetailsResponse>(&body).ok();
+        let legacy = serde_json::from_str::<LegacyApiErrorResponse>(&body).ok();
 
         if status == 401 {
             return Err(CliError::NotAuthenticated);
         }
 
+        let code = problem
+            .as_ref()
+            .and_then(|problem| problem.code.as_deref())
+            .or_else(|| legacy.as_ref().map(|error| error.code.as_str()))
+            .unwrap_or("unknown")
+            .to_string();
+        let message = problem
+            .as_ref()
+            .and_then(|problem| problem.detail.as_deref())
+            .or_else(|| {
+                problem
+                    .as_ref()
+                    .and_then(|problem| problem.title.as_deref())
+            })
+            .or_else(|| legacy.as_ref().map(|error| error.message.as_str()))
+            .unwrap_or("Unknown error")
+            .to_string();
+        let request_id = problem
+            .as_ref()
+            .and_then(|problem| problem.request_id.clone())
+            .or_else(|| legacy.as_ref().and_then(|error| error.request_id.clone()));
+        let retryable = problem
+            .as_ref()
+            .and_then(|problem| problem.retryable)
+            .unwrap_or(false);
+        let retry_after_seconds = problem
+            .as_ref()
+            .and_then(|problem| problem.retry_after_seconds);
+
         Err(CliError::api(
             status,
-            error_body.code,
-            error_body.message,
-            error_body.request_id,
+            code,
+            message,
+            request_id,
+            retryable,
+            retry_after_seconds,
         ))
     }
 }
 
-/// API error response structure.
 #[derive(Debug, Deserialize)]
-struct ApiErrorResponse {
+#[allow(dead_code)]
+struct ProblemDetailsResponse {
+    #[serde(rename = "type")]
+    r#type: Option<String>,
+    title: Option<String>,
+    status: Option<u16>,
+    detail: Option<String>,
+    instance: Option<String>,
+    code: Option<String>,
+    #[serde(default)]
+    request_id: Option<String>,
+    retryable: Option<bool>,
+    retry_after_seconds: Option<u32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LegacyApiErrorResponse {
     code: String,
     message: String,
     #[serde(default)]

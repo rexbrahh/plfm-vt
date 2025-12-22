@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 
-use crate::output::{print_info, print_success, OutputFormat};
+use crate::output::{print_info, print_single, print_success, OutputFormat};
 
 use super::CommandContext;
 
@@ -64,7 +64,7 @@ fn validate_manifest(ctx: CommandContext, args: ValidateArgs) -> Result<()> {
                 "valid": true,
                 "manifest_hash": hash,
             });
-            println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+            print_single(&out, OutputFormat::Json);
         }
         OutputFormat::Table => {
             print_success(&format!("Manifest is valid: {}", path.display()));

@@ -1,7 +1,5 @@
 //! Events command (org-scoped event querying/tailing).
 
-use std::time::Duration;
-
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde::{Deserialize, Serialize};
@@ -109,6 +107,25 @@ struct EventsResponse {
     next_after_event_id: i64,
 }
 
+#[derive(Debug, Deserialize)]
+#[allow(dead_code)]
+struct EventStreamLine {
+    ts: String,
+    seq: i64,
+    #[serde(rename = "type")]
+    event_type: String,
+    #[serde(default)]
+    aggregate_type: Option<String>,
+    #[serde(default)]
+    aggregate_id: Option<String>,
+    #[serde(default)]
+    app_id: Option<String>,
+    #[serde(default)]
+    env_id: Option<String>,
+    #[serde(default)]
+    payload: Option<serde_json::Value>,
+}
+
 impl EventsCommand {
     pub async fn run(self, ctx: CommandContext) -> Result<()> {
         match self.command {
@@ -213,49 +230,53 @@ async fn tail_events(ctx: CommandContext, args: EventsTailArgs) -> Result<()> {
         },
     };
 
-    let mut after_event_id = args.after;
-    let poll = Duration::from_millis(args.poll_ms.max(100));
+    let mut path = format!(
+        "/v1/orgs/{}/events/stream?after_event_id={}&limit={}",
+        org_id, args.after, args.limit
+    );
+
+    if let Some(event_type) = args.event_type.as_deref() {
+        path.push_str(&format!("&event_type={event_type}"));
+    }
+    if let Some(app_id) = app_id.as_ref() {
+        path.push_str(&format!("&app_id={app_id}"));
+    }
+    if let Some(env_id) = env_id.as_ref() {
+        path.push_str(&format!("&env_id={env_id}"));
+    }
+    path.push_str(&format!("&poll_ms={}", args.poll_ms.max(100)));
+
+    let mut response = client.get_ndjson_stream(&path).await?;
+    let mut buffer = String::new();
 
     loop {
-        let mut path = format!(
-            "/v1/orgs/{}/events?after_event_id={}&limit={}",
-            org_id, after_event_id, args.limit
-        );
+        let chunk = response.chunk().await?;
+        let Some(chunk) = chunk else { break };
 
-        if let Some(event_type) = args.event_type.as_deref() {
-            path.push_str(&format!("&event_type={event_type}"));
-        }
-        if let Some(app_id) = app_id.as_ref() {
-            path.push_str(&format!("&app_id={app_id}"));
-        }
-        if let Some(env_id) = env_id.as_ref() {
-            path.push_str(&format!("&env_id={env_id}"));
-        }
+        buffer.push_str(&String::from_utf8_lossy(&chunk).replace("\r\n", "\n"));
 
-        let response: EventsResponse = client.get(&path).await?;
+        while let Some(delim) = buffer.find('\n') {
+            let line = buffer[..delim].trim().to_string();
+            buffer.drain(..delim + 1);
 
-        for event in &response.items {
+            if line.is_empty() {
+                continue;
+            }
+
             match ctx.format {
+                OutputFormat::Json => println!("{}", line),
                 OutputFormat::Table => {
-                    let agg = match (&event.aggregate_type, &event.aggregate_id) {
-                        (Some(t), Some(id)) => format!("{}/{}", t, id),
-                        _ => "-".to_string(),
-                    };
-                    println!(
-                        "{}\t{}\t{}\t{}",
-                        event.event_id, event.occurred_at, event.event_type, agg
-                    );
-                }
-                OutputFormat::Json => {
-                    println!(
-                        "{}",
-                        serde_json::to_string(event).unwrap_or_else(|_| "{}".to_string())
-                    );
+                    if let Ok(event) = serde_json::from_str::<EventStreamLine>(&line) {
+                        let agg = match (&event.aggregate_type, &event.aggregate_id) {
+                            (Some(t), Some(id)) => format!("{}/{}", t, id),
+                            _ => "-".to_string(),
+                        };
+                        println!("{}\t{}\t{}\t{}", event.seq, event.ts, event.event_type, agg);
+                    }
                 }
             }
         }
-
-        after_event_id = response.next_after_event_id;
-        tokio::time::sleep(poll).await;
     }
+
+    Ok(())
 }

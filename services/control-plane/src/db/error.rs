@@ -41,6 +41,9 @@ pub enum DbError {
         actual: i64,
     },
 
+    #[error("invalid event payload: {0}")]
+    InvalidPayload(String),
+
     /// Serialization error.
     #[error("serialization error: {0}")]
     Serialization(#[from] serde_json::Error),

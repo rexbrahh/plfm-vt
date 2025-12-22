@@ -5,13 +5,13 @@
 use std::{collections::VecDeque, convert::Infallible, time::Duration};
 
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
-    response::{
-        sse::{Event, KeepAlive, Sse},
-        IntoResponse,
-    },
+    http::{header::CONTENT_TYPE, HeaderValue},
+    response::{IntoResponse, Response},
     Json,
 };
+use bytes::Bytes;
 use chrono::{DateTime, Utc};
 use futures_util::stream::unfold;
 use plfm_id::{AppId, EnvId, OrgId};
@@ -58,6 +58,22 @@ pub struct LogLine {
 #[derive(Debug, Serialize)]
 pub struct LogsResponse {
     pub items: Vec<LogLine>,
+}
+
+#[derive(Debug, Serialize)]
+struct LogStreamLine {
+    pub ts: DateTime<Utc>,
+    #[serde(rename = "type")]
+    pub entry_type: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<String>,
+    pub line: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<bool>,
 }
 
 #[derive(Debug, Clone)]
@@ -186,7 +202,7 @@ pub async fn query_logs(
     Ok(Json(LogsResponse { items }))
 }
 
-/// Stream logs (server-sent events).
+/// Stream logs (NDJSON).
 ///
 /// GET /v1/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs/stream
 pub async fn stream_logs(
@@ -242,8 +258,9 @@ pub async fn stream_logs(
     let stream = unfold(stream_state, move |mut st| async move {
         loop {
             if let Some(row) = st.buffer.pop_front() {
-                let log_line = LogLine {
+                let log_line = LogStreamLine {
                     ts: row.ts,
+                    entry_type: "log",
                     instance_id: Some(row.instance_id),
                     process_type: Some(row.process_type),
                     stream: Some(row.stream),
@@ -259,8 +276,8 @@ pub async fn stream_logs(
                     }
                 };
 
-                let event = Event::default().event("log").data(data);
-                return Some((Ok::<Event, Infallible>(event), st));
+                let payload = Bytes::from(format!("{data}\n"));
+                return Some((Ok::<Bytes, Infallible>(payload), st));
             }
 
             if !st.initialized {
@@ -332,7 +349,13 @@ pub async fn stream_logs(
         }
     });
 
-    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+    let body = Body::from_stream(stream);
+    let mut response = Response::new(body);
+    response.headers_mut().insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/x-ndjson"),
+    );
+    Ok(response)
 }
 
 fn parse_rfc3339(

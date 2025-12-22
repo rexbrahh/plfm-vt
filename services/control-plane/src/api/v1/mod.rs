@@ -38,6 +38,10 @@ pub fn routes() -> Router<AppState> {
             axum::routing::get(events::list_events),
         )
         .route(
+            "/orgs/{org_id}/events/stream",
+            axum::routing::get(events::stream_events),
+        )
+        .route(
             "/orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs",
             axum::routing::get(logs::query_logs),
         )

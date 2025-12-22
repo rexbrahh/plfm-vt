@@ -26,7 +26,7 @@ pub fn print_output<T: Serialize + Tabled>(data: &[T], format: OutputFormat) {
             }
         }
         OutputFormat::Json => {
-            let json = serde_json::to_string_pretty(data).unwrap_or_else(|_| "[]".to_string());
+            let json = format_json(data, "[]");
             println!("{}", json);
         }
     }
@@ -36,11 +36,11 @@ pub fn print_output<T: Serialize + Tabled>(data: &[T], format: OutputFormat) {
 pub fn print_single<T: Serialize>(data: &T, format: OutputFormat) {
     match format {
         OutputFormat::Table => {
-            let json = serde_json::to_string_pretty(data).unwrap_or_else(|_| "{}".to_string());
+            let json = format_json(data, "{}");
             println!("{}", json);
         }
         OutputFormat::Json => {
-            let json = serde_json::to_string_pretty(data).unwrap_or_else(|_| "{}".to_string());
+            let json = format_json(data, "{}");
             println!("{}", json);
         }
     }
@@ -156,6 +156,64 @@ pub fn print_receipt_no_resource(format: OutputFormat, receipt: ReceiptNoResourc
             print_single(&out, OutputFormat::Json);
         }
     }
+}
+
+fn format_json<T: Serialize + ?Sized>(data: &T, fallback: &str) -> String {
+    let value = serde_json::to_value(data).unwrap_or_else(|_| serde_json::json!({}));
+    let mapped = to_proto_json_value(value);
+    serde_json::to_string_pretty(&mapped).unwrap_or_else(|_| fallback.to_string())
+}
+
+fn to_proto_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Array(values) => {
+            serde_json::Value::Array(values.into_iter().map(to_proto_json_value).collect())
+        }
+        serde_json::Value::Object(entries) => {
+            let mut pairs: Vec<_> = entries.into_iter().collect();
+            pairs.sort_by(|a, b| a.0.cmp(&b.0));
+            let mut mapped = serde_json::Map::new();
+            for (key, value) in pairs {
+                mapped.insert(snake_to_lower_camel(&key), to_proto_json_value(value));
+            }
+            serde_json::Value::Object(mapped)
+        }
+        serde_json::Value::Number(number) => stringify_large_number(number),
+        other => other,
+    }
+}
+
+fn stringify_large_number(number: serde_json::Number) -> serde_json::Value {
+    if let Some(value) = number.as_i64() {
+        if value < i32::MIN as i64 || value > i32::MAX as i64 {
+            return serde_json::Value::String(value.to_string());
+        }
+    }
+    if let Some(value) = number.as_u64() {
+        if value > u32::MAX as u64 {
+            return serde_json::Value::String(value.to_string());
+        }
+    }
+    serde_json::Value::Number(number)
+}
+
+fn snake_to_lower_camel(input: &str) -> String {
+    let mut parts = input.split('_');
+    let Some(first) = parts.next() else {
+        return String::new();
+    };
+    let mut out = String::from(first);
+    for part in parts {
+        if part.is_empty() {
+            continue;
+        }
+        let mut chars = part.chars();
+        if let Some(first_char) = chars.next() {
+            out.push(first_char.to_ascii_uppercase());
+            out.extend(chars);
+        }
+    }
+    out
 }
 
 #[cfg(test)]

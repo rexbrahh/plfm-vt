@@ -160,6 +160,31 @@ impl MemberRole {
     }
 }
 #[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ProjectCreatedPayload {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub org_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub name: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ProjectUpdatedPayload {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub org_id: ::prost::alloc::string::String,
+    #[prost(string, optional, tag = "3")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ProjectDeletedPayload {
+    #[prost(string, tag = "1")]
+    pub project_id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub org_id: ::prost::alloc::string::String,
+}
+#[derive(Clone, PartialEq, ::prost::Message)]
 pub struct AppCreatedPayload {
     #[prost(string, tag = "1")]
     pub app_id: ::prost::alloc::string::String,
