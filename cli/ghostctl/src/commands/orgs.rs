@@ -7,8 +7,8 @@ use tabled::Tabled;
 
 use crate::error::CliError;
 use crate::output::{
-    print_output, print_receipt, print_receipt_no_resource, print_single, print_success,
-    OutputFormat, Receipt, ReceiptNextStep, ReceiptNoResource,
+    print_output, print_proto_single, print_receipt, print_receipt_no_resource, print_single,
+    print_success, OutputFormat, Receipt, ReceiptNextStep, ReceiptNoResource,
 };
 
 use super::CommandContext;
@@ -94,8 +94,11 @@ struct OrgResponse {
     created_at: String,
 }
 
+const ORG_TYPE_URL: &str = "type.googleapis.com/plfm.controlplane.v1.Org";
+const LIST_ORGS_TYPE_URL: &str = "type.googleapis.com/plfm.controlplane.v1.ListOrgsResponse";
+
 /// List response from API.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ListOrgsResponse {
     items: Vec<OrgResponse>,
     #[allow(dead_code)]
@@ -434,7 +437,10 @@ async fn list_orgs(ctx: CommandContext) -> Result<()> {
 
     let response: ListOrgsResponse = client.get("/v1/orgs").await?;
 
-    print_output(&response.items, ctx.format);
+    match ctx.format {
+        OutputFormat::Table => print_output(&response.items, ctx.format),
+        OutputFormat::Json => print_proto_single(&response, ctx.format, LIST_ORGS_TYPE_URL),
+    }
     Ok(())
 }
 
@@ -559,7 +565,10 @@ async fn get_org(ctx: CommandContext, args: GetOrgArgs) -> Result<()> {
             other => other,
         })?;
 
-    print_single(&response, ctx.format);
+    match ctx.format {
+        OutputFormat::Table => print_single(&response, ctx.format),
+        OutputFormat::Json => print_proto_single(&response, ctx.format, ORG_TYPE_URL),
+    }
     Ok(())
 }
 

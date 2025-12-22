@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package plfm.controlplane.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message Org {
+  string id = 1;
+  string name = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message ListOrgsResponse {
+  repeated Org items = 1;
+  int64 total = 2;
+}

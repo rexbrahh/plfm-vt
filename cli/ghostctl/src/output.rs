@@ -1,8 +1,14 @@
 //! Output formatting for CLI commands.
 
+use std::sync::OnceLock;
+
 use colored::Colorize;
+use plfm_proto::FILE_DESCRIPTOR_SET;
+use prost_reflect::{DescriptorPool, DeserializeOptions, DynamicMessage};
 use serde::Serialize;
 use tabled::{Table, Tabled};
+
+const CLI_SCHEMA_VERSION: &str = "plfm.cli.v1";
 
 /// Output format.
 #[derive(Debug, Clone, Copy, Default)]
@@ -41,6 +47,16 @@ pub fn print_single<T: Serialize>(data: &T, format: OutputFormat) {
         }
         OutputFormat::Json => {
             let json = format_json(data, "{}");
+            println!("{}", json);
+        }
+    }
+}
+
+pub fn print_proto_single<T: Serialize>(data: &T, format: OutputFormat, type_url: &str) {
+    match format {
+        OutputFormat::Table => print_single(data, format),
+        OutputFormat::Json => {
+            let json = format_proto_json(data, "{}", type_url);
             println!("{}", json);
         }
     }
@@ -161,7 +177,63 @@ pub fn print_receipt_no_resource(format: OutputFormat, receipt: ReceiptNoResourc
 fn format_json<T: Serialize + ?Sized>(data: &T, fallback: &str) -> String {
     let value = serde_json::to_value(data).unwrap_or_else(|_| serde_json::json!({}));
     let mapped = to_proto_json_value(value);
-    serde_json::to_string_pretty(&mapped).unwrap_or_else(|_| fallback.to_string())
+    let wrapped = wrap_with_schema(mapped);
+    let sorted = sort_json_value(wrapped);
+    serde_json::to_string_pretty(&sorted).unwrap_or_else(|_| fallback.to_string())
+}
+
+fn format_proto_json<T: Serialize + ?Sized>(data: &T, fallback: &str, type_url: &str) -> String {
+    let value = serde_json::to_value(data).unwrap_or_else(|_| serde_json::json!({}));
+    let mapped = to_proto_json_value(value);
+    let proto_value = proto_json_value(type_url, &mapped).unwrap_or(mapped);
+    let wrapped = wrap_with_schema(proto_value);
+    let sorted = sort_json_value(wrapped);
+    serde_json::to_string_pretty(&sorted).unwrap_or_else(|_| fallback.to_string())
+}
+
+fn wrap_with_schema(value: serde_json::Value) -> serde_json::Value {
+    serde_json::json!({
+        "schemaVersion": CLI_SCHEMA_VERSION,
+        "data": value
+    })
+}
+
+fn proto_json_value(type_url: &str, value: &serde_json::Value) -> Option<serde_json::Value> {
+    let pool = descriptor_pool()?;
+    let message_name = type_url.rsplit('/').next().unwrap_or(type_url);
+    let descriptor = pool.get_message_by_name(message_name)?;
+    let json_bytes = serde_json::to_vec(value).ok()?;
+    let mut deserializer = serde_json::Deserializer::from_slice(&json_bytes);
+    let options = DeserializeOptions::new().deny_unknown_fields(false);
+    let message =
+        DynamicMessage::deserialize_with_options(descriptor, &mut deserializer, &options).ok()?;
+    deserializer.end().ok()?;
+    serde_json::to_value(message).ok()
+}
+
+fn descriptor_pool() -> Option<&'static DescriptorPool> {
+    static DESCRIPTORS: OnceLock<Option<DescriptorPool>> = OnceLock::new();
+    DESCRIPTORS
+        .get_or_init(|| DescriptorPool::decode(FILE_DESCRIPTOR_SET).ok())
+        .as_ref()
+}
+
+fn sort_json_value(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Array(values) => {
+            serde_json::Value::Array(values.into_iter().map(sort_json_value).collect())
+        }
+        serde_json::Value::Object(entries) => {
+            let mut pairs: Vec<_> = entries.into_iter().collect();
+            pairs.sort_by(|a, b| a.0.cmp(&b.0));
+            let mut mapped = serde_json::Map::new();
+            for (key, value) in pairs {
+                mapped.insert(key, sort_json_value(value));
+            }
+            serde_json::Value::Object(mapped)
+        }
+        other => other,
+    }
 }
 
 fn to_proto_json_value(value: serde_json::Value) -> serde_json::Value {

@@ -4,6 +4,12 @@ pub mod common {
     }
 }
 
+pub mod controlplane {
+    pub mod v1 {
+        include!("gen/plfm.controlplane.v1.rs");
+    }
+}
+
 pub mod events {
     pub mod v1 {
         include!("gen/plfm.events.v1.rs");

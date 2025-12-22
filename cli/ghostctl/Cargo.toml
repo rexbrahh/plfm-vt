@@ -27,6 +27,8 @@ serde_json = { workspace = true }
 
 # IDs
 plfm-id = { workspace = true }
+plfm-proto = { workspace = true }
+prost-reflect = { workspace = true }
 
 # Time
 chrono = { workspace = true }

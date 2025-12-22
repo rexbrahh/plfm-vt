@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package plfm.controlplane.v1;
+
+import "google/protobuf/timestamp.proto";
+
+message Project {
+  string id = 1;
+  string org_id = 2;
+  string name = 3;
+  int32 resource_version = 4;
+  google.protobuf.Timestamp updated_at = 5;
+}
+
+message ListProjectsResponse {
+  repeated Project items = 1;
+  optional string next_cursor = 2;
+}

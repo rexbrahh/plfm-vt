@@ -7,6 +7,10 @@ fn main() -> Result<()> {
     let protos = [
         "plfm/common/v1/ids.proto",
         "plfm/common/v1/errors.proto",
+        "plfm/controlplane/v1/org.proto",
+        "plfm/controlplane/v1/project.proto",
+        "plfm/controlplane/v1/app.proto",
+        "plfm/controlplane/v1/env.proto",
         "plfm/events/v1/envelope.proto",
         "plfm/events/v1/org.proto",
         "plfm/events/v1/project.proto",

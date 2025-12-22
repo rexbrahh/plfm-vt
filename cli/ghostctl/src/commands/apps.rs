@@ -7,8 +7,8 @@ use tabled::Tabled;
 
 use crate::error::CliError;
 use crate::output::{
-    print_output, print_receipt, print_single, print_success, OutputFormat, Receipt,
-    ReceiptNextStep,
+    print_output, print_proto_single, print_receipt, print_single, print_success, OutputFormat,
+    Receipt, ReceiptNextStep,
 };
 
 use super::CommandContext;
@@ -114,6 +114,9 @@ struct AppResponse {
     created_at: String,
 }
 
+const APP_TYPE_URL: &str = "type.googleapis.com/plfm.controlplane.v1.App";
+const LIST_APPS_TYPE_URL: &str = "type.googleapis.com/plfm.controlplane.v1.ListAppsResponse";
+
 fn display_option(opt: &Option<String>) -> String {
     opt.as_deref().unwrap_or("-").to_string()
 }
@@ -156,7 +159,7 @@ async fn list_apps(ctx: CommandContext, args: ListAppsArgs) -> Result<()> {
 
     match ctx.format {
         OutputFormat::Table => print_output(&response.items, ctx.format),
-        OutputFormat::Json => print_single(&response, ctx.format),
+        OutputFormat::Json => print_proto_single(&response, ctx.format, LIST_APPS_TYPE_URL),
     }
     Ok(())
 }
@@ -322,7 +325,10 @@ async fn get_app(ctx: CommandContext, args: GetAppArgs) -> Result<()> {
             other => other,
         })?;
 
-    print_single(&response, ctx.format);
+    match ctx.format {
+        OutputFormat::Table => print_single(&response, ctx.format),
+        OutputFormat::Json => print_proto_single(&response, ctx.format, APP_TYPE_URL),
+    }
     Ok(())
 }
 

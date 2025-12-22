@@ -7,7 +7,8 @@ use tabled::Tabled;
 
 use crate::error::CliError;
 use crate::output::{
-    print_output, print_receipt, print_single, OutputFormat, Receipt, ReceiptNextStep,
+    print_output, print_proto_single, print_receipt, print_single, OutputFormat, Receipt,
+    ReceiptNextStep,
 };
 
 use super::CommandContext;
@@ -95,6 +96,10 @@ struct ProjectResponse {
     updated_at: String,
 }
 
+const PROJECT_TYPE_URL: &str = "type.googleapis.com/plfm.controlplane.v1.Project";
+const LIST_PROJECTS_TYPE_URL: &str =
+    "type.googleapis.com/plfm.controlplane.v1.ListProjectsResponse";
+
 #[derive(Debug, Serialize, Deserialize)]
 struct ListProjectsResponse {
     items: Vec<ProjectResponse>,
@@ -126,7 +131,7 @@ async fn list_projects(ctx: CommandContext, args: ListProjectsArgs) -> Result<()
 
     match ctx.format {
         OutputFormat::Table => print_output(&response.items, ctx.format),
-        OutputFormat::Json => print_single(&response, ctx.format),
+        OutputFormat::Json => print_proto_single(&response, ctx.format, LIST_PROJECTS_TYPE_URL),
     }
 
     Ok(())
@@ -268,6 +273,9 @@ async fn get_project(ctx: CommandContext, args: GetProjectArgs) -> Result<()> {
             other => other,
         })?;
 
-    print_single(&response, ctx.format);
+    match ctx.format {
+        OutputFormat::Table => print_single(&response, ctx.format),
+        OutputFormat::Json => print_proto_single(&response, ctx.format, PROJECT_TYPE_URL),
+    }
     Ok(())
 }

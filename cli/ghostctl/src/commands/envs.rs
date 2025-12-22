@@ -7,8 +7,8 @@ use tabled::Tabled;
 
 use crate::error::CliError;
 use crate::output::{
-    print_output, print_receipt, print_single, print_success, OutputFormat, Receipt,
-    ReceiptNextStep,
+    print_output, print_proto_single, print_receipt, print_single, print_success, OutputFormat,
+    Receipt, ReceiptNextStep,
 };
 
 use super::CommandContext;
@@ -107,6 +107,9 @@ struct EnvResponse {
     created_at: String,
 }
 
+const ENV_TYPE_URL: &str = "type.googleapis.com/plfm.controlplane.v1.Env";
+const LIST_ENVS_TYPE_URL: &str = "type.googleapis.com/plfm.controlplane.v1.ListEnvsResponse";
+
 /// List response from API.
 #[derive(Debug, Serialize, Deserialize)]
 struct ListEnvsResponse {
@@ -142,7 +145,7 @@ async fn list_envs(ctx: CommandContext, args: ListEnvsArgs) -> Result<()> {
 
     match ctx.format {
         OutputFormat::Table => print_output(&response.items, ctx.format),
-        OutputFormat::Json => print_single(&response, ctx.format),
+        OutputFormat::Json => print_proto_single(&response, ctx.format, LIST_ENVS_TYPE_URL),
     }
     Ok(())
 }
@@ -318,7 +321,10 @@ async fn get_env(ctx: CommandContext, args: GetEnvArgs) -> Result<()> {
             other => other,
         })?;
 
-    print_single(&response, ctx.format);
+    match ctx.format {
+        OutputFormat::Table => print_single(&response, ctx.format),
+        OutputFormat::Json => print_proto_single(&response, ctx.format, ENV_TYPE_URL),
+    }
     Ok(())
 }
 
