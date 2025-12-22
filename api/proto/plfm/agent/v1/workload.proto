@@ -5,124 +5,218 @@ package plfm.agent.v1;
 import "plfm/events/v1/instance.proto";
 import "plfm/events/v1/node.proto";
 
+// Image specification for a workload.
 message WorkloadImage {
+  // Original image reference.
   optional string image_ref = 1;
+  // Image digest.
   string digest = 2;
+  // Multi-arch index digest when applicable.
   optional string index_digest = 3;
+  // Platform-resolved manifest digest.
   string resolved_digest = 4;
+  // Target operating system.
   string os = 5;
+  // Target architecture.
   string arch = 6;
 }
 
+// Resource requirements for a workload.
 message WorkloadResources {
+  // Requested vCPU share.
   double cpu_request = 1;
+  // Memory limit in bytes.
   int64 memory_limit_bytes = 2;
+  // Ephemeral disk size in bytes.
   optional int64 ephemeral_disk_bytes = 3;
+  // Fixed vCPU count when specified.
   optional int32 vcpu_count = 4;
+  // CPU scheduling weight.
   optional int32 cpu_weight = 5;
 }
 
+// Exposed workload port.
 message WorkloadPort {
+  // Port name.
   string name = 1;
+  // Port number.
   int32 port = 2;
+  // Transport protocol.
   string protocol = 3;
 }
 
+// Network configuration for a workload.
 message WorkloadNetwork {
+  // Overlay IPv6 address.
   string overlay_ipv6 = 1;
+  // Overlay gateway IPv6 address.
   string gateway_ipv6 = 2;
+  // MTU override.
   optional int32 mtu = 3;
+  // DNS resolver addresses.
   repeated string dns = 4;
+  // Exposed ports.
   repeated WorkloadPort ports = 5;
 }
 
+// Volume mount configuration for a workload.
 message WorkloadMount {
+  // Volume identifier.
   string volume_id = 1;
+  // Mount path inside the workload.
   string mount_path = 2;
+  // Whether the mount is read-only.
   bool read_only = 3;
+  // Filesystem type for the mount.
   string filesystem = 4;
+  // Optional device hint for the agent.
   optional string device_hint = 5;
 }
 
+// Secret materialization configuration.
 message WorkloadSecrets {
+  // Whether secrets are required.
   bool required = 1;
+  // Secret version identifier.
   optional string secret_version_id = 2;
+  // Target mount path.
   string mount_path = 3;
+  // File mode for secret material.
   optional int32 mode = 4;
+  // User id for secret file ownership.
   optional int32 uid = 5;
+  // Group id for secret file ownership.
   optional int32 gid = 6;
 }
 
+// Fully resolved workload specification.
 message WorkloadSpec {
+  // Spec version string.
   string spec_version = 1;
+  // Owning organization identifier.
   string org_id = 2;
+  // Owning application identifier.
   string app_id = 3;
+  // Owning environment identifier.
   string env_id = 4;
+  // Process type label.
   string process_type = 5;
+  // Instance identifier.
   string instance_id = 6;
+  // Generation number.
   int32 generation = 7;
+  // Release identifier.
   string release_id = 8;
+  // Image specification.
   WorkloadImage image = 9;
+  // Manifest hash used to build this spec.
   string manifest_hash = 10;
+  // Entrypoint command.
   repeated string command = 11;
+  // Working directory override.
   optional string workdir = 12;
+  // Environment variables.
   map<string, string> env_vars = 13;
+  // Resource requirements.
   WorkloadResources resources = 14;
+  // Network configuration.
   WorkloadNetwork network = 15;
+  // Volume mounts.
   repeated WorkloadMount mounts = 16;
+  // Secret configuration.
   optional WorkloadSecrets secrets = 17;
+  // Deterministic spec hash.
   optional string spec_hash = 18;
 }
 
+// Desired instance assignment within a node plan.
 message DesiredInstanceAssignment {
+  // Assignment identifier.
   string assignment_id = 1;
+  // Target node identifier.
   string node_id = 2;
+  // Instance identifier.
   string instance_id = 3;
+  // Generation number.
   int32 generation = 4;
+  // Desired instance state.
   plfm.events.v1.InstanceDesiredState desired_state = 5;
+  // Grace period before draining.
   optional int32 drain_grace_seconds = 6;
+  // Workload spec for the assignment.
   optional WorkloadSpec workload = 7;
 }
 
+// Desired state plan delivered to a node.
 message NodePlan {
+  // Spec version string.
   string spec_version = 1;
+  // Node identifier.
   string node_id = 2;
+  // Plan identifier.
   string plan_id = 3;
+  // Cursor event id for ordering.
   int64 cursor_event_id = 4;
+  // Instance assignments for the node.
   repeated DesiredInstanceAssignment instances = 5;
 }
 
+// Instance status report payload.
 message InstanceStatusReport {
+  // Instance identifier.
   string instance_id = 1;
+  // Reported instance status.
   plfm.events.v1.InstanceStatus status = 2;
+  // Optional boot identifier.
   optional string boot_id = 3;
+  // Optional error message.
   optional string error_message = 4;
+  // Optional exit code.
   optional int32 exit_code = 5;
 }
 
+// Heartbeat payload from a node.
 message HeartbeatRequest {
+  // Current node state.
   plfm.events.v1.NodeState state = 1;
+  // Available CPU cores.
   int32 available_cpu_cores = 2;
+  // Available memory in bytes.
   int64 available_memory_bytes = 3;
+  // Active instance count.
   int32 instance_count = 4;
 }
 
+// Heartbeat response payload.
 message HeartbeatResponse {
+  // Whether the heartbeat was accepted.
   bool accepted = 1;
+  // Seconds until the next heartbeat.
   int32 next_heartbeat_secs = 2;
 }
 
+// Secret material payload delivered to nodes.
 message SecretMaterial {
+  // Secret version identifier.
   string version_id = 1;
+  // Secret format name.
   string format = 2;
+  // Hash of the cleartext data.
   string data_hash = 3;
+  // Cleartext secret data.
   string data = 4;
 }
 
+// Log entry streamed from workloads.
 message WorkloadLogEntry {
+  // Timestamp in nanoseconds since epoch.
   int64 timestamp_nanos = 1;
+  // Instance identifier.
   string instance_id = 2;
+  // Log stream name.
   string stream = 3;
+  // Log line content.
   string line = 4;
+  // Whether the line was truncated.
   bool truncated = 5;
 }

@@ -6,10 +6,11 @@ use plfm_events::{ActorType, AggregateType};
 use plfm_id::{AppId, AssignmentId, EnvId, InstanceId, NodeId, OrgId, SecretVersionId, Ulid};
 use plfm_proto::agent::v1::{
     node_agent_server::NodeAgent, DesiredInstanceAssignment, EnrollRequest, EnrollResponse,
-    GetPlanRequest, GetSecretMaterialRequest, HeartbeatRequest, HeartbeatResponse, NodePlan,
-    ReportInstanceStatusRequest, ReportInstanceStatusResponse, SecretMaterial,
-    SendWorkloadLogsRequest, SendWorkloadLogsResponse, WorkloadImage, WorkloadMount,
-    WorkloadNetwork, WorkloadResources, WorkloadSecrets, WorkloadSpec,
+    GetPlanRequest, GetPlanResponse, GetSecretMaterialRequest, GetSecretMaterialResponse,
+    HeartbeatRequest, HeartbeatResponse, NodePlan, ReportInstanceStatusRequest,
+    ReportInstanceStatusResponse, SecretMaterial, SendWorkloadLogsRequest,
+    SendWorkloadLogsResponse, WorkloadImage, WorkloadMount, WorkloadNetwork, WorkloadResources,
+    WorkloadSecrets, WorkloadSpec,
 };
 use plfm_proto::events::v1::{InstanceDesiredState, InstanceStatus, NodeState};
 use sqlx::QueryBuilder;
@@ -304,7 +305,7 @@ impl NodeAgent for NodeAgentService {
     async fn get_plan(
         &self,
         request: Request<GetPlanRequest>,
-    ) -> Result<Response<NodePlan>, Status> {
+    ) -> Result<Response<GetPlanResponse>, Status> {
         let req = request.into_inner();
         let request_id = Ulid::new().to_string();
 
@@ -382,12 +383,14 @@ impl NodeAgent for NodeAgentService {
             })
             .collect();
 
-        Ok(Response::new(NodePlan {
-            spec_version: NODE_PLAN_SPEC_VERSION.to_string(),
-            node_id: req.node_id,
-            plan_id: Ulid::new().to_string(),
-            cursor_event_id,
-            instances: instance_assignments,
+        Ok(Response::new(GetPlanResponse {
+            plan: Some(NodePlan {
+                spec_version: NODE_PLAN_SPEC_VERSION.to_string(),
+                node_id: req.node_id,
+                plan_id: Ulid::new().to_string(),
+                cursor_event_id,
+                instances: instance_assignments,
+            }),
         }))
     }
 
@@ -511,7 +514,7 @@ impl NodeAgent for NodeAgentService {
     async fn get_secret_material(
         &self,
         request: Request<GetSecretMaterialRequest>,
-    ) -> Result<Response<SecretMaterial>, Status> {
+    ) -> Result<Response<GetSecretMaterialResponse>, Status> {
         let req = request.into_inner();
         let request_id = Ulid::new().to_string();
 
@@ -604,11 +607,13 @@ impl NodeAgent for NodeAgentService {
         let data = String::from_utf8(plaintext)
             .map_err(|_| Status::internal("secrets payload was not valid UTF-8"))?;
 
-        Ok(Response::new(SecretMaterial {
-            version_id: row.version_id,
-            format: row.format,
-            data_hash: row.data_hash,
-            data,
+        Ok(Response::new(GetSecretMaterialResponse {
+            material: Some(SecretMaterial {
+                version_id: row.version_id,
+                format: row.format,
+                data_hash: row.data_hash,
+                data,
+            }),
         }))
     }
 

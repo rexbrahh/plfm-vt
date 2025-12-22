@@ -5,31 +5,53 @@ package plfm.events.v1;
 import "google/protobuf/timestamp.proto";
 import "plfm/common/v1/ids.proto";
 
+// Event envelope containing metadata and payload.
 message EventEnvelope {
+  // Event identifier.
   string event_id = 1;
+  // Monotonic sequence number.
   uint64 sequence = 2;
+  // Observation timestamp.
   google.protobuf.Timestamp observed_at = 3;
 
+  // Organization identifier.
   string org_id = 10;
+  // Project identifier.
   string project_id = 11;
+  // Application identifier.
   string app_id = 12;
+  // Environment identifier.
   string env_id = 13;
 
+  // Aggregate type for the event.
   plfm.common.v1.AggregateType aggregate_type = 20;
+  // Aggregate identifier.
   string aggregate_id = 21;
 
+  // Event type string.
   string event_type = 30;
+  // Event schema version.
   uint32 schema_version = 31;
+  // Payload type URL.
   string payload_type_url = 32;
+  // Serialized payload bytes.
   bytes payload = 33;
 
+  // W3C traceparent header.
   string traceparent = 40;
+  // Additional event tags.
   map<string, string> tags = 41;
 
+  // Actor type.
   plfm.common.v1.ActorType actor_type = 50;
+  // Actor identifier.
   string actor_id = 51;
+  // Request identifier.
   string request_id = 52;
+  // Idempotency key.
   string idempotency_key = 53;
+  // Correlation identifier.
   string correlation_id = 54;
+  // Causation identifier.
   string causation_id = 55;
 }

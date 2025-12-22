@@ -2,10 +2,16 @@ syntax = "proto3";
 
 package plfm.events.v1;
 
+// Payload for release created events.
 message ReleaseCreatedPayload {
+  // Release identifier.
   string release_id = 1;
+  // Application identifier.
   string app_id = 2;
+  // Image digest for the release.
   string image_digest = 3;
+  // Manifest hash used to build the release.
   string manifest_hash = 4;
+  // Release command.
   repeated string command = 5;
 }

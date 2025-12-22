@@ -1680,7 +1680,7 @@ paths:
         "403":
           $ref: "#/components/responses/Error403"
  
-  components:
+components:
   securitySchemes:
     bearerAuth:
       type: http

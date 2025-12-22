@@ -2,30 +2,54 @@ syntax = "proto3";
 
 package plfm.common.v1;
 
+// Actor types for audit attribution.
 enum ActorType {
+  // Actor type is unspecified.
   ACTOR_TYPE_UNSPECIFIED = 0;
+  // End-user actor.
   ACTOR_TYPE_USER = 1;
+  // Service principal actor.
   ACTOR_TYPE_SERVICE_PRINCIPAL = 2;
+  // Internal system actor.
   ACTOR_TYPE_SYSTEM = 3;
 }
 
+// Aggregate types for event log scoping.
 enum AggregateType {
+  // Aggregate type is unspecified.
   AGGREGATE_TYPE_UNSPECIFIED = 0;
+  // Organization aggregate.
   AGGREGATE_TYPE_ORG = 1;
+  // Project aggregate.
   AGGREGATE_TYPE_PROJECT = 2;
+  // Organization member aggregate.
   AGGREGATE_TYPE_ORG_MEMBER = 3;
+  // Service principal aggregate.
   AGGREGATE_TYPE_SERVICE_PRINCIPAL = 4;
+  // Application aggregate.
   AGGREGATE_TYPE_APP = 5;
+  // Environment aggregate.
   AGGREGATE_TYPE_ENV = 6;
+  // Release aggregate.
   AGGREGATE_TYPE_RELEASE = 7;
+  // Deploy aggregate.
   AGGREGATE_TYPE_DEPLOY = 8;
+  // Route aggregate.
   AGGREGATE_TYPE_ROUTE = 9;
+  // Secret bundle aggregate.
   AGGREGATE_TYPE_SECRET_BUNDLE = 10;
+  // Volume aggregate.
   AGGREGATE_TYPE_VOLUME = 11;
+  // Volume attachment aggregate.
   AGGREGATE_TYPE_VOLUME_ATTACHMENT = 12;
+  // Snapshot aggregate.
   AGGREGATE_TYPE_SNAPSHOT = 13;
+  // Restore job aggregate.
   AGGREGATE_TYPE_RESTORE_JOB = 14;
+  // Instance aggregate.
   AGGREGATE_TYPE_INSTANCE = 15;
+  // Node aggregate.
   AGGREGATE_TYPE_NODE = 16;
+  // Exec session aggregate.
   AGGREGATE_TYPE_EXEC_SESSION = 17;
 }

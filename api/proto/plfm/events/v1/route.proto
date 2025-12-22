@@ -2,49 +2,86 @@ syntax = "proto3";
 
 package plfm.events.v1;
 
+// Protocol hint for route configuration.
 enum RouteProtocolHint {
+  // Protocol hint is unspecified.
   ROUTE_PROTOCOL_HINT_UNSPECIFIED = 0;
+  // TLS passthrough (SNI) routing.
   ROUTE_PROTOCOL_HINT_TLS_PASSTHROUGH = 1;
+  // Raw TCP routing.
   ROUTE_PROTOCOL_HINT_TCP_RAW = 2;
 }
 
+// Proxy protocol mode for routes.
 enum RouteProxyProtocol {
+  // Proxy protocol mode is unspecified.
   ROUTE_PROXY_PROTOCOL_UNSPECIFIED = 0;
+  // Proxy protocol disabled.
   ROUTE_PROXY_PROTOCOL_OFF = 1;
+  // Proxy protocol v2 enabled.
   ROUTE_PROXY_PROTOCOL_V2 = 2;
 }
 
+// Payload for route created events.
 message RouteCreatedPayload {
+  // Route identifier.
   string route_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Application identifier.
   string app_id = 3;
+  // Environment identifier.
   string env_id = 4;
+  // Route hostname.
   string hostname = 5;
+  // Listener port.
   int32 listen_port = 6;
+  // Protocol hint for ingress.
   RouteProtocolHint protocol_hint = 7;
+  // Backend process type.
   string backend_process_type = 8;
+  // Backend service port.
   int32 backend_port = 9;
+  // Proxy protocol mode.
   RouteProxyProtocol proxy_protocol = 10;
+  // Whether backend expects proxy protocol.
   bool backend_expects_proxy_protocol = 11;
+  // Whether IPv4 is required.
   bool ipv4_required = 12;
+  // Environment IPv4 address when allocated.
   optional string env_ipv4_address = 13;
 }
 
+// Payload for route change events.
 message RouteUpdatedPayload {
+  // Route identifier.
   string route_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Environment identifier.
   string env_id = 3;
+  // Backend process type.
   optional string backend_process_type = 4;
+  // Backend service port.
   optional int32 backend_port = 5;
+  // Proxy protocol mode.
   optional RouteProxyProtocol proxy_protocol = 6;
+  // Whether backend expects proxy protocol.
   optional bool backend_expects_proxy_protocol = 7;
+  // Whether IPv4 is required.
   optional bool ipv4_required = 8;
+  // Environment IPv4 address when allocated.
   optional string env_ipv4_address = 9;
 }
 
+// Payload for route deletion events.
 message RouteDeletedPayload {
+  // Route identifier.
   string route_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Environment identifier.
   string env_id = 3;
+  // Route hostname.
   string hostname = 4;
 }

@@ -2,62 +2,102 @@ syntax = "proto3";
 
 package plfm.events.v1;
 
+// Role assigned to an organization member.
 enum MemberRole {
+  // Role is unspecified.
   MEMBER_ROLE_UNSPECIFIED = 0;
+  // Organization owner role.
   MEMBER_ROLE_OWNER = 1;
+  // Organization admin role.
   MEMBER_ROLE_ADMIN = 2;
+  // Organization developer role.
   MEMBER_ROLE_DEVELOPER = 3;
+  // Organization read-only role.
   MEMBER_ROLE_READONLY = 4;
 }
 
+// Payload for org created events.
 message OrgCreatedPayload {
+  // Organization identifier.
   string org_id = 1;
+  // Organization name.
   string name = 2;
 }
 
+// Payload for org updated events.
 message OrgUpdatedPayload {
+  // Organization identifier.
   string org_id = 1;
+  // New organization name.
   optional string name = 2;
+  // New billing email.
   optional string billing_email = 3;
 }
 
+// Payload for org member added events.
 message OrgMemberAddedPayload {
+  // Member identifier.
   string member_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Member email.
   string email = 3;
+  // Assigned member role.
   MemberRole role = 4;
 }
 
+// Payload for org member role updates.
 message OrgMemberRoleUpdatedPayload {
+  // Member identifier.
   string member_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Previous member role.
   MemberRole old_role = 3;
+  // New member role.
   MemberRole new_role = 4;
 }
 
+// Payload for org member removed events.
 message OrgMemberRemovedPayload {
+  // Member identifier.
   string member_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Member email.
   string email = 3;
 }
 
+// Payload for service principal created events.
 message ServicePrincipalCreatedPayload {
+  // Service principal identifier.
   string sp_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Service principal name.
   string name = 3;
+  // Granted scopes.
   repeated string scopes = 4;
 }
 
+// Payload for service principal scope updates.
 message ServicePrincipalScopesUpdatedPayload {
+  // Service principal identifier.
   string sp_id = 1;
+  // Previous scopes.
   repeated string old_scopes = 2;
+  // New scopes.
   repeated string new_scopes = 3;
 }
 
+// Payload for service principal secret rotation.
 message ServicePrincipalSecretRotatedPayload {
+  // Service principal identifier.
   string sp_id = 1;
 }
 
+// Payload for service principal deletion.
 message ServicePrincipalDeletedPayload {
+  // Service principal identifier.
   string sp_id = 1;
 }

@@ -2,77 +2,134 @@ syntax = "proto3";
 
 package plfm.events.v1;
 
+// Job status for asynchronous volume operations.
 enum JobStatus {
+  // Status is unspecified.
   JOB_STATUS_UNSPECIFIED = 0;
+  // Job is queued.
   JOB_STATUS_QUEUED = 1;
+  // Job is running.
   JOB_STATUS_RUNNING = 2;
+  // Job completed successfully.
   JOB_STATUS_SUCCEEDED = 3;
+  // Job failed.
   JOB_STATUS_FAILED = 4;
 }
 
+// Payload for volume created events.
 message VolumeCreatedPayload {
+  // Volume identifier.
   string volume_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Volume name.
   optional string name = 3;
+  // Volume size in bytes.
   int64 size_bytes = 4;
+  // Filesystem type.
   string filesystem = 5;
+  // Whether backups are enabled.
   bool backup_enabled = 6;
 }
 
+// Payload for volume deletion events.
 message VolumeDeletedPayload {
+  // Volume identifier.
   string volume_id = 1;
+  // Organization identifier.
   string org_id = 2;
 }
 
+// Payload for volume attachment created events.
 message VolumeAttachmentCreatedPayload {
+  // Attachment identifier.
   string attachment_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Volume identifier.
   string volume_id = 3;
+  // Application identifier.
   string app_id = 4;
+  // Environment identifier.
   string env_id = 5;
+  // Process type label.
   string process_type = 6;
+  // Mount path inside the workload.
   string mount_path = 7;
+  // Whether the mount is read-only.
   bool read_only = 8;
 }
 
+// Payload for volume attachment deletion events.
 message VolumeAttachmentDeletedPayload {
+  // Attachment identifier.
   string attachment_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Volume identifier.
   string volume_id = 3;
+  // Environment identifier.
   string env_id = 4;
+  // Process type label.
   string process_type = 5;
 }
 
+// Payload for snapshot creation events.
 message SnapshotCreatedPayload {
+  // Snapshot identifier.
   string snapshot_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Volume identifier.
   string volume_id = 3;
+  // Snapshot job status.
   JobStatus status = 4;
+  // Optional snapshot note.
   optional string note = 5;
 }
 
+// Payload for snapshot status change events.
 message SnapshotStatusChangedPayload {
+  // Snapshot identifier.
   string snapshot_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Volume identifier.
   string volume_id = 3;
+  // Snapshot job status.
   JobStatus status = 4;
+  // Snapshot size in bytes.
   optional int64 size_bytes = 5;
+  // Failure reason code.
   optional string failed_reason = 6;
 }
 
+// Payload for restore job creation events.
 message RestoreJobCreatedPayload {
+  // Restore job identifier.
   string restore_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Source snapshot identifier.
   string snapshot_id = 3;
+  // Source volume identifier.
   string source_volume_id = 4;
+  // New volume name when requested.
   optional string new_volume_name = 5;
+  // Restore job status.
   JobStatus status = 6;
 }
 
+// Payload for restore job status change events.
 message RestoreJobStatusChangedPayload {
+  // Restore job identifier.
   string restore_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Restore job status.
   JobStatus status = 3;
+  // New volume identifier when created.
   optional string new_volume_id = 4;
+  // Failure reason code.
   optional string failed_reason = 5;
 }

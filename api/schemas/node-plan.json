@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://plfm-vt.dev/schemas/node-plan.json",
+  "$id": "node-plan.json",
   "title": "plfm-vt NodePlan v1",
   "description": "Control plane to node agent desired state plan. See docs/specs/manifest/workload-spec.md",
   "type": "object",

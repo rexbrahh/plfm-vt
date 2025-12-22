@@ -2,20 +2,32 @@ syntax = "proto3";
 
 package plfm.events.v1;
 
+// Payload for app created events.
 message AppCreatedPayload {
+  // Application identifier.
   string app_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Application name.
   string name = 3;
+  // Application description.
   optional string description = 4;
 }
 
+// Payload for app change events.
 message AppUpdatedPayload {
+  // Application identifier.
   string app_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // New application name.
   optional string name = 3;
+  // New application description.
   optional string description = 4;
 }
 
+// Payload for app deletion events.
 message AppDeletedPayload {
+  // Application identifier.
   string app_id = 1;
 }

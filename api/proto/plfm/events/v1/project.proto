@@ -2,19 +2,30 @@ syntax = "proto3";
 
 package plfm.events.v1;
 
+// Payload for project created events.
 message ProjectCreatedPayload {
+  // Project identifier.
   string project_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Project name.
   string name = 3;
 }
 
+// Payload for project change events.
 message ProjectUpdatedPayload {
+  // Project identifier.
   string project_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // New project name.
   optional string name = 3;
 }
 
+// Payload for project deletion events.
 message ProjectDeletedPayload {
+  // Project identifier.
   string project_id = 1;
+  // Organization identifier.
   string org_id = 2;
 }

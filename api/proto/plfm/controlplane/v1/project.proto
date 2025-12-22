@@ -4,15 +4,24 @@ package plfm.controlplane.v1;
 
 import "google/protobuf/timestamp.proto";
 
+// Project resource.
 message Project {
+  // Project identifier.
   string id = 1;
+  // Owning organization identifier.
   string org_id = 2;
+  // Project name.
   string name = 3;
+  // Optimistic concurrency version.
   int32 resource_version = 4;
+  // Last update timestamp.
   google.protobuf.Timestamp updated_at = 5;
 }
 
+// Response payload for project listings.
 message ListProjectsResponse {
+  // Projects in the response.
   repeated Project items = 1;
+  // Pagination cursor for the next page.
   optional string next_cursor = 2;
 }

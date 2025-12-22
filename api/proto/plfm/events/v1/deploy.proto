@@ -4,32 +4,56 @@ package plfm.events.v1;
 
 import "google/protobuf/timestamp.proto";
 
+// Lifecycle status for a deploy.
 enum DeployStatus {
+  // Status is unspecified.
   DEPLOY_STATUS_UNSPECIFIED = 0;
+  // Deploy is queued.
   DEPLOY_STATUS_QUEUED = 1;
+  // Deploy is rolling out.
   DEPLOY_STATUS_ROLLING = 2;
+  // Deploy completed successfully.
   DEPLOY_STATUS_SUCCEEDED = 3;
+  // Deploy failed.
   DEPLOY_STATUS_FAILED = 4;
 }
 
+// Payload for deploy created events.
 message DeployCreatedPayload {
+  // Deploy identifier.
   string deploy_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Application identifier.
   string app_id = 3;
+  // Environment identifier.
   string env_id = 4;
+  // Deploy kind.
   string kind = 5;
+  // Release identifier.
   string release_id = 6;
+  // Process types included in the deploy.
   repeated string process_types = 7;
+  // Deploy strategy name.
   string strategy = 8;
+  // Deploy initiation timestamp.
   google.protobuf.Timestamp initiated_at = 9;
 }
 
+// Payload for deploy status change events.
 message DeployStatusChangedPayload {
+  // Deploy identifier.
   string deploy_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Environment identifier.
   string env_id = 3;
+  // New deploy status.
   DeployStatus status = 4;
+  // Status message.
   optional string message = 5;
+  // Failure reason code.
   optional string failed_reason = 6;
+  // Status change timestamp.
   google.protobuf.Timestamp updated_at = 7;
 }

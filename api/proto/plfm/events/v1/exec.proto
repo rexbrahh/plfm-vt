@@ -4,29 +4,50 @@ package plfm.events.v1;
 
 import "google/protobuf/timestamp.proto";
 
+// Payload for exec session grants.
 message ExecSessionGrantedPayload {
+  // Exec session identifier.
   string exec_session_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Application identifier.
   string app_id = 3;
+  // Environment identifier.
   string env_id = 4;
+  // Instance identifier.
   string instance_id = 5;
+  // Requested command.
   repeated string requested_command = 6;
+  // Whether the session uses a TTY.
   bool tty = 7;
+  // Session expiration timestamp.
   google.protobuf.Timestamp expires_at = 8;
 }
 
+// Payload for exec session connections.
 message ExecSessionConnectedPayload {
+  // Exec session identifier.
   string exec_session_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Instance identifier.
   string instance_id = 3;
+  // Connection timestamp.
   google.protobuf.Timestamp connected_at = 4;
 }
 
+// Payload for exec session termination.
 message ExecSessionEndedPayload {
+  // Exec session identifier.
   string exec_session_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Instance identifier.
   string instance_id = 3;
+  // Session end timestamp.
   google.protobuf.Timestamp ended_at = 4;
+  // Exit code when available.
   optional int32 exit_code = 5;
+  // Reason for ending the session.
   optional string end_reason = 6;
 }

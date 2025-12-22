@@ -4,78 +4,140 @@ package plfm.events.v1;
 
 import "google/protobuf/timestamp.proto";
 
+// Desired lifecycle state for an instance.
 enum InstanceDesiredState {
+  // Desired state is unspecified.
   INSTANCE_DESIRED_STATE_UNSPECIFIED = 0;
+  // Instance should be running.
   INSTANCE_DESIRED_STATE_RUNNING = 1;
+  // Instance should be draining.
   INSTANCE_DESIRED_STATE_DRAINING = 2;
+  // Instance should be stopped.
   INSTANCE_DESIRED_STATE_STOPPED = 3;
 }
 
+// Observed status for an instance.
 enum InstanceStatus {
+  // Status is unspecified.
   INSTANCE_STATUS_UNSPECIFIED = 0;
+  // Instance is booting.
   INSTANCE_STATUS_BOOTING = 1;
+  // Instance is ready.
   INSTANCE_STATUS_READY = 2;
+  // Instance is draining.
   INSTANCE_STATUS_DRAINING = 3;
+  // Instance is stopped.
   INSTANCE_STATUS_STOPPED = 4;
+  // Instance failed.
   INSTANCE_STATUS_FAILED = 5;
 }
 
+// Failure reason codes for instance status.
 enum InstanceFailureReason {
+  // Failure reason is unspecified.
   INSTANCE_FAILURE_REASON_UNSPECIFIED = 0;
+  // Image pull failed.
   INSTANCE_FAILURE_REASON_IMAGE_PULL_FAILED = 1;
+  // Root filesystem build failed.
   INSTANCE_FAILURE_REASON_ROOTFS_BUILD_FAILED = 2;
+  // Firecracker start failed.
   INSTANCE_FAILURE_REASON_FIRECRACKER_START_FAILED = 3;
+  // Network setup failed.
   INSTANCE_FAILURE_REASON_NETWORK_SETUP_FAILED = 4;
+  // Volume attach failed.
   INSTANCE_FAILURE_REASON_VOLUME_ATTACH_FAILED = 5;
+  // Required secrets were missing.
   INSTANCE_FAILURE_REASON_SECRETS_MISSING = 6;
+  // Secret injection failed.
   INSTANCE_FAILURE_REASON_SECRETS_INJECTION_FAILED = 7;
+  // Health check failed.
   INSTANCE_FAILURE_REASON_HEALTHCHECK_FAILED = 8;
+  // Instance was OOM killed.
   INSTANCE_FAILURE_REASON_OOM_KILLED = 9;
+  // Instance entered crash loop backoff.
   INSTANCE_FAILURE_REASON_CRASH_LOOP_BACKOFF = 10;
+  // Instance terminated by operator.
   INSTANCE_FAILURE_REASON_TERMINATED_BY_OPERATOR = 11;
+  // Instance drained due to node maintenance.
   INSTANCE_FAILURE_REASON_NODE_DRAINING = 12;
 }
 
+// Resource snapshot captured for an instance.
 message InstanceResourcesSnapshot {
+  // Requested vCPU share.
   double cpu_request = 1;
+  // Memory limit in bytes.
   int64 memory_limit_bytes = 2;
+  // Ephemeral disk size in bytes.
   int64 ephemeral_disk_bytes = 3;
 }
 
+// Payload for instance allocation events.
 message InstanceAllocatedPayload {
+  // Instance identifier.
   string instance_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Application identifier.
   string app_id = 3;
+  // Environment identifier.
   string env_id = 4;
+  // Process type label.
   string process_type = 5;
+  // Assigned node identifier.
   string node_id = 6;
+  // Desired state at allocation.
   InstanceDesiredState desired_state = 7;
+  // Release identifier.
   string release_id = 8;
+  // Secret version identifier.
   optional string secrets_version_id = 9;
+  // Assigned overlay IPv6 address.
   string overlay_ipv6 = 10;
+  // Resource snapshot at allocation.
   InstanceResourcesSnapshot resources_snapshot = 11;
+  // Deterministic spec hash.
   string spec_hash = 12;
 }
 
+// Payload for desired state change events.
 message InstanceDesiredStateChangedPayload {
+  // Instance identifier.
   string instance_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Environment identifier.
   string env_id = 3;
+  // New desired state.
   InstanceDesiredState desired_state = 4;
+  // Drain grace period in seconds.
   optional int32 drain_grace_seconds = 5;
+  // Reason for the change.
   optional string reason = 6;
 }
 
+// Payload for instance status change events.
 message InstanceStatusChangedPayload {
+  // Instance identifier.
   string instance_id = 1;
+  // Organization identifier.
   string org_id = 2;
+  // Environment identifier.
   string env_id = 3;
+  // Node identifier.
   string node_id = 4;
+  // New instance status.
   InstanceStatus status = 5;
+  // Boot identifier.
   optional string boot_id = 6;
+  // MicroVM identifier.
   optional string microvm_id = 7;
+  // Exit code when available.
   optional int32 exit_code = 8;
+  // Failure reason code when applicable.
   optional InstanceFailureReason reason_code = 9;
+  // Human-readable failure detail.
   optional string reason_detail = 10;
+  // Status report timestamp.
   google.protobuf.Timestamp reported_at = 11;
 }

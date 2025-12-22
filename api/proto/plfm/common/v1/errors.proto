@@ -2,12 +2,20 @@ syntax = "proto3";
 
 package plfm.common.v1;
 
+// Error metadata included in API responses.
 message ErrorDetail {
+  // Request correlation id.
   string request_id = 1;
+  // Resource type for the failing request.
   string resource_type = 2;
+  // Resource id for the failing request.
   string resource_id = 3;
+  // Whether the error is retryable.
   bool retryable = 4;
+  // Suggested retry delay in seconds.
   uint32 retry_after_seconds = 5;
+  // Human-friendly hint for operators.
   string human_hint = 6;
+  // Structured error tags for diagnostics.
   map<string, string> tags = 7;
 }

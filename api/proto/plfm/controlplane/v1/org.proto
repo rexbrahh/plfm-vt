@@ -4,13 +4,20 @@ package plfm.controlplane.v1;
 
 import "google/protobuf/timestamp.proto";
 
+// Organization resource.
 message Org {
+  // Organization identifier.
   string id = 1;
+  // Organization name.
   string name = 2;
+  // Creation timestamp.
   google.protobuf.Timestamp created_at = 3;
 }
 
+// Response payload for org listings.
 message ListOrgsResponse {
+  // Organizations in the response.
   repeated Org items = 1;
+  // Total number of organizations.
   int64 total = 2;
 }

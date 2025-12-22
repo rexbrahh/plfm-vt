@@ -231,6 +231,6 @@ Status key:
 | docs/ADRs/0011-storage-local-volumes-async-backups.md | **locked** | TBD | 2025-12-16 | Local volumes + async backups |
 | docs/ADRs/0012-scheduling-cpu-oversubscribe-mem-hardcap.md | **locked** | TBD | 2025-12-16 | CPU soft, memory hard |
 | docs/ADRs/0013-nixos-as-host-os.md | **locked** | TBD | 2025-12-16 | NixOS as host OS |
-| docs/ADRs/(0001-4)-open-questions-decisions.md | reviewed | TBD | 2025-12-16 | Open questions resolution |
-| docs/ADRs/(0005-8)-open-questions-decisions.md | reviewed | TBD | 2025-12-16 | Open questions resolution |
-| docs/ADRs/(0009-12)-open-questions-decisions.md | reviewed | TBD | 2025-12-16 | Open questions resolution |
+| docs/ADRs/open-questions-0001_0004.md | reviewed | TBD | 2025-12-16 | Open questions resolution |
+| docs/ADRs/open-questions-0005_0008.md | reviewed | TBD | 2025-12-16 | Open questions resolution |
+| docs/ADRs/open-questions-0009_0012.md | reviewed | TBD | 2025-12-16 | Open questions resolution |

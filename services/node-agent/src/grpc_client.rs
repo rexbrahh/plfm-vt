@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use plfm_proto::agent::v1::{
     node_agent_client::NodeAgentClient, GetPlanRequest, GetSecretMaterialRequest,
@@ -44,7 +44,10 @@ impl ControlPlaneGrpcClient {
         };
 
         let response = self.client.get_plan(request).await?;
-        let proto_plan = response.into_inner();
+        let proto_plan = response
+            .into_inner()
+            .plan
+            .context("missing node plan in GetPlanResponse")?;
 
         let instances: Vec<DesiredInstanceAssignment> = proto_plan
             .instances
@@ -202,7 +205,10 @@ impl ControlPlaneGrpcClient {
         };
 
         let response = self.client.get_secret_material(request).await?;
-        let proto_material = response.into_inner();
+        let proto_material = response
+            .into_inner()
+            .material
+            .context("missing secret material in GetSecretMaterialResponse")?;
 
         Ok(SecretMaterialResponse {
             version_id: proto_material.version_id,

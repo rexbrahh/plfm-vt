@@ -2,33 +2,56 @@ syntax = "proto3";
 
 package plfm.events.v1;
 
+// Operational state of a node.
 enum NodeState {
+  // State is unspecified.
   NODE_STATE_UNSPECIFIED = 0;
+  // Node is active.
   NODE_STATE_ACTIVE = 1;
+  // Node is draining workloads.
   NODE_STATE_DRAINING = 2;
+  // Node is disabled.
   NODE_STATE_DISABLED = 3;
+  // Node is degraded.
   NODE_STATE_DEGRADED = 4;
+  // Node is offline.
   NODE_STATE_OFFLINE = 5;
 }
 
+// Payload for node enrollment events.
 message NodeEnrolledPayload {
+  // Node identifier.
   string node_id = 1;
+  // Node hostname.
   string hostname = 2;
+  // Node region label.
   string region = 3;
+  // CPU core count.
   int32 cpu_cores = 4;
+  // Total memory in bytes.
   int64 memory_bytes = 5;
 }
 
+// Payload for node state change events.
 message NodeStateChangedPayload {
+  // Node identifier.
   string node_id = 1;
+  // Previous node state.
   NodeState old_state = 2;
+  // New node state.
   NodeState new_state = 3;
+  // Reason for the change.
   optional string reason = 4;
 }
 
+// Payload for node capacity change events.
 message NodeCapacityUpdatedPayload {
+  // Node identifier.
   string node_id = 1;
+  // Available CPU cores.
   int32 available_cpu_cores = 2;
+  // Available memory in bytes.
   int64 available_memory_bytes = 3;
+  // Active instance count.
   int32 instance_count = 4;
 }

@@ -4,15 +4,24 @@ package plfm.controlplane.v1;
 
 import "google/protobuf/timestamp.proto";
 
+// Application resource.
 message App {
+  // Application identifier.
   string id = 1;
+  // Owning organization identifier.
   string org_id = 2;
+  // Application name.
   string name = 3;
+  // Optional description.
   optional string description = 4;
+  // Creation timestamp.
   google.protobuf.Timestamp created_at = 5;
 }
 
+// Response payload for app listings.
 message ListAppsResponse {
+  // Applications in the response.
   repeated App items = 1;
+  // Pagination cursor for the next page.
   optional string next_cursor = 2;
 }

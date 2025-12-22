@@ -1561,9 +1561,9 @@ paths:
   /orgs/{org_id}/apps/{app_id}/envs/{env_id}/logs/stream:
     get:
       tags: [Logs]
-      summary: Stream logs (server-sent events)
+      summary: Stream logs (NDJSON)
       description: |
-        Streaming transport is defined as text/event-stream in v1 for simplicity.
+        Streaming transport is NDJSON (application/x-ndjson) in v1 for simplicity.
         Clients should treat this as a best-effort tail, not an audit log.
       parameters:
         - $ref: "#/components/parameters/OrgId"
@@ -1573,12 +1573,12 @@ paths:
         - $ref: "#/components/parameters/InstanceIdQuery"
       responses:
         "200":
-          description: SSE stream of log lines
+          description: NDJSON stream of log lines
           headers:
             X-Request-Id:
               $ref: "#/components/headers/XRequestId"
           content:
-            text/event-stream:
+            application/x-ndjson:
               schema:
                 type: string
         "401":
@@ -1650,6 +1650,36 @@ paths:
         "403":
           $ref: "#/components/responses/Error403"
 
+  /orgs/{org_id}/events/stream:
+    get:
+      tags: [Events]
+      summary: Stream org-scoped events (NDJSON)
+      description: |
+        NDJSON stream of org-scoped events for tailing.
+        Event payloads use protobuf JSON mapping when available.
+      parameters:
+        - $ref: "#/components/parameters/OrgId"
+        - $ref: "#/components/parameters/AfterEventId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/EventTypeQuery"
+        - $ref: "#/components/parameters/AppIdQuery"
+        - $ref: "#/components/parameters/EnvIdQuery"
+        - $ref: "#/components/parameters/PollMsQuery"
+      responses:
+        "200":
+          description: NDJSON stream of events
+          headers:
+            X-Request-Id:
+              $ref: "#/components/headers/XRequestId"
+          content:
+            application/x-ndjson:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Error401"
+        "403":
+          $ref: "#/components/responses/Error403"
+ 
 components:
   securitySchemes:
     bearerAuth:
@@ -1776,6 +1806,15 @@ components:
         type: integer
         minimum: 0
 
+    PollMsQuery:
+      name: poll_ms
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 100
+        default: 500
+
     EventTypeQuery:
       name: event_type
       in: query
@@ -1849,56 +1888,81 @@ components:
     Error400:
       description: Bad request
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ProblemDetails"
     Error401:
       description: Unauthorized
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ProblemDetails"
     Error403:
       description: Forbidden
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ProblemDetails"
     Error404:
       description: Not found
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ProblemDetails"
     Error409:
       description: Conflict
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ProblemDetails"
     Error429:
       description: Rate limited
       content:
-        application/json:
+        application/problem+json:
           schema:
-            $ref: "#/components/schemas/ErrorResponse"
+            $ref: "#/components/schemas/ProblemDetails"
 
   schemas:
-    ErrorResponse:
+    ProblemDetails:
       type: object
-      required: [code, message, request_id, retryable]
+      required:
+        - type
+        - title
+        - status
+        - detail
+        - code
+        - request_id
+        - retryable
+        - retry_after_seconds
       properties:
-        code:
+        type:
           type: string
-        message:
+        title:
+          type: string
+        status:
+          type: integer
+        detail:
+          type: string
+        instance:
+          type: string
+        code:
           type: string
         request_id:
           type: string
         retryable:
           type: boolean
+        retry_after_seconds:
+          type: integer
         details:
-          type: object
-          additionalProperties: true
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field:
+                type: string
+              message:
+                type: string
 
     DeleteResponse:
       type: object
@@ -2891,6 +2955,7 @@ components:
         payload:
           type: object
           additionalProperties: true
+          description: Protobuf JSON mapping of the event payload when available.
 
     EventsResponse:
       type: object

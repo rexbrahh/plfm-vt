@@ -5,58 +5,108 @@ package plfm.agent.v1;
 import "plfm/agent/v1/workload.proto";
 import "plfm/events/v1/node.proto";
 
+// Node agent gRPC service.
 service NodeAgent {
+  // Register a node with the control plane.
   rpc Enroll(EnrollRequest) returns (EnrollResponse);
+  // Report node heartbeat and capacity.
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
-  rpc GetPlan(GetPlanRequest) returns (NodePlan);
+  // Fetch the current node plan.
+  rpc GetPlan(GetPlanRequest) returns (GetPlanResponse);
+  // Report instance status updates.
   rpc ReportInstanceStatus(ReportInstanceStatusRequest) returns (ReportInstanceStatusResponse);
-  rpc GetSecretMaterial(GetSecretMaterialRequest) returns (SecretMaterial);
+  // Fetch secret material for a version.
+  rpc GetSecretMaterial(GetSecretMaterialRequest) returns (GetSecretMaterialResponse);
+  // Stream workload logs to the control plane.
   rpc SendWorkloadLogs(SendWorkloadLogsRequest) returns (SendWorkloadLogsResponse);
 }
 
+// Enrollment request from node to control plane.
 message EnrollRequest {
+  // Node hostname.
   string hostname = 1;
+  // Node region label.
   string region = 2;
+  // WireGuard public key for overlay.
   string wireguard_public_key = 3;
+  // mTLS subject for agent identity.
   string agent_mtls_subject = 4;
+  // Public IPv6 address.
   string public_ipv6 = 5;
+  // Public IPv4 address when present.
   optional string public_ipv4 = 6;
+  // CPU core count.
   int32 cpu_cores = 7;
+  // Total memory in bytes.
   int64 memory_bytes = 8;
+  // Overlay MTU override.
   optional int32 mtu = 9;
+  // Node capability labels.
   map<string, string> labels = 10;
 }
 
+// Enrollment response from control plane.
 message EnrollResponse {
+  // Assigned node identifier.
   string node_id = 1;
+  // Overlay IPv6 address assigned to the node.
   string overlay_ipv6 = 2;
+  // Current node state.
   plfm.events.v1.NodeState state = 3;
 }
 
+// Request for the current node plan.
 message GetPlanRequest {
+  // Node identifier.
   string node_id = 1;
 }
 
+// Response containing the current node plan.
+message GetPlanResponse {
+  // Desired state plan for the node.
+  NodePlan plan = 1;
+}
+
+// Request to report instance status.
 message ReportInstanceStatusRequest {
+  // Node identifier.
   string node_id = 1;
+  // Instance status payload.
   InstanceStatusReport status = 2;
 }
 
+// Response to instance status report.
 message ReportInstanceStatusResponse {
+  // Whether the report was accepted.
   bool accepted = 1;
 }
 
+// Request for secret material.
 message GetSecretMaterialRequest {
+  // Node identifier.
   string node_id = 1;
+  // Secret version identifier.
   string version_id = 2;
 }
 
+// Response with secret material.
+message GetSecretMaterialResponse {
+  // Secret material payload.
+  SecretMaterial material = 1;
+}
+
+// Request carrying workload log entries.
 message SendWorkloadLogsRequest {
+  // Node identifier.
   string node_id = 1;
+  // Log entries for workloads.
   repeated WorkloadLogEntry entries = 2;
 }
 
+// Response for workload logs ingestion.
 message SendWorkloadLogsResponse {
+  // Number of accepted entries.
   int32 accepted = 1;
+  // Number of rejected entries.
   int32 rejected = 2;
 }
