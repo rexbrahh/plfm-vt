@@ -813,6 +813,7 @@ async fn emit_exec_connected(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     event_store.append(event).await.map_err(|e| {
@@ -899,6 +900,7 @@ async fn emit_exec_end(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     if let Err(e) = event_store.append(event).await {

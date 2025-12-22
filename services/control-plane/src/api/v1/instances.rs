@@ -355,6 +355,7 @@ async fn report_status(
             "reason_detail": req.error_message,
             "reported_at": chrono::Utc::now().to_rfc3339(),
         }),
+        ..Default::default()
     };
 
     // Append the event

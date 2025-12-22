@@ -260,6 +260,7 @@ async fn create_release(
             "manifest_hash": req.manifest_hash,
             "command": req.command
         }),
+        ..Default::default()
     };
 
     // Append the event

@@ -329,6 +329,7 @@ async fn create_volume(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {
@@ -576,6 +577,7 @@ async fn delete_volume(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {
@@ -721,6 +723,7 @@ async fn create_snapshot(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {
@@ -1065,6 +1068,7 @@ async fn restore_volume(
             correlation_id: None,
             causation_id: None,
             payload: restore_created_payload,
+            ..Default::default()
         },
         AppendEvent {
             aggregate_type: AggregateType::Volume,
@@ -1082,6 +1086,7 @@ async fn restore_volume(
             correlation_id: None,
             causation_id: None,
             payload: new_volume_payload,
+            ..Default::default()
         },
         AppendEvent {
             aggregate_type: AggregateType::RestoreJob,
@@ -1099,6 +1104,7 @@ async fn restore_volume(
             correlation_id: None,
             causation_id: None,
             payload: restore_done_payload,
+            ..Default::default()
         },
     ];
 

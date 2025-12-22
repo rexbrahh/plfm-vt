@@ -230,6 +230,7 @@ async fn create_exec_grant(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {

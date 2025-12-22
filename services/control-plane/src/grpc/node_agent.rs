@@ -144,6 +144,7 @@ impl NodeAgent for NodeAgentService {
                 "labels": labels,
                 "allocatable": allocatable,
             }),
+            ..Default::default()
         };
 
         let event_store = self.state.db().event_store();
@@ -192,9 +193,9 @@ impl NodeAgent for NodeAgentService {
             NodeState::Unspecified => "active",
         };
 
-        let node_id_typed: NodeId = node_id.parse().map_err(|_| {
-            Status::invalid_argument("invalid node_id format")
-        })?;
+        let node_id_typed: NodeId = node_id
+            .parse()
+            .map_err(|_| Status::invalid_argument("invalid node_id format"))?;
 
         let current_state =
             sqlx::query_scalar::<_, String>("SELECT state FROM nodes_view WHERE node_id = $1")
@@ -242,6 +243,7 @@ impl NodeAgent for NodeAgentService {
                 "available_memory_bytes": req.available_memory_bytes,
                 "instance_count": req.instance_count,
             }),
+            ..Default::default()
         };
 
         if current_state != node_state_str {
@@ -265,6 +267,7 @@ impl NodeAgent for NodeAgentService {
                     "old_state": current_state,
                     "new_state": node_state_str,
                 }),
+                ..Default::default()
             };
 
             event_store
@@ -305,9 +308,10 @@ impl NodeAgent for NodeAgentService {
         let req = request.into_inner();
         let request_id = Ulid::new().to_string();
 
-        let _node_id_typed: NodeId = req.node_id.parse().map_err(|_| {
-            Status::invalid_argument("invalid node_id format")
-        })?;
+        let _node_id_typed: NodeId = req
+            .node_id
+            .parse()
+            .map_err(|_| Status::invalid_argument("invalid node_id format"))?;
 
         let node_info = sqlx::query_as::<_, NodePlanNodeRow>(
             "SELECT labels, mtu FROM nodes_view WHERE node_id = $1",
@@ -323,10 +327,7 @@ impl NodeAgent for NodeAgentService {
         let node_info = match node_info {
             Some(info) => info,
             None => {
-                return Err(Status::not_found(format!(
-                    "node {} not found",
-                    req.node_id
-                )));
+                return Err(Status::not_found(format!("node {} not found", req.node_id)));
             }
         };
 
@@ -376,7 +377,9 @@ impl NodeAgent for NodeAgentService {
         let arch_hint = label_value(&node_info.labels, "arch");
         let instance_assignments: Vec<DesiredInstanceAssignment> = instances
             .into_iter()
-            .map(|row| assignment_from_row(row, &volume_mounts, node_info.mtu, arch_hint.as_deref()))
+            .map(|row| {
+                assignment_from_row(row, &volume_mounts, node_info.mtu, arch_hint.as_deref())
+            })
             .collect();
 
         Ok(Response::new(NodePlan {
@@ -395,20 +398,22 @@ impl NodeAgent for NodeAgentService {
         let req = request.into_inner();
         let request_id = Ulid::new().to_string();
 
-        let status_report = req.status.ok_or_else(|| {
-            Status::invalid_argument("status is required")
-        })?;
+        let status_report = req
+            .status
+            .ok_or_else(|| Status::invalid_argument("status is required"))?;
 
-        let node_id_typed: NodeId = req.node_id.parse().map_err(|_| {
-            Status::invalid_argument("invalid node_id format")
-        })?;
+        let node_id_typed: NodeId = req
+            .node_id
+            .parse()
+            .map_err(|_| Status::invalid_argument("invalid node_id format"))?;
 
-        let instance_id_typed: InstanceId = status_report.instance_id.parse().map_err(|_| {
-            Status::invalid_argument("invalid instance_id format")
-        })?;
+        let instance_id_typed: InstanceId = status_report
+            .instance_id
+            .parse()
+            .map_err(|_| Status::invalid_argument("invalid instance_id format"))?;
 
-        let status = InstanceStatus::try_from(status_report.status)
-            .unwrap_or(InstanceStatus::Unspecified);
+        let status =
+            InstanceStatus::try_from(status_report.status).unwrap_or(InstanceStatus::Unspecified);
         let status_str = Self::map_instance_status_from_proto(status);
 
         let valid_statuses = ["booting", "ready", "draining", "stopped", "failed"];
@@ -490,6 +495,7 @@ impl NodeAgent for NodeAgentService {
                 "reason_detail": status_report.error_message,
                 "reported_at": chrono::Utc::now().to_rfc3339(),
             }),
+            ..Default::default()
         };
 
         event_store.append(event).await.map_err(|e| {
@@ -497,7 +503,9 @@ impl NodeAgent for NodeAgentService {
             Status::internal("failed to record status")
         })?;
 
-        Ok(Response::new(ReportInstanceStatusResponse { accepted: true }))
+        Ok(Response::new(ReportInstanceStatusResponse {
+            accepted: true,
+        }))
     }
 
     async fn get_secret_material(
@@ -507,13 +515,15 @@ impl NodeAgent for NodeAgentService {
         let req = request.into_inner();
         let request_id = Ulid::new().to_string();
 
-        let _node_id_typed: NodeId = req.node_id.parse().map_err(|_| {
-            Status::invalid_argument("invalid node_id format")
-        })?;
+        let _node_id_typed: NodeId = req
+            .node_id
+            .parse()
+            .map_err(|_| Status::invalid_argument("invalid node_id format"))?;
 
-        let version_id_typed: SecretVersionId = req.version_id.parse().map_err(|_| {
-            Status::invalid_argument("invalid secret version_id format")
-        })?;
+        let version_id_typed: SecretVersionId = req
+            .version_id
+            .parse()
+            .map_err(|_| Status::invalid_argument("invalid secret version_id format"))?;
 
         let node_exists = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS(SELECT 1 FROM nodes_view WHERE node_id = $1)",
@@ -591,9 +601,8 @@ impl NodeAgent for NodeAgentService {
             Status::internal("failed to decrypt secrets")
         })?;
 
-        let data = String::from_utf8(plaintext).map_err(|_| {
-            Status::internal("secrets payload was not valid UTF-8")
-        })?;
+        let data = String::from_utf8(plaintext)
+            .map_err(|_| Status::internal("secrets payload was not valid UTF-8"))?;
 
         Ok(Response::new(SecretMaterial {
             version_id: row.version_id,
@@ -610,9 +619,10 @@ impl NodeAgent for NodeAgentService {
         let req = request.into_inner();
         let request_id = Ulid::new().to_string();
 
-        let node_id_typed: NodeId = req.node_id.parse().map_err(|_| {
-            Status::invalid_argument("invalid node_id format")
-        })?;
+        let node_id_typed: NodeId = req
+            .node_id
+            .parse()
+            .map_err(|_| Status::invalid_argument("invalid node_id format"))?;
 
         let node_exists = sqlx::query_scalar::<_, bool>(
             "SELECT EXISTS(SELECT 1 FROM nodes_view WHERE node_id = $1)",
@@ -643,7 +653,8 @@ impl NodeAgent for NodeAgentService {
             )));
         }
 
-        let mut instance_ids: Vec<String> = req.entries.iter().map(|e| e.instance_id.clone()).collect();
+        let mut instance_ids: Vec<String> =
+            req.entries.iter().map(|e| e.instance_id.clone()).collect();
         instance_ids.sort();
         instance_ids.dedup();
 
@@ -744,9 +755,12 @@ async fn allocate_node_ipv6(
         .or_else(|_| std::env::var("GHOST_NODE_IPV6_PREFIX"))
         .unwrap_or_else(|_| "fd00:0:0:1::".to_string());
 
-    let base: Ipv6Addr = prefix
-        .parse()
-        .map_err(|_| format!("invalid node IPv6 prefix '{}'; expected /64 base address", prefix))?;
+    let base: Ipv6Addr = prefix.parse().map_err(|_| {
+        format!(
+            "invalid node IPv6 prefix '{}'; expected /64 base address",
+            prefix
+        )
+    })?;
 
     let base_u128 = u128::from(base) & (!0u128 << 64);
     let mut attempts = 0;

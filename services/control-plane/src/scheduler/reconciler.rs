@@ -380,6 +380,7 @@ impl SchedulerReconciler {
                 "spec_hash": group.spec_hash,
                 "deploy_id": group.deploy_id,
             }),
+            ..Default::default()
         };
 
         let event_store = EventStore::new(self.pool.clone());
@@ -428,6 +429,7 @@ impl SchedulerReconciler {
                 "drain_grace_seconds": 10,
                 "reason": "scheduler_drain",
             }),
+            ..Default::default()
         };
 
         event_store

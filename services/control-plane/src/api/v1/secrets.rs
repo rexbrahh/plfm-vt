@@ -375,6 +375,7 @@ async fn put_secrets(
             correlation_id: None,
             causation_id: None,
             payload,
+            ..Default::default()
         };
 
         let event_id = state.db().event_store().append(event).await.map_err(|e| {
@@ -451,6 +452,7 @@ async fn put_secrets(
                 correlation_id: None,
                 causation_id: None,
                 payload: created_payload,
+                ..Default::default()
             },
             AppendEvent {
                 aggregate_type: AggregateType::SecretBundle,
@@ -468,6 +470,7 @@ async fn put_secrets(
                 correlation_id: None,
                 causation_id: None,
                 payload: version_payload,
+                ..Default::default()
             },
         ];
 

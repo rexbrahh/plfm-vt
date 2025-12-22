@@ -486,6 +486,7 @@ async fn enroll_node(
             "labels": req.labels,
             "allocatable": allocatable,
         }),
+        ..Default::default()
     };
 
     // Append the event
@@ -798,6 +799,7 @@ async fn heartbeat(
             "instance_count": req.instance_count,
             "instance_statuses_entries": instance_statuses_entries,
         }),
+        ..Default::default()
     };
 
     // If state changed, emit state change event
@@ -830,6 +832,7 @@ async fn heartbeat(
                 "old_state": current_state,
                 "new_state": new_state_str,
             }),
+            ..Default::default()
         };
 
         let events = vec![capacity_event, state_event];
@@ -1375,6 +1378,7 @@ async fn report_instance_status(
             "reason_detail": req.error_message,
             "reported_at": chrono::Utc::now().to_rfc3339(),
         }),
+        ..Default::default()
     };
 
     event_store.append(event).await.map_err(|e| {

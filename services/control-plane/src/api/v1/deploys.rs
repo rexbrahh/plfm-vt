@@ -284,6 +284,7 @@ async fn create_deploy(
             "strategy": req.strategy,
             "initiated_at": Utc::now().to_rfc3339(),
         }),
+        ..Default::default()
     };
 
     // Append the event
@@ -508,6 +509,7 @@ pub async fn create_rollback(
             "strategy": DeployStrategy::Rolling,
             "initiated_at": Utc::now().to_rfc3339(),
         }),
+        ..Default::default()
     };
 
     let event_store = state.db().event_store();

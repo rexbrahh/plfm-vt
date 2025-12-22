@@ -246,6 +246,7 @@ async fn create_member(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {
@@ -463,6 +464,7 @@ async fn update_member(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {
@@ -670,6 +672,7 @@ async fn delete_member(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {

@@ -476,6 +476,7 @@ async fn create_env(
             "app_id": app_id.to_string(),
             "name": req.name
         }),
+        ..Default::default()
     };
 
     // Append the event
@@ -722,6 +723,7 @@ async fn update_env(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {
@@ -928,6 +930,7 @@ async fn delete_env(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {
@@ -1249,6 +1252,7 @@ async fn update_scale(
             "app_id": app_id,
             "scales": scales
         }),
+        ..Default::default()
     };
 
     let event_id = event_store.append(event).await.map_err(|e| {

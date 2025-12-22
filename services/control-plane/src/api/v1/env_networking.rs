@@ -353,6 +353,7 @@ async fn enable_ipv4(
             "allocation_id": &allocation_id,
             "ipv4_address": &ipv4_address
         }),
+        ..Default::default()
     };
 
     let event_id = event_store.append(event).await.map_err(|e| {
@@ -576,6 +577,7 @@ async fn disable_ipv4(
             "org_id": org_id.to_string(),
             "allocation_id": &allocation_id
         }),
+        ..Default::default()
     };
 
     let event_id = event_store.append(event).await.map_err(|e| {

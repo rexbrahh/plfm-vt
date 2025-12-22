@@ -225,6 +225,7 @@ async fn create_project(
             "org_id": org_id.to_string(),
             "name": req.name
         }),
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {
@@ -462,6 +463,7 @@ async fn update_project(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {

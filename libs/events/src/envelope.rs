@@ -5,7 +5,7 @@ use plfm_id::{AggregateSeq, AppId, EnvId, EventId, OrgId, RequestId};
 use serde::{Deserialize, Serialize};
 
 /// Actor type for audit logging.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ActorType {
     /// A human user.
@@ -13,6 +13,7 @@ pub enum ActorType {
     /// A service principal (API key, service account).
     ServicePrincipal,
     /// The system itself (reconciliation, scheduler).
+    #[default]
     System,
 }
 
@@ -27,9 +28,10 @@ impl std::fmt::Display for ActorType {
 }
 
 /// Aggregate type for event routing.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum AggregateType {
+    #[default]
     Org,
     Project,
     OrgMember,

@@ -247,6 +247,7 @@ async fn create_app(
             "name": req.name,
             "description": req.description
         }),
+        ..Default::default()
     };
 
     // Append the event
@@ -486,6 +487,7 @@ async fn update_app(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {
@@ -685,6 +687,7 @@ async fn delete_app(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {

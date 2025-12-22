@@ -168,6 +168,7 @@ async fn create_org(
             "org_id": org_id.to_string(),
             "name": req.name
         }),
+        ..Default::default()
     };
 
     let member_payload = OrgMemberAddedPayload {
@@ -199,6 +200,7 @@ async fn create_org(
         correlation_id: None,
         causation_id: None,
         payload: member_payload,
+        ..Default::default()
     };
 
     let event_ids = state
@@ -438,6 +440,7 @@ async fn update_org(
         correlation_id: None,
         causation_id: None,
         payload,
+        ..Default::default()
     };
 
     let event_id = state.db().event_store().append(event).await.map_err(|e| {
