@@ -1,31 +1,12 @@
-//! plfm-vt Ingress
-//!
-//! L4 proxy with TLS passthrough and SNI routing.
-//!
-//! This service:
-//! - Syncs route configuration from the control plane
-//! - Accepts TCP connections on configured listeners
-//! - Inspects TLS ClientHello for SNI-based routing
-//! - Proxies connections to backend instances
-//! - Optionally injects PROXY protocol v2 headers
-
 use std::sync::Arc;
 
 use anyhow::Result;
+use plfm_ingress::{BackendSelector, Listener, ListenerConfig, RouteTable};
 use tracing::{error, info};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod config;
-mod persistence;
-pub mod proxy;
 mod sync;
-
-// Re-export proxy types for external use
-pub use proxy::{
-    Backend, BackendPool, BackendSelector, Listener, ListenerConfig, ProtocolHint, ProxyProtocol,
-    ProxyProtocolV2, Route, RouteTable, RoutingDecision, SharedRouteTable, SniConfig, SniInspector,
-    SniResult,
-};
 
 #[tokio::main]
 async fn main() -> Result<()> {

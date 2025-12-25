@@ -25,8 +25,8 @@ use serde::Deserialize;
 use tracing::{debug, info, warn};
 
 use crate::config::Config;
-use crate::persistence::{PersistedRoute, StatePersistence};
-use crate::proxy::{Backend, BackendSelector, ProtocolHint, ProxyProtocol, Route, RouteTable};
+use plfm_ingress::persistence::{PersistedRoute, StatePersistence};
+use plfm_ingress::{Backend, BackendSelector, ProtocolHint, ProxyProtocol, Route, RouteTable};
 
 #[derive(Debug, Deserialize)]
 struct EventsResponse {

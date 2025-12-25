@@ -7,6 +7,10 @@ license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
+[lib]
+name = "plfm_ingress"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ingress"
 path = "src/main.rs"
@@ -34,3 +38,13 @@ tracing-subscriber = { workspace = true }
 
 # Atomic pointer swaps for lock-free config reload
 arc-swap = "1.7"
+
+[dev-dependencies]
+# TLS for testing
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"] }
+tokio-rustls = "0.26"
+rustls-pemfile = "2.2"
+
+# Testing utilities
+tokio-test = "0.4"
