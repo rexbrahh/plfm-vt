@@ -116,8 +116,8 @@ impl Reconciler {
             .apply_plan(plan.cursor_event_id, plan.plan_id.clone(), plan.instances)
             .await;
 
-        // Report status for all instances
-        self.report_all_status().await;
+        // Report status transitions only
+        self.report_status_transitions().await;
 
         Ok(())
     }
@@ -128,17 +128,29 @@ impl Reconciler {
         self.instance_manager.check_health().await;
     }
 
-    /// Report status for all instances.
-    async fn report_all_status(&self) {
-        let reports = self.instance_manager.get_status_reports().await;
+    /// Report status for instances with status transitions.
+    async fn report_status_transitions(&self) {
+        let reports = self.instance_manager.get_pending_status_reports().await;
 
         for report in reports {
-            if let Err(e) = self.client.report_instance_status(&report).await {
-                warn!(
-                    instance_id = %report.instance_id,
-                    error = %e,
-                    "Failed to report instance status"
-                );
+            match self.client.report_instance_status(&report).await {
+                Ok(()) => {
+                    self.instance_manager
+                        .mark_status_reported(&report.instance_id)
+                        .await;
+                    debug!(
+                        instance_id = %report.instance_id,
+                        status = ?report.status,
+                        "Reported status transition"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        instance_id = %report.instance_id,
+                        error = %e,
+                        "Failed to report instance status, will retry"
+                    );
+                }
             }
         }
     }

@@ -305,23 +305,33 @@ struct WorkloadLogRequest {
 /// Instance status report sent to the control plane.
 #[derive(Debug, Serialize)]
 pub struct InstanceStatusReport {
-    /// Instance ID.
     pub instance_id: String,
-
-    /// Current status.
     pub status: InstanceStatus,
-
-    /// Optional boot ID (set when instance is running).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub boot_id: Option<String>,
-
-    /// Optional error message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason_code: Option<FailureReason>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
-
-    /// Exit code (if stopped).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exit_code: Option<i32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureReason {
+    ImagePullFailed,
+    RootfsBuildFailed,
+    FirecrackerStartFailed,
+    NetworkSetupFailed,
+    VolumeAttachFailed,
+    SecretsMissing,
+    SecretsInjectionFailed,
+    HealthcheckFailed,
+    OomKilled,
+    CrashLoopBackoff,
+    TerminatedByOperator,
+    NodeDraining,
 }
 
 /// Instance status.
@@ -466,6 +476,7 @@ mod tests {
             instance_id: "inst_123".to_string(),
             status: InstanceStatus::Ready,
             boot_id: Some("boot_456".to_string()),
+            reason_code: None,
             error_message: None,
             exit_code: None,
         };

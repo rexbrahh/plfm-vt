@@ -13,8 +13,8 @@ use tokio::sync::RwLock;
 use tracing::{debug, error, info, warn};
 
 use crate::client::{
-    ControlPlaneClient, DesiredInstanceAssignment, InstanceDesiredState, InstancePlan,
-    InstanceStatus, InstanceStatusReport,
+    ControlPlaneClient, DesiredInstanceAssignment, FailureReason, InstanceDesiredState,
+    InstancePlan, InstanceStatus, InstanceStatusReport,
 };
 use crate::runtime::{Runtime, VmHandle};
 use crate::vsock::{ConfigStore, PendingConfig};
@@ -22,44 +22,46 @@ use crate::vsock::{ConfigStore, PendingConfig};
 /// Tracks a single instance's state.
 #[derive(Debug, Clone)]
 pub struct InstanceState {
-    /// The plan for this instance.
     pub plan: InstancePlan,
-
-    /// Current status.
     pub status: InstanceStatus,
-
-    /// Boot ID (if running).
+    pub last_reported_status: Option<InstanceStatus>,
     pub boot_id: Option<String>,
-
-    /// VM handle (if running).
     pub vm_handle: Option<VmHandle>,
-
-    /// Error message (if failed).
+    pub reason_code: Option<FailureReason>,
     pub error_message: Option<String>,
-
-    /// Exit code (if stopped).
     pub exit_code: Option<i32>,
 }
 
 impl InstanceState {
-    /// Create a new instance state from a plan.
     pub fn from_plan(plan: InstancePlan) -> Self {
         Self {
             plan,
             status: InstanceStatus::Booting,
+            last_reported_status: None,
             boot_id: None,
             vm_handle: None,
+            reason_code: None,
             error_message: None,
             exit_code: None,
         }
     }
 
-    /// Convert to a status report.
+    /// Check if status needs to be reported (transition detection).
+    pub fn needs_status_report(&self) -> bool {
+        self.last_reported_status.as_ref() != Some(&self.status)
+    }
+
+    /// Mark current status as reported.
+    pub fn mark_status_reported(&mut self) {
+        self.last_reported_status = Some(self.status);
+    }
+
     pub fn to_status_report(&self) -> InstanceStatusReport {
         InstanceStatusReport {
             instance_id: self.plan.instance_id.clone(),
             status: self.status,
             boot_id: self.boot_id.clone(),
+            reason_code: self.reason_code,
             error_message: self.error_message.clone(),
             exit_code: self.exit_code,
         }
@@ -276,6 +278,7 @@ impl InstanceManager {
                 Ok(payload) => Some(payload.data),
                 Err(e) => {
                     state.status = InstanceStatus::Failed;
+                    state.reason_code = Some(FailureReason::SecretsInjectionFailed);
                     state.error_message = Some(format!("Failed to fetch secrets: {e}"));
                     error!(instance_id = %instance_id, error = %e, "Failed to fetch secrets");
                     let mut instances = self.instances.write().await;
@@ -318,6 +321,7 @@ impl InstanceManager {
             }
             Err(e) => {
                 state.status = InstanceStatus::Failed;
+                state.reason_code = Some(FailureReason::FirecrackerStartFailed);
                 state.error_message = Some(e.to_string());
                 error!(instance_id = %instance_id, error = %e, "Failed to start instance");
                 self.config_store.remove(&instance_id).await;
@@ -367,10 +371,22 @@ impl InstanceManager {
         }
     }
 
-    /// Get status reports for all instances.
-    pub async fn get_status_reports(&self) -> Vec<InstanceStatusReport> {
+    /// Get status reports for instances with status transitions (not yet reported).
+    pub async fn get_pending_status_reports(&self) -> Vec<InstanceStatusReport> {
         let instances = self.instances.read().await;
-        instances.values().map(|i| i.to_status_report()).collect()
+        instances
+            .values()
+            .filter(|i| i.needs_status_report())
+            .map(|i| i.to_status_report())
+            .collect()
+    }
+
+    /// Mark an instance's current status as reported.
+    pub async fn mark_status_reported(&self, instance_id: &str) {
+        let mut instances = self.instances.write().await;
+        if let Some(instance) = instances.get_mut(instance_id) {
+            instance.mark_status_reported();
+        }
     }
 
     /// Get the guest CID for a running instance.
@@ -404,6 +420,7 @@ impl InstanceManager {
                             let mut instances = self.instances.write().await;
                             if let Some(instance) = instances.get_mut(&instance_id) {
                                 instance.status = InstanceStatus::Failed;
+                                instance.reason_code = Some(FailureReason::HealthcheckFailed);
                                 instance.error_message = Some("Health check failed".to_string());
                             }
                         }
@@ -482,5 +499,26 @@ mod tests {
         assert_eq!(report.instance_id, "inst_123");
         assert_eq!(report.status, InstanceStatus::Ready);
         assert_eq!(report.boot_id, Some("boot_abc".to_string()));
+    }
+
+    #[test]
+    fn test_needs_status_report_initial() {
+        let state = InstanceState::from_plan(test_plan());
+        assert!(state.needs_status_report());
+    }
+
+    #[test]
+    fn test_needs_status_report_after_mark() {
+        let mut state = InstanceState::from_plan(test_plan());
+        state.mark_status_reported();
+        assert!(!state.needs_status_report());
+    }
+
+    #[test]
+    fn test_needs_status_report_after_transition() {
+        let mut state = InstanceState::from_plan(test_plan());
+        state.mark_status_reported();
+        state.status = InstanceStatus::Ready;
+        assert!(state.needs_status_report());
     }
 }
