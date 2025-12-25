@@ -157,3 +157,49 @@ pub struct ErrorDetail {
         ::prost::alloc::string::String,
     >,
 }
+/// Time range for filtering queries.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct TimeRange {
+    /// Start of the time range (inclusive).
+    #[prost(message, optional, tag = "1")]
+    pub start: ::core::option::Option<::prost_types::Timestamp>,
+    /// End of the time range (exclusive).
+    #[prost(message, optional, tag = "2")]
+    pub end: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Deadline configuration for operations.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct Deadline {
+    /// Absolute deadline timestamp.
+    #[prost(message, optional, tag = "1")]
+    pub deadline_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Relative timeout duration from request time.
+    #[prost(message, optional, tag = "2")]
+    pub timeout: ::core::option::Option<::prost_types::Duration>,
+}
+/// Retry configuration for operations.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct RetryPolicy {
+    /// Maximum number of retry attempts.
+    #[prost(int32, tag = "1")]
+    pub max_attempts: i32,
+    /// Initial backoff duration.
+    #[prost(message, optional, tag = "2")]
+    pub initial_backoff: ::core::option::Option<::prost_types::Duration>,
+    /// Maximum backoff duration.
+    #[prost(message, optional, tag = "3")]
+    pub max_backoff: ::core::option::Option<::prost_types::Duration>,
+    /// Backoff multiplier.
+    #[prost(double, tag = "4")]
+    pub backoff_multiplier: f64,
+}
+/// TTL configuration for resources.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct TimeToLive {
+    /// Duration until expiration.
+    #[prost(message, optional, tag = "1")]
+    pub ttl: ::core::option::Option<::prost_types::Duration>,
+    /// Absolute expiration timestamp.
+    #[prost(message, optional, tag = "2")]
+    pub expires_at: ::core::option::Option<::prost_types::Timestamp>,
+}

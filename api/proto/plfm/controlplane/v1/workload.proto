@@ -1,0 +1,141 @@
+syntax = "proto3";
+
+package plfm.controlplane.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Workload state enumeration.
+enum WorkloadState {
+  // Unspecified workload state.
+  WORKLOAD_STATE_UNSPECIFIED = 0;
+  // Workload is pending scheduling.
+  WORKLOAD_STATE_PENDING = 1;
+  // Workload is scheduled and starting.
+  WORKLOAD_STATE_STARTING = 2;
+  // Workload is running.
+  WORKLOAD_STATE_RUNNING = 3;
+  // Workload is draining.
+  WORKLOAD_STATE_DRAINING = 4;
+  // Workload is stopped.
+  WORKLOAD_STATE_STOPPED = 5;
+  // Workload has failed.
+  WORKLOAD_STATE_FAILED = 6;
+}
+
+// Process type configuration.
+message ProcessConfig {
+  // Process type name.
+  string name = 1;
+  // Number of instances to run.
+  int32 count = 2;
+  // Entrypoint command override.
+  repeated string command = 3;
+  // CPU request in millicores.
+  int32 cpu_millicores = 4;
+  // Memory limit in bytes.
+  int64 memory_bytes = 5;
+}
+
+// Workload resource representing a running process group.
+message Workload {
+  // Workload identifier.
+  string id = 1;
+  // Application identifier.
+  string app_id = 2;
+  // Environment identifier.
+  string env_id = 3;
+  // Release identifier.
+  string release_id = 4;
+  // Process type name.
+  string process_type = 5;
+  // Current workload state.
+  WorkloadState state = 6;
+  // Desired instance count.
+  int32 desired_count = 7;
+  // Actual running instance count.
+  int32 running_count = 8;
+  // Creation timestamp.
+  google.protobuf.Timestamp created_at = 9;
+  // Last update timestamp.
+  google.protobuf.Timestamp updated_at = 10;
+}
+
+// Request payload for scaling a workload.
+message ScaleWorkloadRequest {
+  // Application identifier.
+  string app_id = 1;
+  // Environment identifier.
+  string env_id = 2;
+  // Process type to scale.
+  string process_type = 3;
+  // Target instance count.
+  int32 count = 4;
+}
+
+// Request payload for listing workloads.
+message ListWorkloadsRequest {
+  // Application identifier.
+  string app_id = 1;
+  // Optional environment filter.
+  optional string env_id = 2;
+  // Maximum number of results.
+  optional int32 limit = 3;
+  // Pagination cursor.
+  optional string cursor = 4;
+}
+
+// Response payload for workload listings.
+message ListWorkloadsResponse {
+  // Workloads in the response.
+  repeated Workload items = 1;
+  // Pagination cursor for the next page.
+  optional string next_cursor = 2;
+}
+
+// Request payload for getting a workload.
+message GetWorkloadRequest {
+  // Workload identifier.
+  string workload_id = 1;
+}
+
+// Request payload for restarting a workload.
+message RestartWorkloadRequest {
+  // Application identifier.
+  string app_id = 1;
+  // Environment identifier.
+  string env_id = 2;
+  // Process type to restart.
+  string process_type = 3;
+  // Whether to perform a rolling restart.
+  bool rolling = 4;
+}
+
+// Response payload for getting a workload.
+message GetWorkloadResponse {
+  // Retrieved workload.
+  Workload workload = 1;
+}
+
+// Response payload for scaling a workload.
+message ScaleWorkloadResponse {
+  // Scaled workload.
+  Workload workload = 1;
+}
+
+// Response payload for restarting a workload.
+message RestartWorkloadResponse {
+  // Restarted workload.
+  Workload workload = 1;
+}
+
+// Workload service for managing running workloads.
+service WorkloadService {
+  // Gets a workload by identifier.
+  rpc GetWorkload(GetWorkloadRequest) returns (GetWorkloadResponse);
+  // Lists workloads for an application.
+  rpc ListWorkloads(ListWorkloadsRequest) returns (ListWorkloadsResponse);
+  // Scales a workload to a target count.
+  rpc ScaleWorkload(ScaleWorkloadRequest) returns (ScaleWorkloadResponse);
+  // Restarts workload instances.
+  rpc RestartWorkload(RestartWorkloadRequest) returns (RestartWorkloadResponse);
+}

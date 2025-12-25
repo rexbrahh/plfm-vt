@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+package plfm.controlplane.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Release state enumeration.
+enum ReleaseState {
+  // Unspecified release state.
+  RELEASE_STATE_UNSPECIFIED = 0;
+  // Release is pending validation.
+  RELEASE_STATE_PENDING = 1;
+  // Release is being built.
+  RELEASE_STATE_BUILDING = 2;
+  // Release is ready for deployment.
+  RELEASE_STATE_READY = 3;
+  // Release is currently deployed.
+  RELEASE_STATE_DEPLOYED = 4;
+  // Release deployment failed.
+  RELEASE_STATE_FAILED = 5;
+  // Release has been superseded.
+  RELEASE_STATE_SUPERSEDED = 6;
+  // Release was rolled back.
+  RELEASE_STATE_ROLLED_BACK = 7;
+}
+
+// Release resource representing a deployable version of an app.
+message Release {
+  // Release identifier.
+  string id = 1;
+  // Application identifier.
+  string app_id = 2;
+  // Environment identifier for the release.
+  string env_id = 3;
+  // Sequential release version number.
+  int32 version = 4;
+  // Current release state.
+  ReleaseState state = 5;
+  // OCI image reference.
+  string image_ref = 6;
+  // Resolved image digest.
+  string image_digest = 7;
+  // Manifest hash used to build the release.
+  string manifest_hash = 8;
+  // Entrypoint command override.
+  repeated string command = 9;
+  // Actor who created the release.
+  string created_by = 10;
+  // Creation timestamp.
+  google.protobuf.Timestamp created_at = 11;
+  // Deployment timestamp when applicable.
+  optional google.protobuf.Timestamp deployed_at = 12;
+  // Optional deployment notes.
+  optional string notes = 13;
+}
+
+// Request payload for creating a release.
+message CreateReleaseRequest {
+  // Target application identifier.
+  string app_id = 1;
+  // Target environment identifier.
+  string env_id = 2;
+  // OCI image reference.
+  string image_ref = 3;
+  // Optional entrypoint command override.
+  repeated string command = 4;
+  // Optional deployment notes.
+  optional string notes = 5;
+}
+
+// Request payload for listing releases.
+message ListReleasesRequest {
+  // Application identifier.
+  string app_id = 1;
+  // Optional environment filter.
+  optional string env_id = 2;
+  // Maximum number of results.
+  optional int32 limit = 3;
+  // Pagination cursor.
+  optional string cursor = 4;
+}
+
+// Response payload for release listings.
+message ListReleasesResponse {
+  // Releases in the response.
+  repeated Release items = 1;
+  // Pagination cursor for the next page.
+  optional string next_cursor = 2;
+}
+
+// Request payload for getting a release.
+message GetReleaseRequest {
+  // Release identifier.
+  string release_id = 1;
+}
+
+// Request payload for deploying a release.
+message DeployReleaseRequest {
+  // Release identifier to deploy.
+  string release_id = 1;
+  // Target environment identifier.
+  string env_id = 2;
+  // Optional deployment strategy override.
+  optional string strategy = 3;
+}
+
+// Request payload for rolling back to a previous release.
+message RollbackReleaseRequest {
+  // Application identifier.
+  string app_id = 1;
+  // Environment identifier.
+  string env_id = 2;
+  // Optional target release version to rollback to.
+  optional int32 target_version = 3;
+}
+
+// Response payload for creating a release.
+message CreateReleaseResponse {
+  // Created release.
+  Release release = 1;
+}
+
+// Response payload for getting a release.
+message GetReleaseResponse {
+  // Retrieved release.
+  Release release = 1;
+}
+
+// Response payload for deploying a release.
+message DeployReleaseResponse {
+  // Deployed release.
+  Release release = 1;
+}
+
+// Response payload for rolling back a release.
+message RollbackReleaseResponse {
+  // Rolled back release.
+  Release release = 1;
+}
+
+// Release service for managing application releases.
+service ReleaseService {
+  // Creates a new release.
+  rpc CreateRelease(CreateReleaseRequest) returns (CreateReleaseResponse);
+  // Gets a release by identifier.
+  rpc GetRelease(GetReleaseRequest) returns (GetReleaseResponse);
+  // Lists releases for an application.
+  rpc ListReleases(ListReleasesRequest) returns (ListReleasesResponse);
+  // Deploys a release to an environment.
+  rpc DeployRelease(DeployReleaseRequest) returns (DeployReleaseResponse);
+  // Rolls back to a previous release.
+  rpc RollbackRelease(RollbackReleaseRequest) returns (RollbackReleaseResponse);
+}

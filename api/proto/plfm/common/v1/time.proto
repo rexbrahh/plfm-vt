@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package plfm.common.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// Time range for filtering queries.
+message TimeRange {
+  // Start of the time range (inclusive).
+  google.protobuf.Timestamp start = 1;
+  // End of the time range (exclusive).
+  google.protobuf.Timestamp end = 2;
+}
+
+// Deadline configuration for operations.
+message Deadline {
+  // Absolute deadline timestamp.
+  google.protobuf.Timestamp deadline_at = 1;
+  // Relative timeout duration from request time.
+  google.protobuf.Duration timeout = 2;
+}
+
+// Retry configuration for operations.
+message RetryPolicy {
+  // Maximum number of retry attempts.
+  int32 max_attempts = 1;
+  // Initial backoff duration.
+  google.protobuf.Duration initial_backoff = 2;
+  // Maximum backoff duration.
+  google.protobuf.Duration max_backoff = 3;
+  // Backoff multiplier.
+  double backoff_multiplier = 4;
+}
+
+// TTL configuration for resources.
+message TimeToLive {
+  // Duration until expiration.
+  google.protobuf.Duration ttl = 1;
+  // Absolute expiration timestamp.
+  google.protobuf.Timestamp expires_at = 2;
+}

@@ -1112,6 +1112,580 @@ pub mod node_agent_server {
         const NAME: &'static str = SERVICE_NAME;
     }
 }
+/// CPU usage sample.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct CpuUsage {
+    /// User CPU time in nanoseconds.
+    #[prost(int64, tag = "1")]
+    pub user_nanos: i64,
+    /// System CPU time in nanoseconds.
+    #[prost(int64, tag = "2")]
+    pub system_nanos: i64,
+    /// Total CPU time in nanoseconds.
+    #[prost(int64, tag = "3")]
+    pub total_nanos: i64,
+    /// CPU usage percentage.
+    #[prost(double, tag = "4")]
+    pub percent: f64,
+}
+/// Memory usage sample.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct MemoryUsage {
+    /// Used memory in bytes.
+    #[prost(int64, tag = "1")]
+    pub used_bytes: i64,
+    /// Available memory in bytes.
+    #[prost(int64, tag = "2")]
+    pub available_bytes: i64,
+    /// Memory limit in bytes.
+    #[prost(int64, tag = "3")]
+    pub limit_bytes: i64,
+    /// Memory usage percentage.
+    #[prost(double, tag = "4")]
+    pub percent: f64,
+}
+/// Disk usage sample.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct DiskUsage {
+    /// Used disk space in bytes.
+    #[prost(int64, tag = "1")]
+    pub used_bytes: i64,
+    /// Available disk space in bytes.
+    #[prost(int64, tag = "2")]
+    pub available_bytes: i64,
+    /// Total disk space in bytes.
+    #[prost(int64, tag = "3")]
+    pub total_bytes: i64,
+    /// Read bytes since boot.
+    #[prost(int64, tag = "4")]
+    pub read_bytes: i64,
+    /// Written bytes since boot.
+    #[prost(int64, tag = "5")]
+    pub write_bytes: i64,
+}
+/// Network usage sample.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct NetworkUsage {
+    /// Received bytes since boot.
+    #[prost(int64, tag = "1")]
+    pub rx_bytes: i64,
+    /// Transmitted bytes since boot.
+    #[prost(int64, tag = "2")]
+    pub tx_bytes: i64,
+    /// Received packets since boot.
+    #[prost(int64, tag = "3")]
+    pub rx_packets: i64,
+    /// Transmitted packets since boot.
+    #[prost(int64, tag = "4")]
+    pub tx_packets: i64,
+    /// Dropped packets since boot.
+    #[prost(int64, tag = "5")]
+    pub dropped_packets: i64,
+}
+/// Resource usage snapshot.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct ResourceUsage {
+    /// Sample timestamp.
+    #[prost(message, optional, tag = "1")]
+    pub sampled_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// CPU usage sample.
+    #[prost(message, optional, tag = "2")]
+    pub cpu: ::core::option::Option<CpuUsage>,
+    /// Memory usage sample.
+    #[prost(message, optional, tag = "3")]
+    pub memory: ::core::option::Option<MemoryUsage>,
+    /// Disk usage sample.
+    #[prost(message, optional, tag = "4")]
+    pub disk: ::core::option::Option<DiskUsage>,
+    /// Network usage sample.
+    #[prost(message, optional, tag = "5")]
+    pub network: ::core::option::Option<NetworkUsage>,
+}
+/// Health check status.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct HealthCheckStatus {
+    /// Last check timestamp.
+    #[prost(message, optional, tag = "1")]
+    pub checked_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Check result.
+    #[prost(enumeration = "HealthCheckResult", tag = "2")]
+    pub result: i32,
+    /// Optional error message.
+    #[prost(string, optional, tag = "3")]
+    pub message: ::core::option::Option<::prost::alloc::string::String>,
+    /// Consecutive failure count.
+    #[prost(int32, tag = "4")]
+    pub consecutive_failures: i32,
+}
+/// VM runtime status report.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RuntimeStatus {
+    /// Instance identifier.
+    #[prost(string, tag = "1")]
+    pub instance_id: ::prost::alloc::string::String,
+    /// Current VM state.
+    #[prost(enumeration = "VmState", tag = "2")]
+    pub state: i32,
+    /// Boot identifier.
+    #[prost(string, optional, tag = "3")]
+    pub boot_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Process ID on the host.
+    #[prost(int32, optional, tag = "4")]
+    pub pid: ::core::option::Option<i32>,
+    /// VM start timestamp.
+    #[prost(message, optional, tag = "5")]
+    pub started_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Resource usage sample.
+    #[prost(message, optional, tag = "6")]
+    pub resources: ::core::option::Option<ResourceUsage>,
+    /// Health check status.
+    #[prost(message, optional, tag = "7")]
+    pub health: ::core::option::Option<HealthCheckStatus>,
+    /// Optional exit code if stopped.
+    #[prost(int32, optional, tag = "8")]
+    pub exit_code: ::core::option::Option<i32>,
+    /// Optional error message if failed.
+    #[prost(string, optional, tag = "9")]
+    pub error_message: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request payload for streaming runtime status.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StreamRuntimeStatusRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Optional instance filter.
+    #[prost(string, repeated, tag = "2")]
+    pub instance_ids: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Sample interval in seconds.
+    #[prost(int32, tag = "3")]
+    pub interval_seconds: i32,
+}
+/// Runtime status stream response.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StreamRuntimeStatusResponse {
+    /// Status reports in this update.
+    #[prost(message, repeated, tag = "1")]
+    pub statuses: ::prost::alloc::vec::Vec<RuntimeStatus>,
+    /// Response timestamp.
+    #[prost(message, optional, tag = "2")]
+    pub updated_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// VM runtime state enumeration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum VmState {
+    /// Unspecified VM state.
+    Unspecified = 0,
+    /// VM is being created.
+    Creating = 1,
+    /// VM is booting.
+    Booting = 2,
+    /// VM is running.
+    Running = 3,
+    /// VM is paused.
+    Paused = 4,
+    /// VM is shutting down.
+    Stopping = 5,
+    /// VM has stopped.
+    Stopped = 6,
+    /// VM has failed.
+    Failed = 7,
+}
+impl VmState {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "VM_STATE_UNSPECIFIED",
+            Self::Creating => "VM_STATE_CREATING",
+            Self::Booting => "VM_STATE_BOOTING",
+            Self::Running => "VM_STATE_RUNNING",
+            Self::Paused => "VM_STATE_PAUSED",
+            Self::Stopping => "VM_STATE_STOPPING",
+            Self::Stopped => "VM_STATE_STOPPED",
+            Self::Failed => "VM_STATE_FAILED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "VM_STATE_UNSPECIFIED" => Some(Self::Unspecified),
+            "VM_STATE_CREATING" => Some(Self::Creating),
+            "VM_STATE_BOOTING" => Some(Self::Booting),
+            "VM_STATE_RUNNING" => Some(Self::Running),
+            "VM_STATE_PAUSED" => Some(Self::Paused),
+            "VM_STATE_STOPPING" => Some(Self::Stopping),
+            "VM_STATE_STOPPED" => Some(Self::Stopped),
+            "VM_STATE_FAILED" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+/// Health check result enumeration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum HealthCheckResult {
+    /// Unspecified health check result.
+    Unspecified = 0,
+    /// Health check passed.
+    Pass = 1,
+    /// Health check failed.
+    Fail = 2,
+    /// Health check timed out.
+    Timeout = 3,
+    /// Health check was skipped.
+    Skip = 4,
+}
+impl HealthCheckResult {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "HEALTH_CHECK_RESULT_UNSPECIFIED",
+            Self::Pass => "HEALTH_CHECK_RESULT_PASS",
+            Self::Fail => "HEALTH_CHECK_RESULT_FAIL",
+            Self::Timeout => "HEALTH_CHECK_RESULT_TIMEOUT",
+            Self::Skip => "HEALTH_CHECK_RESULT_SKIP",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "HEALTH_CHECK_RESULT_UNSPECIFIED" => Some(Self::Unspecified),
+            "HEALTH_CHECK_RESULT_PASS" => Some(Self::Pass),
+            "HEALTH_CHECK_RESULT_FAIL" => Some(Self::Fail),
+            "HEALTH_CHECK_RESULT_TIMEOUT" => Some(Self::Timeout),
+            "HEALTH_CHECK_RESULT_SKIP" => Some(Self::Skip),
+            _ => None,
+        }
+    }
+}
+/// Generated client implementations.
+pub mod runtime_service_client {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    /// Runtime service for VM status monitoring.
+    #[derive(Debug, Clone)]
+    pub struct RuntimeServiceClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl RuntimeServiceClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> RuntimeServiceClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::BoxBody>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> RuntimeServiceClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+        {
+            RuntimeServiceClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        /// Streams runtime status updates.
+        pub async fn stream_runtime_status(
+            &mut self,
+            request: impl tonic::IntoRequest<super::StreamRuntimeStatusRequest>,
+        ) -> std::result::Result<
+            tonic::Response<tonic::codec::Streaming<super::StreamRuntimeStatusResponse>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.RuntimeService/StreamRuntimeStatus",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.agent.v1.RuntimeService",
+                        "StreamRuntimeStatus",
+                    ),
+                );
+            self.inner.server_streaming(req, path, codec).await
+        }
+    }
+}
+/// Generated server implementations.
+pub mod runtime_service_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with RuntimeServiceServer.
+    #[async_trait]
+    pub trait RuntimeService: std::marker::Send + std::marker::Sync + 'static {
+        /// Server streaming response type for the StreamRuntimeStatus method.
+        type StreamRuntimeStatusStream: tonic::codegen::tokio_stream::Stream<
+                Item = std::result::Result<
+                    super::StreamRuntimeStatusResponse,
+                    tonic::Status,
+                >,
+            >
+            + std::marker::Send
+            + 'static;
+        /// Streams runtime status updates.
+        async fn stream_runtime_status(
+            &self,
+            request: tonic::Request<super::StreamRuntimeStatusRequest>,
+        ) -> std::result::Result<
+            tonic::Response<Self::StreamRuntimeStatusStream>,
+            tonic::Status,
+        >;
+    }
+    /// Runtime service for VM status monitoring.
+    #[derive(Debug)]
+    pub struct RuntimeServiceServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> RuntimeServiceServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for RuntimeServiceServer<T>
+    where
+        T: RuntimeService,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::BoxBody>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/plfm.agent.v1.RuntimeService/StreamRuntimeStatus" => {
+                    #[allow(non_camel_case_types)]
+                    struct StreamRuntimeStatusSvc<T: RuntimeService>(pub Arc<T>);
+                    impl<
+                        T: RuntimeService,
+                    > tonic::server::ServerStreamingService<
+                        super::StreamRuntimeStatusRequest,
+                    > for StreamRuntimeStatusSvc<T> {
+                        type Response = super::StreamRuntimeStatusResponse;
+                        type ResponseStream = T::StreamRuntimeStatusStream;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::ResponseStream>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::StreamRuntimeStatusRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as RuntimeService>::stream_runtime_status(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = StreamRuntimeStatusSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.server_streaming(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(empty_body());
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for RuntimeServiceServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "plfm.agent.v1.RuntimeService";
+    impl<T> tonic::server::NamedService for RuntimeServiceServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
+    }
+}
 /// Request to configure overlay network.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct ConfigureOverlayRequest {

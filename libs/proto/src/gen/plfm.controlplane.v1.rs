@@ -109,6 +109,1590 @@ pub struct ListEnvsResponse {
     #[prost(string, optional, tag = "2")]
     pub next_cursor: ::core::option::Option<::prost::alloc::string::String>,
 }
+/// Release resource representing a deployable version of an app.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Release {
+    /// Release identifier.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Application identifier.
+    #[prost(string, tag = "2")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Environment identifier for the release.
+    #[prost(string, tag = "3")]
+    pub env_id: ::prost::alloc::string::String,
+    /// Sequential release version number.
+    #[prost(int32, tag = "4")]
+    pub version: i32,
+    /// Current release state.
+    #[prost(enumeration = "ReleaseState", tag = "5")]
+    pub state: i32,
+    /// OCI image reference.
+    #[prost(string, tag = "6")]
+    pub image_ref: ::prost::alloc::string::String,
+    /// Resolved image digest.
+    #[prost(string, tag = "7")]
+    pub image_digest: ::prost::alloc::string::String,
+    /// Manifest hash used to build the release.
+    #[prost(string, tag = "8")]
+    pub manifest_hash: ::prost::alloc::string::String,
+    /// Entrypoint command override.
+    #[prost(string, repeated, tag = "9")]
+    pub command: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Actor who created the release.
+    #[prost(string, tag = "10")]
+    pub created_by: ::prost::alloc::string::String,
+    /// Creation timestamp.
+    #[prost(message, optional, tag = "11")]
+    pub created_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Deployment timestamp when applicable.
+    #[prost(message, optional, tag = "12")]
+    pub deployed_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Optional deployment notes.
+    #[prost(string, optional, tag = "13")]
+    pub notes: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request payload for creating a release.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateReleaseRequest {
+    /// Target application identifier.
+    #[prost(string, tag = "1")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Target environment identifier.
+    #[prost(string, tag = "2")]
+    pub env_id: ::prost::alloc::string::String,
+    /// OCI image reference.
+    #[prost(string, tag = "3")]
+    pub image_ref: ::prost::alloc::string::String,
+    /// Optional entrypoint command override.
+    #[prost(string, repeated, tag = "4")]
+    pub command: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Optional deployment notes.
+    #[prost(string, optional, tag = "5")]
+    pub notes: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request payload for listing releases.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListReleasesRequest {
+    /// Application identifier.
+    #[prost(string, tag = "1")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Optional environment filter.
+    #[prost(string, optional, tag = "2")]
+    pub env_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Maximum number of results.
+    #[prost(int32, optional, tag = "3")]
+    pub limit: ::core::option::Option<i32>,
+    /// Pagination cursor.
+    #[prost(string, optional, tag = "4")]
+    pub cursor: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response payload for release listings.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListReleasesResponse {
+    /// Releases in the response.
+    #[prost(message, repeated, tag = "1")]
+    pub items: ::prost::alloc::vec::Vec<Release>,
+    /// Pagination cursor for the next page.
+    #[prost(string, optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request payload for getting a release.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetReleaseRequest {
+    /// Release identifier.
+    #[prost(string, tag = "1")]
+    pub release_id: ::prost::alloc::string::String,
+}
+/// Request payload for deploying a release.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DeployReleaseRequest {
+    /// Release identifier to deploy.
+    #[prost(string, tag = "1")]
+    pub release_id: ::prost::alloc::string::String,
+    /// Target environment identifier.
+    #[prost(string, tag = "2")]
+    pub env_id: ::prost::alloc::string::String,
+    /// Optional deployment strategy override.
+    #[prost(string, optional, tag = "3")]
+    pub strategy: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request payload for rolling back to a previous release.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RollbackReleaseRequest {
+    /// Application identifier.
+    #[prost(string, tag = "1")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Environment identifier.
+    #[prost(string, tag = "2")]
+    pub env_id: ::prost::alloc::string::String,
+    /// Optional target release version to rollback to.
+    #[prost(int32, optional, tag = "3")]
+    pub target_version: ::core::option::Option<i32>,
+}
+/// Response payload for creating a release.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateReleaseResponse {
+    /// Created release.
+    #[prost(message, optional, tag = "1")]
+    pub release: ::core::option::Option<Release>,
+}
+/// Response payload for getting a release.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetReleaseResponse {
+    /// Retrieved release.
+    #[prost(message, optional, tag = "1")]
+    pub release: ::core::option::Option<Release>,
+}
+/// Response payload for deploying a release.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DeployReleaseResponse {
+    /// Deployed release.
+    #[prost(message, optional, tag = "1")]
+    pub release: ::core::option::Option<Release>,
+}
+/// Response payload for rolling back a release.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RollbackReleaseResponse {
+    /// Rolled back release.
+    #[prost(message, optional, tag = "1")]
+    pub release: ::core::option::Option<Release>,
+}
+/// Release state enumeration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum ReleaseState {
+    /// Unspecified release state.
+    Unspecified = 0,
+    /// Release is pending validation.
+    Pending = 1,
+    /// Release is being built.
+    Building = 2,
+    /// Release is ready for deployment.
+    Ready = 3,
+    /// Release is currently deployed.
+    Deployed = 4,
+    /// Release deployment failed.
+    Failed = 5,
+    /// Release has been superseded.
+    Superseded = 6,
+    /// Release was rolled back.
+    RolledBack = 7,
+}
+impl ReleaseState {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "RELEASE_STATE_UNSPECIFIED",
+            Self::Pending => "RELEASE_STATE_PENDING",
+            Self::Building => "RELEASE_STATE_BUILDING",
+            Self::Ready => "RELEASE_STATE_READY",
+            Self::Deployed => "RELEASE_STATE_DEPLOYED",
+            Self::Failed => "RELEASE_STATE_FAILED",
+            Self::Superseded => "RELEASE_STATE_SUPERSEDED",
+            Self::RolledBack => "RELEASE_STATE_ROLLED_BACK",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "RELEASE_STATE_UNSPECIFIED" => Some(Self::Unspecified),
+            "RELEASE_STATE_PENDING" => Some(Self::Pending),
+            "RELEASE_STATE_BUILDING" => Some(Self::Building),
+            "RELEASE_STATE_READY" => Some(Self::Ready),
+            "RELEASE_STATE_DEPLOYED" => Some(Self::Deployed),
+            "RELEASE_STATE_FAILED" => Some(Self::Failed),
+            "RELEASE_STATE_SUPERSEDED" => Some(Self::Superseded),
+            "RELEASE_STATE_ROLLED_BACK" => Some(Self::RolledBack),
+            _ => None,
+        }
+    }
+}
+/// Generated client implementations.
+pub mod release_service_client {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    /// Release service for managing application releases.
+    #[derive(Debug, Clone)]
+    pub struct ReleaseServiceClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl ReleaseServiceClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> ReleaseServiceClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::BoxBody>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> ReleaseServiceClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+        {
+            ReleaseServiceClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        /// Creates a new release.
+        pub async fn create_release(
+            &mut self,
+            request: impl tonic::IntoRequest<super::CreateReleaseRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CreateReleaseResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.ReleaseService/CreateRelease",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.controlplane.v1.ReleaseService",
+                        "CreateRelease",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Gets a release by identifier.
+        pub async fn get_release(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetReleaseRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetReleaseResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.ReleaseService/GetRelease",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("plfm.controlplane.v1.ReleaseService", "GetRelease"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Lists releases for an application.
+        pub async fn list_releases(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ListReleasesRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListReleasesResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.ReleaseService/ListReleases",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.controlplane.v1.ReleaseService",
+                        "ListReleases",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Deploys a release to an environment.
+        pub async fn deploy_release(
+            &mut self,
+            request: impl tonic::IntoRequest<super::DeployReleaseRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::DeployReleaseResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.ReleaseService/DeployRelease",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.controlplane.v1.ReleaseService",
+                        "DeployRelease",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Rolls back to a previous release.
+        pub async fn rollback_release(
+            &mut self,
+            request: impl tonic::IntoRequest<super::RollbackReleaseRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RollbackReleaseResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.ReleaseService/RollbackRelease",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.controlplane.v1.ReleaseService",
+                        "RollbackRelease",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+    }
+}
+/// Generated server implementations.
+pub mod release_service_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with ReleaseServiceServer.
+    #[async_trait]
+    pub trait ReleaseService: std::marker::Send + std::marker::Sync + 'static {
+        /// Creates a new release.
+        async fn create_release(
+            &self,
+            request: tonic::Request<super::CreateReleaseRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CreateReleaseResponse>,
+            tonic::Status,
+        >;
+        /// Gets a release by identifier.
+        async fn get_release(
+            &self,
+            request: tonic::Request<super::GetReleaseRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetReleaseResponse>,
+            tonic::Status,
+        >;
+        /// Lists releases for an application.
+        async fn list_releases(
+            &self,
+            request: tonic::Request<super::ListReleasesRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListReleasesResponse>,
+            tonic::Status,
+        >;
+        /// Deploys a release to an environment.
+        async fn deploy_release(
+            &self,
+            request: tonic::Request<super::DeployReleaseRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::DeployReleaseResponse>,
+            tonic::Status,
+        >;
+        /// Rolls back to a previous release.
+        async fn rollback_release(
+            &self,
+            request: tonic::Request<super::RollbackReleaseRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RollbackReleaseResponse>,
+            tonic::Status,
+        >;
+    }
+    /// Release service for managing application releases.
+    #[derive(Debug)]
+    pub struct ReleaseServiceServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> ReleaseServiceServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for ReleaseServiceServer<T>
+    where
+        T: ReleaseService,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::BoxBody>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/plfm.controlplane.v1.ReleaseService/CreateRelease" => {
+                    #[allow(non_camel_case_types)]
+                    struct CreateReleaseSvc<T: ReleaseService>(pub Arc<T>);
+                    impl<
+                        T: ReleaseService,
+                    > tonic::server::UnaryService<super::CreateReleaseRequest>
+                    for CreateReleaseSvc<T> {
+                        type Response = super::CreateReleaseResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::CreateReleaseRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ReleaseService>::create_release(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = CreateReleaseSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.controlplane.v1.ReleaseService/GetRelease" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetReleaseSvc<T: ReleaseService>(pub Arc<T>);
+                    impl<
+                        T: ReleaseService,
+                    > tonic::server::UnaryService<super::GetReleaseRequest>
+                    for GetReleaseSvc<T> {
+                        type Response = super::GetReleaseResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetReleaseRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ReleaseService>::get_release(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetReleaseSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.controlplane.v1.ReleaseService/ListReleases" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListReleasesSvc<T: ReleaseService>(pub Arc<T>);
+                    impl<
+                        T: ReleaseService,
+                    > tonic::server::UnaryService<super::ListReleasesRequest>
+                    for ListReleasesSvc<T> {
+                        type Response = super::ListReleasesResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListReleasesRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ReleaseService>::list_releases(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListReleasesSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.controlplane.v1.ReleaseService/DeployRelease" => {
+                    #[allow(non_camel_case_types)]
+                    struct DeployReleaseSvc<T: ReleaseService>(pub Arc<T>);
+                    impl<
+                        T: ReleaseService,
+                    > tonic::server::UnaryService<super::DeployReleaseRequest>
+                    for DeployReleaseSvc<T> {
+                        type Response = super::DeployReleaseResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::DeployReleaseRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ReleaseService>::deploy_release(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = DeployReleaseSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.controlplane.v1.ReleaseService/RollbackRelease" => {
+                    #[allow(non_camel_case_types)]
+                    struct RollbackReleaseSvc<T: ReleaseService>(pub Arc<T>);
+                    impl<
+                        T: ReleaseService,
+                    > tonic::server::UnaryService<super::RollbackReleaseRequest>
+                    for RollbackReleaseSvc<T> {
+                        type Response = super::RollbackReleaseResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::RollbackReleaseRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as ReleaseService>::rollback_release(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = RollbackReleaseSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(empty_body());
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for ReleaseServiceServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "plfm.controlplane.v1.ReleaseService";
+    impl<T> tonic::server::NamedService for ReleaseServiceServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
+    }
+}
+/// Process type configuration.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ProcessConfig {
+    /// Process type name.
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Number of instances to run.
+    #[prost(int32, tag = "2")]
+    pub count: i32,
+    /// Entrypoint command override.
+    #[prost(string, repeated, tag = "3")]
+    pub command: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// CPU request in millicores.
+    #[prost(int32, tag = "4")]
+    pub cpu_millicores: i32,
+    /// Memory limit in bytes.
+    #[prost(int64, tag = "5")]
+    pub memory_bytes: i64,
+}
+/// Workload resource representing a running process group.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Workload {
+    /// Workload identifier.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Application identifier.
+    #[prost(string, tag = "2")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Environment identifier.
+    #[prost(string, tag = "3")]
+    pub env_id: ::prost::alloc::string::String,
+    /// Release identifier.
+    #[prost(string, tag = "4")]
+    pub release_id: ::prost::alloc::string::String,
+    /// Process type name.
+    #[prost(string, tag = "5")]
+    pub process_type: ::prost::alloc::string::String,
+    /// Current workload state.
+    #[prost(enumeration = "WorkloadState", tag = "6")]
+    pub state: i32,
+    /// Desired instance count.
+    #[prost(int32, tag = "7")]
+    pub desired_count: i32,
+    /// Actual running instance count.
+    #[prost(int32, tag = "8")]
+    pub running_count: i32,
+    /// Creation timestamp.
+    #[prost(message, optional, tag = "9")]
+    pub created_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Last update timestamp.
+    #[prost(message, optional, tag = "10")]
+    pub updated_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Request payload for scaling a workload.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScaleWorkloadRequest {
+    /// Application identifier.
+    #[prost(string, tag = "1")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Environment identifier.
+    #[prost(string, tag = "2")]
+    pub env_id: ::prost::alloc::string::String,
+    /// Process type to scale.
+    #[prost(string, tag = "3")]
+    pub process_type: ::prost::alloc::string::String,
+    /// Target instance count.
+    #[prost(int32, tag = "4")]
+    pub count: i32,
+}
+/// Request payload for listing workloads.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListWorkloadsRequest {
+    /// Application identifier.
+    #[prost(string, tag = "1")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Optional environment filter.
+    #[prost(string, optional, tag = "2")]
+    pub env_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Maximum number of results.
+    #[prost(int32, optional, tag = "3")]
+    pub limit: ::core::option::Option<i32>,
+    /// Pagination cursor.
+    #[prost(string, optional, tag = "4")]
+    pub cursor: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response payload for workload listings.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListWorkloadsResponse {
+    /// Workloads in the response.
+    #[prost(message, repeated, tag = "1")]
+    pub items: ::prost::alloc::vec::Vec<Workload>,
+    /// Pagination cursor for the next page.
+    #[prost(string, optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request payload for getting a workload.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetWorkloadRequest {
+    /// Workload identifier.
+    #[prost(string, tag = "1")]
+    pub workload_id: ::prost::alloc::string::String,
+}
+/// Request payload for restarting a workload.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RestartWorkloadRequest {
+    /// Application identifier.
+    #[prost(string, tag = "1")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Environment identifier.
+    #[prost(string, tag = "2")]
+    pub env_id: ::prost::alloc::string::String,
+    /// Process type to restart.
+    #[prost(string, tag = "3")]
+    pub process_type: ::prost::alloc::string::String,
+    /// Whether to perform a rolling restart.
+    #[prost(bool, tag = "4")]
+    pub rolling: bool,
+}
+/// Response payload for getting a workload.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetWorkloadResponse {
+    /// Retrieved workload.
+    #[prost(message, optional, tag = "1")]
+    pub workload: ::core::option::Option<Workload>,
+}
+/// Response payload for scaling a workload.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ScaleWorkloadResponse {
+    /// Scaled workload.
+    #[prost(message, optional, tag = "1")]
+    pub workload: ::core::option::Option<Workload>,
+}
+/// Response payload for restarting a workload.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RestartWorkloadResponse {
+    /// Restarted workload.
+    #[prost(message, optional, tag = "1")]
+    pub workload: ::core::option::Option<Workload>,
+}
+/// Workload state enumeration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum WorkloadState {
+    /// Unspecified workload state.
+    Unspecified = 0,
+    /// Workload is pending scheduling.
+    Pending = 1,
+    /// Workload is scheduled and starting.
+    Starting = 2,
+    /// Workload is running.
+    Running = 3,
+    /// Workload is draining.
+    Draining = 4,
+    /// Workload is stopped.
+    Stopped = 5,
+    /// Workload has failed.
+    Failed = 6,
+}
+impl WorkloadState {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "WORKLOAD_STATE_UNSPECIFIED",
+            Self::Pending => "WORKLOAD_STATE_PENDING",
+            Self::Starting => "WORKLOAD_STATE_STARTING",
+            Self::Running => "WORKLOAD_STATE_RUNNING",
+            Self::Draining => "WORKLOAD_STATE_DRAINING",
+            Self::Stopped => "WORKLOAD_STATE_STOPPED",
+            Self::Failed => "WORKLOAD_STATE_FAILED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "WORKLOAD_STATE_UNSPECIFIED" => Some(Self::Unspecified),
+            "WORKLOAD_STATE_PENDING" => Some(Self::Pending),
+            "WORKLOAD_STATE_STARTING" => Some(Self::Starting),
+            "WORKLOAD_STATE_RUNNING" => Some(Self::Running),
+            "WORKLOAD_STATE_DRAINING" => Some(Self::Draining),
+            "WORKLOAD_STATE_STOPPED" => Some(Self::Stopped),
+            "WORKLOAD_STATE_FAILED" => Some(Self::Failed),
+            _ => None,
+        }
+    }
+}
+/// Generated client implementations.
+pub mod workload_service_client {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    /// Workload service for managing running workloads.
+    #[derive(Debug, Clone)]
+    pub struct WorkloadServiceClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl WorkloadServiceClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> WorkloadServiceClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::BoxBody>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> WorkloadServiceClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+        {
+            WorkloadServiceClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        /// Gets a workload by identifier.
+        pub async fn get_workload(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetWorkloadRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetWorkloadResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.WorkloadService/GetWorkload",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.controlplane.v1.WorkloadService",
+                        "GetWorkload",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Lists workloads for an application.
+        pub async fn list_workloads(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ListWorkloadsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListWorkloadsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.WorkloadService/ListWorkloads",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.controlplane.v1.WorkloadService",
+                        "ListWorkloads",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Scales a workload to a target count.
+        pub async fn scale_workload(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ScaleWorkloadRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ScaleWorkloadResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.WorkloadService/ScaleWorkload",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.controlplane.v1.WorkloadService",
+                        "ScaleWorkload",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Restarts workload instances.
+        pub async fn restart_workload(
+            &mut self,
+            request: impl tonic::IntoRequest<super::RestartWorkloadRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RestartWorkloadResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.WorkloadService/RestartWorkload",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.controlplane.v1.WorkloadService",
+                        "RestartWorkload",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+    }
+}
+/// Generated server implementations.
+pub mod workload_service_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with WorkloadServiceServer.
+    #[async_trait]
+    pub trait WorkloadService: std::marker::Send + std::marker::Sync + 'static {
+        /// Gets a workload by identifier.
+        async fn get_workload(
+            &self,
+            request: tonic::Request<super::GetWorkloadRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetWorkloadResponse>,
+            tonic::Status,
+        >;
+        /// Lists workloads for an application.
+        async fn list_workloads(
+            &self,
+            request: tonic::Request<super::ListWorkloadsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ListWorkloadsResponse>,
+            tonic::Status,
+        >;
+        /// Scales a workload to a target count.
+        async fn scale_workload(
+            &self,
+            request: tonic::Request<super::ScaleWorkloadRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ScaleWorkloadResponse>,
+            tonic::Status,
+        >;
+        /// Restarts workload instances.
+        async fn restart_workload(
+            &self,
+            request: tonic::Request<super::RestartWorkloadRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RestartWorkloadResponse>,
+            tonic::Status,
+        >;
+    }
+    /// Workload service for managing running workloads.
+    #[derive(Debug)]
+    pub struct WorkloadServiceServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> WorkloadServiceServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for WorkloadServiceServer<T>
+    where
+        T: WorkloadService,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::BoxBody>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/plfm.controlplane.v1.WorkloadService/GetWorkload" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetWorkloadSvc<T: WorkloadService>(pub Arc<T>);
+                    impl<
+                        T: WorkloadService,
+                    > tonic::server::UnaryService<super::GetWorkloadRequest>
+                    for GetWorkloadSvc<T> {
+                        type Response = super::GetWorkloadResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetWorkloadRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WorkloadService>::get_workload(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetWorkloadSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.controlplane.v1.WorkloadService/ListWorkloads" => {
+                    #[allow(non_camel_case_types)]
+                    struct ListWorkloadsSvc<T: WorkloadService>(pub Arc<T>);
+                    impl<
+                        T: WorkloadService,
+                    > tonic::server::UnaryService<super::ListWorkloadsRequest>
+                    for ListWorkloadsSvc<T> {
+                        type Response = super::ListWorkloadsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ListWorkloadsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WorkloadService>::list_workloads(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ListWorkloadsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.controlplane.v1.WorkloadService/ScaleWorkload" => {
+                    #[allow(non_camel_case_types)]
+                    struct ScaleWorkloadSvc<T: WorkloadService>(pub Arc<T>);
+                    impl<
+                        T: WorkloadService,
+                    > tonic::server::UnaryService<super::ScaleWorkloadRequest>
+                    for ScaleWorkloadSvc<T> {
+                        type Response = super::ScaleWorkloadResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ScaleWorkloadRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WorkloadService>::scale_workload(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ScaleWorkloadSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.controlplane.v1.WorkloadService/RestartWorkload" => {
+                    #[allow(non_camel_case_types)]
+                    struct RestartWorkloadSvc<T: WorkloadService>(pub Arc<T>);
+                    impl<
+                        T: WorkloadService,
+                    > tonic::server::UnaryService<super::RestartWorkloadRequest>
+                    for RestartWorkloadSvc<T> {
+                        type Response = super::RestartWorkloadResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::RestartWorkloadRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as WorkloadService>::restart_workload(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = RestartWorkloadSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(empty_body());
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for WorkloadServiceServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "plfm.controlplane.v1.WorkloadService";
+    impl<T> tonic::server::NamedService for WorkloadServiceServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
+    }
+}
 /// Route resource for L4 ingress configuration.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct Route {

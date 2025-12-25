@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package plfm.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// VM runtime state enumeration.
+enum VmState {
+  // Unspecified VM state.
+  VM_STATE_UNSPECIFIED = 0;
+  // VM is being created.
+  VM_STATE_CREATING = 1;
+  // VM is booting.
+  VM_STATE_BOOTING = 2;
+  // VM is running.
+  VM_STATE_RUNNING = 3;
+  // VM is paused.
+  VM_STATE_PAUSED = 4;
+  // VM is shutting down.
+  VM_STATE_STOPPING = 5;
+  // VM has stopped.
+  VM_STATE_STOPPED = 6;
+  // VM has failed.
+  VM_STATE_FAILED = 7;
+}
+
+// Health check result enumeration.
+enum HealthCheckResult {
+  // Unspecified health check result.
+  HEALTH_CHECK_RESULT_UNSPECIFIED = 0;
+  // Health check passed.
+  HEALTH_CHECK_RESULT_PASS = 1;
+  // Health check failed.
+  HEALTH_CHECK_RESULT_FAIL = 2;
+  // Health check timed out.
+  HEALTH_CHECK_RESULT_TIMEOUT = 3;
+  // Health check was skipped.
+  HEALTH_CHECK_RESULT_SKIP = 4;
+}
+
+// CPU usage sample.
+message CpuUsage {
+  // User CPU time in nanoseconds.
+  int64 user_nanos = 1;
+  // System CPU time in nanoseconds.
+  int64 system_nanos = 2;
+  // Total CPU time in nanoseconds.
+  int64 total_nanos = 3;
+  // CPU usage percentage.
+  double percent = 4;
+}
+
+// Memory usage sample.
+message MemoryUsage {
+  // Used memory in bytes.
+  int64 used_bytes = 1;
+  // Available memory in bytes.
+  int64 available_bytes = 2;
+  // Memory limit in bytes.
+  int64 limit_bytes = 3;
+  // Memory usage percentage.
+  double percent = 4;
+}
+
+// Disk usage sample.
+message DiskUsage {
+  // Used disk space in bytes.
+  int64 used_bytes = 1;
+  // Available disk space in bytes.
+  int64 available_bytes = 2;
+  // Total disk space in bytes.
+  int64 total_bytes = 3;
+  // Read bytes since boot.
+  int64 read_bytes = 4;
+  // Written bytes since boot.
+  int64 write_bytes = 5;
+}
+
+// Network usage sample.
+message NetworkUsage {
+  // Received bytes since boot.
+  int64 rx_bytes = 1;
+  // Transmitted bytes since boot.
+  int64 tx_bytes = 2;
+  // Received packets since boot.
+  int64 rx_packets = 3;
+  // Transmitted packets since boot.
+  int64 tx_packets = 4;
+  // Dropped packets since boot.
+  int64 dropped_packets = 5;
+}
+
+// Resource usage snapshot.
+message ResourceUsage {
+  // Sample timestamp.
+  google.protobuf.Timestamp sampled_at = 1;
+  // CPU usage sample.
+  CpuUsage cpu = 2;
+  // Memory usage sample.
+  MemoryUsage memory = 3;
+  // Disk usage sample.
+  optional DiskUsage disk = 4;
+  // Network usage sample.
+  optional NetworkUsage network = 5;
+}
+
+// Health check status.
+message HealthCheckStatus {
+  // Last check timestamp.
+  google.protobuf.Timestamp checked_at = 1;
+  // Check result.
+  HealthCheckResult result = 2;
+  // Optional error message.
+  optional string message = 3;
+  // Consecutive failure count.
+  int32 consecutive_failures = 4;
+}
+
+// VM runtime status report.
+message RuntimeStatus {
+  // Instance identifier.
+  string instance_id = 1;
+  // Current VM state.
+  VmState state = 2;
+  // Boot identifier.
+  optional string boot_id = 3;
+  // Process ID on the host.
+  optional int32 pid = 4;
+  // VM start timestamp.
+  optional google.protobuf.Timestamp started_at = 5;
+  // Resource usage sample.
+  optional ResourceUsage resources = 6;
+  // Health check status.
+  optional HealthCheckStatus health = 7;
+  // Optional exit code if stopped.
+  optional int32 exit_code = 8;
+  // Optional error message if failed.
+  optional string error_message = 9;
+}
+
+// Request payload for streaming runtime status.
+message StreamRuntimeStatusRequest {
+  // Node identifier.
+  string node_id = 1;
+  // Optional instance filter.
+  repeated string instance_ids = 2;
+  // Sample interval in seconds.
+  int32 interval_seconds = 3;
+}
+
+// Runtime status stream response.
+message StreamRuntimeStatusResponse {
+  // Status reports in this update.
+  repeated RuntimeStatus statuses = 1;
+  // Response timestamp.
+  google.protobuf.Timestamp updated_at = 2;
+}
+
+// Runtime service for VM status monitoring.
+service RuntimeService {
+  // Streams runtime status updates.
+  rpc StreamRuntimeStatus(StreamRuntimeStatusRequest) returns (stream StreamRuntimeStatusResponse);
+}
