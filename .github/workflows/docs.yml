@@ -81,9 +81,16 @@ jobs:
         run: |
           npm install -g ajv-cli ajv-formats
           if [ -d "api/schemas" ] && ls api/schemas/*.json 1> /dev/null 2>&1; then
+            # Validate each schema, using all OTHER schemas as references for $ref resolution
             for schema in api/schemas/*.json; do
               echo "Validating $schema"
-              ajv compile -s "$schema" --spec=draft2020 -c ajv-formats || exit 1
+              ref_args=""
+              for ref in api/schemas/*.json; do
+                if [ "$ref" != "$schema" ]; then
+                  ref_args="$ref_args -r $ref"
+                fi
+              done
+              ajv compile -s "$schema" $ref_args --spec=draft2020 -c ajv-formats || exit 1
             done
           else
             echo "No JSON schemas found in api/schemas/ - skipping validation"

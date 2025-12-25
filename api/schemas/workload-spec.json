@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://plfm-vt.dev/schemas/workload-spec.json",
+  "$id": "workload-spec.json",
   "title": "plfm-vt WorkloadSpec v1",
   "description": "Scheduler-to-host-agent contract. Resolved runtime configuration for a desired instance. See docs/specs/manifest/workload-spec.md",
   "type": "object",
