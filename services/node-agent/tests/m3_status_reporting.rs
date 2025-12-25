@@ -57,7 +57,10 @@ fn test_initial_status_needs_report() {
     let plan = test_plan("inst_001");
     let state = InstanceState::from_plan(plan);
 
-    assert!(state.needs_status_report(), "Initial status should need reporting");
+    assert!(
+        state.needs_status_report(),
+        "Initial status should need reporting"
+    );
     assert_eq!(state.status, InstanceStatus::Booting);
 }
 
@@ -69,7 +72,10 @@ fn test_status_not_reported_twice() {
     assert!(state.needs_status_report());
 
     state.mark_status_reported();
-    assert!(!state.needs_status_report(), "Same status should not be reported twice");
+    assert!(
+        !state.needs_status_report(),
+        "Same status should not be reported twice"
+    );
 }
 
 #[test]
@@ -81,7 +87,10 @@ fn test_status_transition_triggers_report() {
     assert!(!state.needs_status_report());
 
     state.status = InstanceStatus::Ready;
-    assert!(state.needs_status_report(), "Transition to Ready should trigger report");
+    assert!(
+        state.needs_status_report(),
+        "Transition to Ready should trigger report"
+    );
 
     state.mark_status_reported();
     assert!(!state.needs_status_report());
@@ -97,11 +106,17 @@ fn test_failure_transition_triggers_report() {
     state.status = InstanceStatus::Failed;
     state.reason_code = Some(FailureReason::FirecrackerStartFailed);
     state.error_message = Some("Boot timeout".to_string());
-    assert!(state.needs_status_report(), "Transition to Failed should trigger report");
+    assert!(
+        state.needs_status_report(),
+        "Transition to Failed should trigger report"
+    );
 
     let report = state.to_status_report();
     assert_eq!(report.status, InstanceStatus::Failed);
-    assert_eq!(report.reason_code, Some(FailureReason::FirecrackerStartFailed));
+    assert_eq!(
+        report.reason_code,
+        Some(FailureReason::FirecrackerStartFailed)
+    );
     assert_eq!(report.error_message, Some("Boot timeout".to_string()));
 }
 
