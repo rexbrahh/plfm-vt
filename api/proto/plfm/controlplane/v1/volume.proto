@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package plfm.controlplane.v1;
+
+import "google/protobuf/timestamp.proto";
+import "plfm/events/v1/volume.proto";
+
+// Volume resource for persistent storage.
+message Volume {
+  // Volume identifier.
+  string id = 1;
+  // Organization identifier.
+  string org_id = 2;
+  // Volume name.
+  optional string name = 3;
+  // Volume size in bytes.
+  int64 size_bytes = 4;
+  // Filesystem type.
+  string filesystem = 5;
+  // Whether backups are enabled.
+  bool backup_enabled = 6;
+  // Current volume state.
+  string state = 7;
+  // Creation timestamp.
+  google.protobuf.Timestamp created_at = 8;
+  // Last update timestamp.
+  google.protobuf.Timestamp updated_at = 9;
+}
+
+// Volume attachment resource.
+message VolumeAttachment {
+  // Attachment identifier.
+  string id = 1;
+  // Organization identifier.
+  string org_id = 2;
+  // Volume identifier.
+  string volume_id = 3;
+  // Application identifier.
+  string app_id = 4;
+  // Environment identifier.
+  string env_id = 5;
+  // Process type label.
+  string process_type = 6;
+  // Mount path inside the workload.
+  string mount_path = 7;
+  // Whether the mount is read-only.
+  bool read_only = 8;
+  // Creation timestamp.
+  google.protobuf.Timestamp created_at = 9;
+}
+
+// Snapshot resource for volume backups.
+message Snapshot {
+  // Snapshot identifier.
+  string id = 1;
+  // Organization identifier.
+  string org_id = 2;
+  // Volume identifier.
+  string volume_id = 3;
+  // Snapshot job status.
+  plfm.events.v1.JobStatus status = 4;
+  // Snapshot size in bytes.
+  optional int64 size_bytes = 5;
+  // Optional snapshot note.
+  optional string note = 6;
+  // Creation timestamp.
+  google.protobuf.Timestamp created_at = 7;
+  // Completion timestamp.
+  optional google.protobuf.Timestamp completed_at = 8;
+}
+
+// Restore job resource.
+message RestoreJob {
+  // Restore job identifier.
+  string id = 1;
+  // Organization identifier.
+  string org_id = 2;
+  // Source snapshot identifier.
+  string snapshot_id = 3;
+  // Source volume identifier.
+  string source_volume_id = 4;
+  // New volume name when requested.
+  optional string new_volume_name = 5;
+  // Restore job status.
+  plfm.events.v1.JobStatus status = 6;
+  // New volume identifier when created.
+  optional string new_volume_id = 7;
+  // Creation timestamp.
+  google.protobuf.Timestamp created_at = 8;
+  // Completion timestamp.
+  optional google.protobuf.Timestamp completed_at = 9;
+}
+
+// Response payload for volume listings.
+message ListVolumesResponse {
+  // Volumes in the response.
+  repeated Volume items = 1;
+  // Pagination cursor for the next page.
+  optional string next_cursor = 2;
+}
+
+// Response payload for volume attachment listings.
+message ListVolumeAttachmentsResponse {
+  // Attachments in the response.
+  repeated VolumeAttachment items = 1;
+  // Pagination cursor for the next page.
+  optional string next_cursor = 2;
+}
+
+// Response payload for snapshot listings.
+message ListSnapshotsResponse {
+  // Snapshots in the response.
+  repeated Snapshot items = 1;
+  // Pagination cursor for the next page.
+  optional string next_cursor = 2;
+}

@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package plfm.controlplane.v1;
+
+import "google/protobuf/timestamp.proto";
+import "plfm/events/v1/route.proto";
+
+// Route resource for L4 ingress configuration.
+message Route {
+  // Route identifier.
+  string id = 1;
+  // Organization identifier.
+  string org_id = 2;
+  // Application identifier.
+  string app_id = 3;
+  // Environment identifier.
+  string env_id = 4;
+  // Route hostname.
+  string hostname = 5;
+  // Listener port.
+  int32 listen_port = 6;
+  // Protocol hint for ingress.
+  plfm.events.v1.RouteProtocolHint protocol_hint = 7;
+  // Backend process type.
+  string backend_process_type = 8;
+  // Backend service port.
+  int32 backend_port = 9;
+  // Proxy protocol mode.
+  plfm.events.v1.RouteProxyProtocol proxy_protocol = 10;
+  // Whether backend expects proxy protocol.
+  bool backend_expects_proxy_protocol = 11;
+  // Whether IPv4 is required.
+  bool ipv4_required = 12;
+  // Environment IPv4 address when allocated.
+  optional string env_ipv4_address = 13;
+  // Creation timestamp.
+  google.protobuf.Timestamp created_at = 14;
+  // Last update timestamp.
+  google.protobuf.Timestamp updated_at = 15;
+}
+
+// Response payload for route listings.
+message ListRoutesResponse {
+  // Routes in the response.
+  repeated Route items = 1;
+  // Pagination cursor for the next page.
+  optional string next_cursor = 2;
+}

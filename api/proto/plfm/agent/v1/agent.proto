@@ -43,6 +43,10 @@ message EnrollRequest {
   optional int32 mtu = 9;
   // Node capability labels.
   map<string, string> labels = 10;
+  // Agent build version string.
+  string agent_version = 11;
+  // Supported API versions the agent can speak.
+  repeated string supported_api_versions = 12;
 }
 
 // Enrollment response from control plane.
@@ -53,6 +57,12 @@ message EnrollResponse {
   string overlay_ipv6 = 2;
   // Current node state.
   plfm.events.v1.NodeState state = 3;
+  // API version selected by control plane.
+  string selected_api_version = 4;
+  // Minimum agent version required.
+  optional string minimum_agent_version = 5;
+  // Rejection reason if enrollment is denied.
+  optional string rejection_reason = 6;
 }
 
 // Request for the current node plan.

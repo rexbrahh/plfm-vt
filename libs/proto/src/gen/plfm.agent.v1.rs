@@ -334,6 +334,12 @@ pub struct EnrollRequest {
         ::prost::alloc::string::String,
         ::prost::alloc::string::String,
     >,
+    /// Agent build version string.
+    #[prost(string, tag = "11")]
+    pub agent_version: ::prost::alloc::string::String,
+    /// Supported API versions the agent can speak.
+    #[prost(string, repeated, tag = "12")]
+    pub supported_api_versions: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
 }
 /// Enrollment response from control plane.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -347,6 +353,15 @@ pub struct EnrollResponse {
     /// Current node state.
     #[prost(enumeration = "super::super::events::v1::NodeState", tag = "3")]
     pub state: i32,
+    /// API version selected by control plane.
+    #[prost(string, tag = "4")]
+    pub selected_api_version: ::prost::alloc::string::String,
+    /// Minimum agent version required.
+    #[prost(string, optional, tag = "5")]
+    pub minimum_agent_version: ::core::option::Option<::prost::alloc::string::String>,
+    /// Rejection reason if enrollment is denied.
+    #[prost(string, optional, tag = "6")]
+    pub rejection_reason: ::core::option::Option<::prost::alloc::string::String>,
 }
 /// Request for the current node plan.
 #[derive(Clone, PartialEq, ::prost::Message)]
@@ -1094,6 +1109,2306 @@ pub mod node_agent_server {
     /// Generated gRPC service name
     pub const SERVICE_NAME: &str = "plfm.agent.v1.NodeAgent";
     impl<T> tonic::server::NamedService for NodeAgentServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
+    }
+}
+/// Request to configure overlay network.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigureOverlayRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Overlay IPv6 address assigned to the node.
+    #[prost(string, tag = "2")]
+    pub overlay_ipv6: ::prost::alloc::string::String,
+    /// Overlay IPv6 prefix length.
+    #[prost(int32, tag = "3")]
+    pub prefix_length: i32,
+    /// MTU for overlay interface.
+    #[prost(int32, tag = "4")]
+    pub mtu: i32,
+    /// WireGuard private key encrypted for node.
+    #[prost(bytes = "vec", tag = "5")]
+    pub wireguard_private_key_encrypted: ::prost::alloc::vec::Vec<u8>,
+}
+/// Response for overlay configuration.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ConfigureOverlayResponse {
+    /// Whether configuration was applied.
+    #[prost(bool, tag = "1")]
+    pub applied: bool,
+    /// Error message if configuration failed.
+    #[prost(string, optional, tag = "2")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// WireGuard peer entry for mesh.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct WireGuardPeer {
+    /// Peer node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Peer WireGuard public key.
+    #[prost(string, tag = "2")]
+    pub public_key: ::prost::alloc::string::String,
+    /// Peer overlay IPv6 address.
+    #[prost(string, tag = "3")]
+    pub overlay_ipv6: ::prost::alloc::string::String,
+    /// Peer endpoint address for direct connection.
+    #[prost(string, tag = "4")]
+    pub endpoint: ::prost::alloc::string::String,
+    /// Allowed IP ranges for this peer.
+    #[prost(string, repeated, tag = "5")]
+    pub allowed_ips: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Persistent keepalive interval in seconds.
+    #[prost(int32, optional, tag = "6")]
+    pub keepalive_secs: ::core::option::Option<i32>,
+}
+/// Request to update WireGuard peer list.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UpdatePeersRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Full peer list for the mesh.
+    #[prost(message, repeated, tag = "2")]
+    pub peers: ::prost::alloc::vec::Vec<WireGuardPeer>,
+    /// Generation number for peer list.
+    #[prost(int64, tag = "3")]
+    pub generation: i64,
+}
+/// Response for peer list update.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct UpdatePeersResponse {
+    /// Whether update was applied.
+    #[prost(bool, tag = "1")]
+    pub applied: bool,
+    /// Number of peers configured.
+    #[prost(int32, tag = "2")]
+    pub peer_count: i32,
+    /// Error message if update failed.
+    #[prost(string, optional, tag = "3")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Network interface status.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct InterfaceStatus {
+    /// Interface name.
+    #[prost(string, tag = "1")]
+    pub name: ::prost::alloc::string::String,
+    /// Whether interface is up.
+    #[prost(bool, tag = "2")]
+    pub up: bool,
+    /// Assigned IPv6 addresses.
+    #[prost(string, repeated, tag = "3")]
+    pub ipv6_addresses: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Assigned IPv4 addresses.
+    #[prost(string, repeated, tag = "4")]
+    pub ipv4_addresses: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+    /// Current MTU.
+    #[prost(int32, tag = "5")]
+    pub mtu: i32,
+    /// Bytes transmitted.
+    #[prost(int64, tag = "6")]
+    pub tx_bytes: i64,
+    /// Bytes received.
+    #[prost(int64, tag = "7")]
+    pub rx_bytes: i64,
+    /// Packets transmitted.
+    #[prost(int64, tag = "8")]
+    pub tx_packets: i64,
+    /// Packets received.
+    #[prost(int64, tag = "9")]
+    pub rx_packets: i64,
+    /// Transmit errors.
+    #[prost(int64, tag = "10")]
+    pub tx_errors: i64,
+    /// Receive errors.
+    #[prost(int64, tag = "11")]
+    pub rx_errors: i64,
+}
+/// WireGuard peer status.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct PeerStatus {
+    /// Peer node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Peer public key.
+    #[prost(string, tag = "2")]
+    pub public_key: ::prost::alloc::string::String,
+    /// Current endpoint address.
+    #[prost(string, optional, tag = "3")]
+    pub endpoint: ::core::option::Option<::prost::alloc::string::String>,
+    /// Last handshake timestamp in seconds since epoch.
+    #[prost(int64, optional, tag = "4")]
+    pub last_handshake_secs: ::core::option::Option<i64>,
+    /// Bytes transmitted to peer.
+    #[prost(int64, tag = "5")]
+    pub tx_bytes: i64,
+    /// Bytes received from peer.
+    #[prost(int64, tag = "6")]
+    pub rx_bytes: i64,
+    /// Whether peer is reachable.
+    #[prost(bool, tag = "7")]
+    pub reachable: bool,
+}
+/// Request to report network status.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReportNetworkStatusRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Overlay interface status.
+    #[prost(message, optional, tag = "2")]
+    pub overlay_interface: ::core::option::Option<InterfaceStatus>,
+    /// WireGuard peer statuses.
+    #[prost(message, repeated, tag = "3")]
+    pub peers: ::prost::alloc::vec::Vec<PeerStatus>,
+    /// Timestamp of status report in seconds since epoch.
+    #[prost(int64, tag = "4")]
+    pub timestamp_secs: i64,
+}
+/// Response for network status report.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct ReportNetworkStatusResponse {
+    /// Whether report was accepted.
+    #[prost(bool, tag = "1")]
+    pub accepted: bool,
+}
+/// Generated client implementations.
+pub mod networking_client {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    /// Networking gRPC service for overlay and endpoint management.
+    #[derive(Debug, Clone)]
+    pub struct NetworkingClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl NetworkingClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> NetworkingClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::BoxBody>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> NetworkingClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+        {
+            NetworkingClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        /// Configure overlay network membership for the node.
+        pub async fn configure_overlay(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ConfigureOverlayRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ConfigureOverlayResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.Networking/ConfigureOverlay",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("plfm.agent.v1.Networking", "ConfigureOverlay"));
+            self.inner.unary(req, path, codec).await
+        }
+        /// Update peer list for WireGuard mesh.
+        pub async fn update_peers(
+            &mut self,
+            request: impl tonic::IntoRequest<super::UpdatePeersRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::UpdatePeersResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.Networking/UpdatePeers",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("plfm.agent.v1.Networking", "UpdatePeers"));
+            self.inner.unary(req, path, codec).await
+        }
+        /// Report networking status for the node.
+        pub async fn report_network_status(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ReportNetworkStatusRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ReportNetworkStatusResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.Networking/ReportNetworkStatus",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("plfm.agent.v1.Networking", "ReportNetworkStatus"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+    }
+}
+/// Generated server implementations.
+pub mod networking_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with NetworkingServer.
+    #[async_trait]
+    pub trait Networking: std::marker::Send + std::marker::Sync + 'static {
+        /// Configure overlay network membership for the node.
+        async fn configure_overlay(
+            &self,
+            request: tonic::Request<super::ConfigureOverlayRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ConfigureOverlayResponse>,
+            tonic::Status,
+        >;
+        /// Update peer list for WireGuard mesh.
+        async fn update_peers(
+            &self,
+            request: tonic::Request<super::UpdatePeersRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::UpdatePeersResponse>,
+            tonic::Status,
+        >;
+        /// Report networking status for the node.
+        async fn report_network_status(
+            &self,
+            request: tonic::Request<super::ReportNetworkStatusRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ReportNetworkStatusResponse>,
+            tonic::Status,
+        >;
+    }
+    /// Networking gRPC service for overlay and endpoint management.
+    #[derive(Debug)]
+    pub struct NetworkingServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> NetworkingServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for NetworkingServer<T>
+    where
+        T: Networking,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::BoxBody>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/plfm.agent.v1.Networking/ConfigureOverlay" => {
+                    #[allow(non_camel_case_types)]
+                    struct ConfigureOverlaySvc<T: Networking>(pub Arc<T>);
+                    impl<
+                        T: Networking,
+                    > tonic::server::UnaryService<super::ConfigureOverlayRequest>
+                    for ConfigureOverlaySvc<T> {
+                        type Response = super::ConfigureOverlayResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ConfigureOverlayRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Networking>::configure_overlay(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ConfigureOverlaySvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.agent.v1.Networking/UpdatePeers" => {
+                    #[allow(non_camel_case_types)]
+                    struct UpdatePeersSvc<T: Networking>(pub Arc<T>);
+                    impl<
+                        T: Networking,
+                    > tonic::server::UnaryService<super::UpdatePeersRequest>
+                    for UpdatePeersSvc<T> {
+                        type Response = super::UpdatePeersResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::UpdatePeersRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Networking>::update_peers(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = UpdatePeersSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.agent.v1.Networking/ReportNetworkStatus" => {
+                    #[allow(non_camel_case_types)]
+                    struct ReportNetworkStatusSvc<T: Networking>(pub Arc<T>);
+                    impl<
+                        T: Networking,
+                    > tonic::server::UnaryService<super::ReportNetworkStatusRequest>
+                    for ReportNetworkStatusSvc<T> {
+                        type Response = super::ReportNetworkStatusResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ReportNetworkStatusRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Networking>::report_network_status(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ReportNetworkStatusSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(empty_body());
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for NetworkingServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "plfm.agent.v1.Networking";
+    impl<T> tonic::server::NamedService for NetworkingServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
+    }
+}
+/// Request to attach a volume.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttachVolumeRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Volume identifier.
+    #[prost(string, tag = "2")]
+    pub volume_id: ::prost::alloc::string::String,
+    /// Instance identifier for attachment.
+    #[prost(string, tag = "3")]
+    pub instance_id: ::prost::alloc::string::String,
+    /// Volume type.
+    #[prost(enumeration = "VolumeType", tag = "4")]
+    pub volume_type: i32,
+    /// Size in bytes.
+    #[prost(int64, tag = "5")]
+    pub size_bytes: i64,
+    /// Filesystem type to format.
+    #[prost(string, tag = "6")]
+    pub filesystem: ::prost::alloc::string::String,
+    /// Mount path inside the instance.
+    #[prost(string, tag = "7")]
+    pub mount_path: ::prost::alloc::string::String,
+    /// Whether to mount read-only.
+    #[prost(bool, tag = "8")]
+    pub read_only: bool,
+    /// Optional source snapshot identifier.
+    #[prost(string, optional, tag = "9")]
+    pub source_snapshot_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Optional device path hint.
+    #[prost(string, optional, tag = "10")]
+    pub device_hint: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response for volume attachment.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AttachVolumeResponse {
+    /// Whether attachment succeeded.
+    #[prost(bool, tag = "1")]
+    pub attached: bool,
+    /// Device path where volume is attached.
+    #[prost(string, optional, tag = "2")]
+    pub device_path: ::core::option::Option<::prost::alloc::string::String>,
+    /// Error message if attachment failed.
+    #[prost(string, optional, tag = "3")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request to detach a volume.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DetachVolumeRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Volume identifier.
+    #[prost(string, tag = "2")]
+    pub volume_id: ::prost::alloc::string::String,
+    /// Instance identifier.
+    #[prost(string, tag = "3")]
+    pub instance_id: ::prost::alloc::string::String,
+    /// Whether to force detach.
+    #[prost(bool, tag = "4")]
+    pub force: bool,
+}
+/// Response for volume detachment.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct DetachVolumeResponse {
+    /// Whether detachment succeeded.
+    #[prost(bool, tag = "1")]
+    pub detached: bool,
+    /// Error message if detachment failed.
+    #[prost(string, optional, tag = "2")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request to create a snapshot.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateSnapshotRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Volume identifier to snapshot.
+    #[prost(string, tag = "2")]
+    pub volume_id: ::prost::alloc::string::String,
+    /// Snapshot identifier to create.
+    #[prost(string, tag = "3")]
+    pub snapshot_id: ::prost::alloc::string::String,
+    /// Optional snapshot description.
+    #[prost(string, optional, tag = "4")]
+    pub description: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response for snapshot creation.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct CreateSnapshotResponse {
+    /// Whether snapshot creation started.
+    #[prost(bool, tag = "1")]
+    pub started: bool,
+    /// Size of snapshot in bytes.
+    #[prost(int64, optional, tag = "2")]
+    pub size_bytes: ::core::option::Option<i64>,
+    /// Error message if creation failed.
+    #[prost(string, optional, tag = "3")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request to restore from a snapshot.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RestoreSnapshotRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Snapshot identifier to restore from.
+    #[prost(string, tag = "2")]
+    pub snapshot_id: ::prost::alloc::string::String,
+    /// Target volume identifier.
+    #[prost(string, tag = "3")]
+    pub target_volume_id: ::prost::alloc::string::String,
+    /// Target instance identifier.
+    #[prost(string, tag = "4")]
+    pub instance_id: ::prost::alloc::string::String,
+}
+/// Response for snapshot restoration.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RestoreSnapshotResponse {
+    /// Whether restoration started.
+    #[prost(bool, tag = "1")]
+    pub started: bool,
+    /// Error message if restoration failed.
+    #[prost(string, optional, tag = "2")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Volume status report.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VolumeStatus {
+    /// Volume identifier.
+    #[prost(string, tag = "1")]
+    pub volume_id: ::prost::alloc::string::String,
+    /// Volume type.
+    #[prost(enumeration = "VolumeType", tag = "2")]
+    pub volume_type: i32,
+    /// Current state.
+    #[prost(enumeration = "VolumeState", tag = "3")]
+    pub state: i32,
+    /// Attached instance identifier.
+    #[prost(string, optional, tag = "4")]
+    pub instance_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Device path.
+    #[prost(string, optional, tag = "5")]
+    pub device_path: ::core::option::Option<::prost::alloc::string::String>,
+    /// Mount path.
+    #[prost(string, optional, tag = "6")]
+    pub mount_path: ::core::option::Option<::prost::alloc::string::String>,
+    /// Total size in bytes.
+    #[prost(int64, tag = "7")]
+    pub size_bytes: i64,
+    /// Used bytes.
+    #[prost(int64, tag = "8")]
+    pub used_bytes: i64,
+    /// Available bytes.
+    #[prost(int64, tag = "9")]
+    pub available_bytes: i64,
+    /// Read IOPS.
+    #[prost(int64, tag = "10")]
+    pub read_iops: i64,
+    /// Write IOPS.
+    #[prost(int64, tag = "11")]
+    pub write_iops: i64,
+    /// Read throughput in bytes per second.
+    #[prost(int64, tag = "12")]
+    pub read_throughput: i64,
+    /// Write throughput in bytes per second.
+    #[prost(int64, tag = "13")]
+    pub write_throughput: i64,
+    /// Error message if in error state.
+    #[prost(string, optional, tag = "14")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request to report storage status.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReportStorageStatusRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Volume statuses.
+    #[prost(message, repeated, tag = "2")]
+    pub volumes: ::prost::alloc::vec::Vec<VolumeStatus>,
+    /// Total disk capacity in bytes.
+    #[prost(int64, tag = "3")]
+    pub total_disk_bytes: i64,
+    /// Available disk capacity in bytes.
+    #[prost(int64, tag = "4")]
+    pub available_disk_bytes: i64,
+    /// Timestamp of status report in seconds since epoch.
+    #[prost(int64, tag = "5")]
+    pub timestamp_secs: i64,
+}
+/// Response for storage status report.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct ReportStorageStatusResponse {
+    /// Whether report was accepted.
+    #[prost(bool, tag = "1")]
+    pub accepted: bool,
+}
+/// Volume type enumeration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum VolumeType {
+    /// Unspecified volume type.
+    Unspecified = 0,
+    /// Ephemeral volume backed by local disk.
+    Ephemeral = 1,
+    /// Persistent volume backed by network storage.
+    Persistent = 2,
+    /// Shared volume accessible by multiple instances.
+    Shared = 3,
+}
+impl VolumeType {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "VOLUME_TYPE_UNSPECIFIED",
+            Self::Ephemeral => "VOLUME_TYPE_EPHEMERAL",
+            Self::Persistent => "VOLUME_TYPE_PERSISTENT",
+            Self::Shared => "VOLUME_TYPE_SHARED",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "VOLUME_TYPE_UNSPECIFIED" => Some(Self::Unspecified),
+            "VOLUME_TYPE_EPHEMERAL" => Some(Self::Ephemeral),
+            "VOLUME_TYPE_PERSISTENT" => Some(Self::Persistent),
+            "VOLUME_TYPE_SHARED" => Some(Self::Shared),
+            _ => None,
+        }
+    }
+}
+/// Volume attachment state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum VolumeState {
+    /// Unspecified volume state.
+    Unspecified = 0,
+    /// Volume is pending attachment.
+    Pending = 1,
+    /// Volume is attached and ready.
+    Attached = 2,
+    /// Volume is being detached.
+    Detaching = 3,
+    /// Volume is detached.
+    Detached = 4,
+    /// Volume is in error state.
+    Error = 5,
+}
+impl VolumeState {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "VOLUME_STATE_UNSPECIFIED",
+            Self::Pending => "VOLUME_STATE_PENDING",
+            Self::Attached => "VOLUME_STATE_ATTACHED",
+            Self::Detaching => "VOLUME_STATE_DETACHING",
+            Self::Detached => "VOLUME_STATE_DETACHED",
+            Self::Error => "VOLUME_STATE_ERROR",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "VOLUME_STATE_UNSPECIFIED" => Some(Self::Unspecified),
+            "VOLUME_STATE_PENDING" => Some(Self::Pending),
+            "VOLUME_STATE_ATTACHED" => Some(Self::Attached),
+            "VOLUME_STATE_DETACHING" => Some(Self::Detaching),
+            "VOLUME_STATE_DETACHED" => Some(Self::Detached),
+            "VOLUME_STATE_ERROR" => Some(Self::Error),
+            _ => None,
+        }
+    }
+}
+/// Generated client implementations.
+pub mod storage_client {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    /// Storage gRPC service for volume lifecycle operations.
+    #[derive(Debug, Clone)]
+    pub struct StorageClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl StorageClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> StorageClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::BoxBody>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> StorageClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+        {
+            StorageClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        /// Attach a volume to the node.
+        pub async fn attach_volume(
+            &mut self,
+            request: impl tonic::IntoRequest<super::AttachVolumeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::AttachVolumeResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.Storage/AttachVolume",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("plfm.agent.v1.Storage", "AttachVolume"));
+            self.inner.unary(req, path, codec).await
+        }
+        /// Detach a volume from the node.
+        pub async fn detach_volume(
+            &mut self,
+            request: impl tonic::IntoRequest<super::DetachVolumeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::DetachVolumeResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.Storage/DetachVolume",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("plfm.agent.v1.Storage", "DetachVolume"));
+            self.inner.unary(req, path, codec).await
+        }
+        /// Create a snapshot of a volume.
+        pub async fn create_snapshot(
+            &mut self,
+            request: impl tonic::IntoRequest<super::CreateSnapshotRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CreateSnapshotResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.Storage/CreateSnapshot",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("plfm.agent.v1.Storage", "CreateSnapshot"));
+            self.inner.unary(req, path, codec).await
+        }
+        /// Restore a volume from a snapshot.
+        pub async fn restore_snapshot(
+            &mut self,
+            request: impl tonic::IntoRequest<super::RestoreSnapshotRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RestoreSnapshotResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.Storage/RestoreSnapshot",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("plfm.agent.v1.Storage", "RestoreSnapshot"));
+            self.inner.unary(req, path, codec).await
+        }
+        /// Report storage status for the node.
+        pub async fn report_storage_status(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ReportStorageStatusRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ReportStorageStatusResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.Storage/ReportStorageStatus",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("plfm.agent.v1.Storage", "ReportStorageStatus"));
+            self.inner.unary(req, path, codec).await
+        }
+    }
+}
+/// Generated server implementations.
+pub mod storage_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with StorageServer.
+    #[async_trait]
+    pub trait Storage: std::marker::Send + std::marker::Sync + 'static {
+        /// Attach a volume to the node.
+        async fn attach_volume(
+            &self,
+            request: tonic::Request<super::AttachVolumeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::AttachVolumeResponse>,
+            tonic::Status,
+        >;
+        /// Detach a volume from the node.
+        async fn detach_volume(
+            &self,
+            request: tonic::Request<super::DetachVolumeRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::DetachVolumeResponse>,
+            tonic::Status,
+        >;
+        /// Create a snapshot of a volume.
+        async fn create_snapshot(
+            &self,
+            request: tonic::Request<super::CreateSnapshotRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::CreateSnapshotResponse>,
+            tonic::Status,
+        >;
+        /// Restore a volume from a snapshot.
+        async fn restore_snapshot(
+            &self,
+            request: tonic::Request<super::RestoreSnapshotRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RestoreSnapshotResponse>,
+            tonic::Status,
+        >;
+        /// Report storage status for the node.
+        async fn report_storage_status(
+            &self,
+            request: tonic::Request<super::ReportStorageStatusRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ReportStorageStatusResponse>,
+            tonic::Status,
+        >;
+    }
+    /// Storage gRPC service for volume lifecycle operations.
+    #[derive(Debug)]
+    pub struct StorageServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> StorageServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for StorageServer<T>
+    where
+        T: Storage,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::BoxBody>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/plfm.agent.v1.Storage/AttachVolume" => {
+                    #[allow(non_camel_case_types)]
+                    struct AttachVolumeSvc<T: Storage>(pub Arc<T>);
+                    impl<
+                        T: Storage,
+                    > tonic::server::UnaryService<super::AttachVolumeRequest>
+                    for AttachVolumeSvc<T> {
+                        type Response = super::AttachVolumeResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::AttachVolumeRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Storage>::attach_volume(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = AttachVolumeSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.agent.v1.Storage/DetachVolume" => {
+                    #[allow(non_camel_case_types)]
+                    struct DetachVolumeSvc<T: Storage>(pub Arc<T>);
+                    impl<
+                        T: Storage,
+                    > tonic::server::UnaryService<super::DetachVolumeRequest>
+                    for DetachVolumeSvc<T> {
+                        type Response = super::DetachVolumeResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::DetachVolumeRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Storage>::detach_volume(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = DetachVolumeSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.agent.v1.Storage/CreateSnapshot" => {
+                    #[allow(non_camel_case_types)]
+                    struct CreateSnapshotSvc<T: Storage>(pub Arc<T>);
+                    impl<
+                        T: Storage,
+                    > tonic::server::UnaryService<super::CreateSnapshotRequest>
+                    for CreateSnapshotSvc<T> {
+                        type Response = super::CreateSnapshotResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::CreateSnapshotRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Storage>::create_snapshot(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = CreateSnapshotSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.agent.v1.Storage/RestoreSnapshot" => {
+                    #[allow(non_camel_case_types)]
+                    struct RestoreSnapshotSvc<T: Storage>(pub Arc<T>);
+                    impl<
+                        T: Storage,
+                    > tonic::server::UnaryService<super::RestoreSnapshotRequest>
+                    for RestoreSnapshotSvc<T> {
+                        type Response = super::RestoreSnapshotResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::RestoreSnapshotRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Storage>::restore_snapshot(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = RestoreSnapshotSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.agent.v1.Storage/ReportStorageStatus" => {
+                    #[allow(non_camel_case_types)]
+                    struct ReportStorageStatusSvc<T: Storage>(pub Arc<T>);
+                    impl<
+                        T: Storage,
+                    > tonic::server::UnaryService<super::ReportStorageStatusRequest>
+                    for ReportStorageStatusSvc<T> {
+                        type Response = super::ReportStorageStatusResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ReportStorageStatusRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as Storage>::report_storage_status(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ReportStorageStatusSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(empty_body());
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for StorageServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "plfm.agent.v1.Storage";
+    impl<T> tonic::server::NamedService for StorageServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
+    }
+}
+/// Request for secret bundle.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequestSecretBundleRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Instance identifier.
+    #[prost(string, tag = "2")]
+    pub instance_id: ::prost::alloc::string::String,
+    /// Secret version identifier.
+    #[prost(string, tag = "3")]
+    pub version_id: ::prost::alloc::string::String,
+    /// Mount path for secrets.
+    #[prost(string, tag = "4")]
+    pub mount_path: ::prost::alloc::string::String,
+    /// File mode for secret files.
+    #[prost(int32, optional, tag = "5")]
+    pub mode: ::core::option::Option<i32>,
+    /// User id for secret file ownership.
+    #[prost(int32, optional, tag = "6")]
+    pub uid: ::core::option::Option<i32>,
+    /// Group id for secret file ownership.
+    #[prost(int32, optional, tag = "7")]
+    pub gid: ::core::option::Option<i32>,
+}
+/// Response with secret bundle.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RequestSecretBundleResponse {
+    /// Whether bundle is available.
+    #[prost(bool, tag = "1")]
+    pub available: bool,
+    /// Secret material when available.
+    #[prost(message, optional, tag = "2")]
+    pub bundle: ::core::option::Option<SecretBundle>,
+    /// Error message if unavailable.
+    #[prost(string, optional, tag = "3")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Secret bundle containing multiple secrets.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SecretBundle {
+    /// Bundle version identifier.
+    #[prost(string, tag = "1")]
+    pub version_id: ::prost::alloc::string::String,
+    /// Secret entries in the bundle.
+    #[prost(message, repeated, tag = "2")]
+    pub entries: ::prost::alloc::vec::Vec<SecretEntry>,
+    /// Bundle hash for integrity verification.
+    #[prost(string, tag = "3")]
+    pub bundle_hash: ::prost::alloc::string::String,
+    /// Expiration timestamp in seconds since epoch.
+    #[prost(int64, optional, tag = "4")]
+    pub expires_at_secs: ::core::option::Option<i64>,
+}
+/// Individual secret entry within a bundle.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SecretEntry {
+    /// Secret key name.
+    #[prost(string, tag = "1")]
+    pub key: ::prost::alloc::string::String,
+    /// Secret value.
+    #[prost(bytes = "vec", tag = "2")]
+    pub value: ::prost::alloc::vec::Vec<u8>,
+    /// Value hash for integrity verification.
+    #[prost(string, tag = "3")]
+    pub value_hash: ::prost::alloc::string::String,
+    /// Content type hint.
+    #[prost(string, optional, tag = "4")]
+    pub content_type: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request to acknowledge secret delivery.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct AcknowledgeDeliveryRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Instance identifier.
+    #[prost(string, tag = "2")]
+    pub instance_id: ::prost::alloc::string::String,
+    /// Secret version identifier.
+    #[prost(string, tag = "3")]
+    pub version_id: ::prost::alloc::string::String,
+    /// Bundle hash for verification.
+    #[prost(string, tag = "4")]
+    pub bundle_hash: ::prost::alloc::string::String,
+    /// Whether delivery was successful.
+    #[prost(bool, tag = "5")]
+    pub success: bool,
+    /// Error message if delivery failed.
+    #[prost(string, optional, tag = "6")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response for delivery acknowledgment.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct AcknowledgeDeliveryResponse {
+    /// Whether acknowledgment was recorded.
+    #[prost(bool, tag = "1")]
+    pub recorded: bool,
+}
+/// Request to rotate secrets.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RotateSecretsRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Instance identifier.
+    #[prost(string, tag = "2")]
+    pub instance_id: ::prost::alloc::string::String,
+    /// Current version identifier.
+    #[prost(string, tag = "3")]
+    pub current_version_id: ::prost::alloc::string::String,
+    /// New version identifier.
+    #[prost(string, tag = "4")]
+    pub new_version_id: ::prost::alloc::string::String,
+    /// New secret bundle.
+    #[prost(message, optional, tag = "5")]
+    pub new_bundle: ::core::option::Option<SecretBundle>,
+    /// Grace period before removing old secrets in seconds.
+    #[prost(int32, optional, tag = "6")]
+    pub grace_period_secs: ::core::option::Option<i32>,
+}
+/// Response for secret rotation.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RotateSecretsResponse {
+    /// Whether rotation was initiated.
+    #[prost(bool, tag = "1")]
+    pub initiated: bool,
+    /// Error message if rotation failed.
+    #[prost(string, optional, tag = "2")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Secret status for an instance.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SecretStatus {
+    /// Instance identifier.
+    #[prost(string, tag = "1")]
+    pub instance_id: ::prost::alloc::string::String,
+    /// Current version identifier.
+    #[prost(string, optional, tag = "2")]
+    pub version_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Delivery state.
+    #[prost(enumeration = "SecretDeliveryState", tag = "3")]
+    pub state: i32,
+    /// Bundle hash if delivered.
+    #[prost(string, optional, tag = "4")]
+    pub bundle_hash: ::core::option::Option<::prost::alloc::string::String>,
+    /// Delivery timestamp in seconds since epoch.
+    #[prost(int64, optional, tag = "5")]
+    pub delivered_at_secs: ::core::option::Option<i64>,
+    /// Error message if in failed state.
+    #[prost(string, optional, tag = "6")]
+    pub error: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Request to report secret status.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ReportSecretStatusRequest {
+    /// Node identifier.
+    #[prost(string, tag = "1")]
+    pub node_id: ::prost::alloc::string::String,
+    /// Secret statuses for instances.
+    #[prost(message, repeated, tag = "2")]
+    pub statuses: ::prost::alloc::vec::Vec<SecretStatus>,
+    /// Timestamp of status report in seconds since epoch.
+    #[prost(int64, tag = "3")]
+    pub timestamp_secs: i64,
+}
+/// Response for secret status report.
+#[derive(Clone, Copy, PartialEq, ::prost::Message)]
+pub struct ReportSecretStatusResponse {
+    /// Whether report was accepted.
+    #[prost(bool, tag = "1")]
+    pub accepted: bool,
+}
+/// Secret delivery state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
+#[repr(i32)]
+pub enum SecretDeliveryState {
+    /// Unspecified delivery state.
+    Unspecified = 0,
+    /// Secret bundle is pending delivery.
+    Pending = 1,
+    /// Secret bundle is being fetched.
+    Fetching = 2,
+    /// Secret bundle is delivered and mounted.
+    Delivered = 3,
+    /// Secret bundle delivery failed.
+    Failed = 4,
+    /// Secret bundle is being rotated.
+    Rotating = 5,
+}
+impl SecretDeliveryState {
+    /// String value of the enum field names used in the ProtoBuf definition.
+    ///
+    /// The values are not transformed in any way and thus are considered stable
+    /// (if the ProtoBuf definition does not change) and safe for programmatic use.
+    pub fn as_str_name(&self) -> &'static str {
+        match self {
+            Self::Unspecified => "SECRET_DELIVERY_STATE_UNSPECIFIED",
+            Self::Pending => "SECRET_DELIVERY_STATE_PENDING",
+            Self::Fetching => "SECRET_DELIVERY_STATE_FETCHING",
+            Self::Delivered => "SECRET_DELIVERY_STATE_DELIVERED",
+            Self::Failed => "SECRET_DELIVERY_STATE_FAILED",
+            Self::Rotating => "SECRET_DELIVERY_STATE_ROTATING",
+        }
+    }
+    /// Creates an enum from field names used in the ProtoBuf definition.
+    pub fn from_str_name(value: &str) -> ::core::option::Option<Self> {
+        match value {
+            "SECRET_DELIVERY_STATE_UNSPECIFIED" => Some(Self::Unspecified),
+            "SECRET_DELIVERY_STATE_PENDING" => Some(Self::Pending),
+            "SECRET_DELIVERY_STATE_FETCHING" => Some(Self::Fetching),
+            "SECRET_DELIVERY_STATE_DELIVERED" => Some(Self::Delivered),
+            "SECRET_DELIVERY_STATE_FAILED" => Some(Self::Failed),
+            "SECRET_DELIVERY_STATE_ROTATING" => Some(Self::Rotating),
+            _ => None,
+        }
+    }
+}
+/// Generated client implementations.
+pub mod secrets_delivery_client {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    /// SecretsDelivery gRPC service for secret bundle coordination.
+    #[derive(Debug, Clone)]
+    pub struct SecretsDeliveryClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl SecretsDeliveryClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> SecretsDeliveryClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::BoxBody>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> SecretsDeliveryClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+        {
+            SecretsDeliveryClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        /// Request secret bundle for an instance.
+        pub async fn request_secret_bundle(
+            &mut self,
+            request: impl tonic::IntoRequest<super::RequestSecretBundleRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RequestSecretBundleResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.SecretsDelivery/RequestSecretBundle",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.agent.v1.SecretsDelivery",
+                        "RequestSecretBundle",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Acknowledge secret bundle delivery.
+        pub async fn acknowledge_delivery(
+            &mut self,
+            request: impl tonic::IntoRequest<super::AcknowledgeDeliveryRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::AcknowledgeDeliveryResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.SecretsDelivery/AcknowledgeDelivery",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.agent.v1.SecretsDelivery",
+                        "AcknowledgeDelivery",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Rotate secrets for an instance.
+        pub async fn rotate_secrets(
+            &mut self,
+            request: impl tonic::IntoRequest<super::RotateSecretsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RotateSecretsResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.SecretsDelivery/RotateSecrets",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("plfm.agent.v1.SecretsDelivery", "RotateSecrets"),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+        /// Report secret delivery status.
+        pub async fn report_secret_status(
+            &mut self,
+            request: impl tonic::IntoRequest<super::ReportSecretStatusRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ReportSecretStatusResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.agent.v1.SecretsDelivery/ReportSecretStatus",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new(
+                        "plfm.agent.v1.SecretsDelivery",
+                        "ReportSecretStatus",
+                    ),
+                );
+            self.inner.unary(req, path, codec).await
+        }
+    }
+}
+/// Generated server implementations.
+pub mod secrets_delivery_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with SecretsDeliveryServer.
+    #[async_trait]
+    pub trait SecretsDelivery: std::marker::Send + std::marker::Sync + 'static {
+        /// Request secret bundle for an instance.
+        async fn request_secret_bundle(
+            &self,
+            request: tonic::Request<super::RequestSecretBundleRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RequestSecretBundleResponse>,
+            tonic::Status,
+        >;
+        /// Acknowledge secret bundle delivery.
+        async fn acknowledge_delivery(
+            &self,
+            request: tonic::Request<super::AcknowledgeDeliveryRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::AcknowledgeDeliveryResponse>,
+            tonic::Status,
+        >;
+        /// Rotate secrets for an instance.
+        async fn rotate_secrets(
+            &self,
+            request: tonic::Request<super::RotateSecretsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::RotateSecretsResponse>,
+            tonic::Status,
+        >;
+        /// Report secret delivery status.
+        async fn report_secret_status(
+            &self,
+            request: tonic::Request<super::ReportSecretStatusRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::ReportSecretStatusResponse>,
+            tonic::Status,
+        >;
+    }
+    /// SecretsDelivery gRPC service for secret bundle coordination.
+    #[derive(Debug)]
+    pub struct SecretsDeliveryServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> SecretsDeliveryServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for SecretsDeliveryServer<T>
+    where
+        T: SecretsDelivery,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::BoxBody>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/plfm.agent.v1.SecretsDelivery/RequestSecretBundle" => {
+                    #[allow(non_camel_case_types)]
+                    struct RequestSecretBundleSvc<T: SecretsDelivery>(pub Arc<T>);
+                    impl<
+                        T: SecretsDelivery,
+                    > tonic::server::UnaryService<super::RequestSecretBundleRequest>
+                    for RequestSecretBundleSvc<T> {
+                        type Response = super::RequestSecretBundleResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::RequestSecretBundleRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as SecretsDelivery>::request_secret_bundle(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = RequestSecretBundleSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.agent.v1.SecretsDelivery/AcknowledgeDelivery" => {
+                    #[allow(non_camel_case_types)]
+                    struct AcknowledgeDeliverySvc<T: SecretsDelivery>(pub Arc<T>);
+                    impl<
+                        T: SecretsDelivery,
+                    > tonic::server::UnaryService<super::AcknowledgeDeliveryRequest>
+                    for AcknowledgeDeliverySvc<T> {
+                        type Response = super::AcknowledgeDeliveryResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::AcknowledgeDeliveryRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as SecretsDelivery>::acknowledge_delivery(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = AcknowledgeDeliverySvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.agent.v1.SecretsDelivery/RotateSecrets" => {
+                    #[allow(non_camel_case_types)]
+                    struct RotateSecretsSvc<T: SecretsDelivery>(pub Arc<T>);
+                    impl<
+                        T: SecretsDelivery,
+                    > tonic::server::UnaryService<super::RotateSecretsRequest>
+                    for RotateSecretsSvc<T> {
+                        type Response = super::RotateSecretsResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::RotateSecretsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as SecretsDelivery>::rotate_secrets(&inner, request)
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = RotateSecretsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.agent.v1.SecretsDelivery/ReportSecretStatus" => {
+                    #[allow(non_camel_case_types)]
+                    struct ReportSecretStatusSvc<T: SecretsDelivery>(pub Arc<T>);
+                    impl<
+                        T: SecretsDelivery,
+                    > tonic::server::UnaryService<super::ReportSecretStatusRequest>
+                    for ReportSecretStatusSvc<T> {
+                        type Response = super::ReportSecretStatusResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::ReportSecretStatusRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as SecretsDelivery>::report_secret_status(
+                                        &inner,
+                                        request,
+                                    )
+                                    .await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = ReportSecretStatusSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(empty_body());
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for SecretsDeliveryServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "plfm.agent.v1.SecretsDelivery";
+    impl<T> tonic::server::NamedService for SecretsDeliveryServer<T> {
         const NAME: &'static str = SERVICE_NAME;
     }
 }

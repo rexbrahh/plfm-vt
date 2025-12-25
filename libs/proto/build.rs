@@ -11,6 +11,10 @@ fn main() -> Result<()> {
         "plfm/controlplane/v1/project.proto",
         "plfm/controlplane/v1/app.proto",
         "plfm/controlplane/v1/env.proto",
+        "plfm/controlplane/v1/endpoint.proto",
+        "plfm/controlplane/v1/volume.proto",
+        "plfm/controlplane/v1/secrets.proto",
+        "plfm/controlplane/v1/events_api.proto",
         "plfm/events/v1/envelope.proto",
         "plfm/events/v1/org.proto",
         "plfm/events/v1/project.proto",
@@ -26,6 +30,9 @@ fn main() -> Result<()> {
         "plfm/events/v1/exec.proto",
         "plfm/agent/v1/workload.proto",
         "plfm/agent/v1/agent.proto",
+        "plfm/agent/v1/networking.proto",
+        "plfm/agent/v1/storage.proto",
+        "plfm/agent/v1/secrets_delivery.proto",
     ];
 
     let proto_paths: Vec<PathBuf> = protos.iter().map(|p| proto_root.join(p)).collect();

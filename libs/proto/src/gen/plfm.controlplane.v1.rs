@@ -109,3 +109,714 @@ pub struct ListEnvsResponse {
     #[prost(string, optional, tag = "2")]
     pub next_cursor: ::core::option::Option<::prost::alloc::string::String>,
 }
+/// Route resource for L4 ingress configuration.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Route {
+    /// Route identifier.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Organization identifier.
+    #[prost(string, tag = "2")]
+    pub org_id: ::prost::alloc::string::String,
+    /// Application identifier.
+    #[prost(string, tag = "3")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Environment identifier.
+    #[prost(string, tag = "4")]
+    pub env_id: ::prost::alloc::string::String,
+    /// Route hostname.
+    #[prost(string, tag = "5")]
+    pub hostname: ::prost::alloc::string::String,
+    /// Listener port.
+    #[prost(int32, tag = "6")]
+    pub listen_port: i32,
+    /// Protocol hint for ingress.
+    #[prost(enumeration = "super::super::events::v1::RouteProtocolHint", tag = "7")]
+    pub protocol_hint: i32,
+    /// Backend process type.
+    #[prost(string, tag = "8")]
+    pub backend_process_type: ::prost::alloc::string::String,
+    /// Backend service port.
+    #[prost(int32, tag = "9")]
+    pub backend_port: i32,
+    /// Proxy protocol mode.
+    #[prost(enumeration = "super::super::events::v1::RouteProxyProtocol", tag = "10")]
+    pub proxy_protocol: i32,
+    /// Whether backend expects proxy protocol.
+    #[prost(bool, tag = "11")]
+    pub backend_expects_proxy_protocol: bool,
+    /// Whether IPv4 is required.
+    #[prost(bool, tag = "12")]
+    pub ipv4_required: bool,
+    /// Environment IPv4 address when allocated.
+    #[prost(string, optional, tag = "13")]
+    pub env_ipv4_address: ::core::option::Option<::prost::alloc::string::String>,
+    /// Creation timestamp.
+    #[prost(message, optional, tag = "14")]
+    pub created_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Last update timestamp.
+    #[prost(message, optional, tag = "15")]
+    pub updated_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Response payload for route listings.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListRoutesResponse {
+    /// Routes in the response.
+    #[prost(message, repeated, tag = "1")]
+    pub items: ::prost::alloc::vec::Vec<Route>,
+    /// Pagination cursor for the next page.
+    #[prost(string, optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Volume resource for persistent storage.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Volume {
+    /// Volume identifier.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Organization identifier.
+    #[prost(string, tag = "2")]
+    pub org_id: ::prost::alloc::string::String,
+    /// Volume name.
+    #[prost(string, optional, tag = "3")]
+    pub name: ::core::option::Option<::prost::alloc::string::String>,
+    /// Volume size in bytes.
+    #[prost(int64, tag = "4")]
+    pub size_bytes: i64,
+    /// Filesystem type.
+    #[prost(string, tag = "5")]
+    pub filesystem: ::prost::alloc::string::String,
+    /// Whether backups are enabled.
+    #[prost(bool, tag = "6")]
+    pub backup_enabled: bool,
+    /// Current volume state.
+    #[prost(string, tag = "7")]
+    pub state: ::prost::alloc::string::String,
+    /// Creation timestamp.
+    #[prost(message, optional, tag = "8")]
+    pub created_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Last update timestamp.
+    #[prost(message, optional, tag = "9")]
+    pub updated_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Volume attachment resource.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct VolumeAttachment {
+    /// Attachment identifier.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Organization identifier.
+    #[prost(string, tag = "2")]
+    pub org_id: ::prost::alloc::string::String,
+    /// Volume identifier.
+    #[prost(string, tag = "3")]
+    pub volume_id: ::prost::alloc::string::String,
+    /// Application identifier.
+    #[prost(string, tag = "4")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Environment identifier.
+    #[prost(string, tag = "5")]
+    pub env_id: ::prost::alloc::string::String,
+    /// Process type label.
+    #[prost(string, tag = "6")]
+    pub process_type: ::prost::alloc::string::String,
+    /// Mount path inside the workload.
+    #[prost(string, tag = "7")]
+    pub mount_path: ::prost::alloc::string::String,
+    /// Whether the mount is read-only.
+    #[prost(bool, tag = "8")]
+    pub read_only: bool,
+    /// Creation timestamp.
+    #[prost(message, optional, tag = "9")]
+    pub created_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Snapshot resource for volume backups.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Snapshot {
+    /// Snapshot identifier.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Organization identifier.
+    #[prost(string, tag = "2")]
+    pub org_id: ::prost::alloc::string::String,
+    /// Volume identifier.
+    #[prost(string, tag = "3")]
+    pub volume_id: ::prost::alloc::string::String,
+    /// Snapshot job status.
+    #[prost(enumeration = "super::super::events::v1::JobStatus", tag = "4")]
+    pub status: i32,
+    /// Snapshot size in bytes.
+    #[prost(int64, optional, tag = "5")]
+    pub size_bytes: ::core::option::Option<i64>,
+    /// Optional snapshot note.
+    #[prost(string, optional, tag = "6")]
+    pub note: ::core::option::Option<::prost::alloc::string::String>,
+    /// Creation timestamp.
+    #[prost(message, optional, tag = "7")]
+    pub created_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Completion timestamp.
+    #[prost(message, optional, tag = "8")]
+    pub completed_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Restore job resource.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct RestoreJob {
+    /// Restore job identifier.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Organization identifier.
+    #[prost(string, tag = "2")]
+    pub org_id: ::prost::alloc::string::String,
+    /// Source snapshot identifier.
+    #[prost(string, tag = "3")]
+    pub snapshot_id: ::prost::alloc::string::String,
+    /// Source volume identifier.
+    #[prost(string, tag = "4")]
+    pub source_volume_id: ::prost::alloc::string::String,
+    /// New volume name when requested.
+    #[prost(string, optional, tag = "5")]
+    pub new_volume_name: ::core::option::Option<::prost::alloc::string::String>,
+    /// Restore job status.
+    #[prost(enumeration = "super::super::events::v1::JobStatus", tag = "6")]
+    pub status: i32,
+    /// New volume identifier when created.
+    #[prost(string, optional, tag = "7")]
+    pub new_volume_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Creation timestamp.
+    #[prost(message, optional, tag = "8")]
+    pub created_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Completion timestamp.
+    #[prost(message, optional, tag = "9")]
+    pub completed_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Response payload for volume listings.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListVolumesResponse {
+    /// Volumes in the response.
+    #[prost(message, repeated, tag = "1")]
+    pub items: ::prost::alloc::vec::Vec<Volume>,
+    /// Pagination cursor for the next page.
+    #[prost(string, optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response payload for volume attachment listings.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListVolumeAttachmentsResponse {
+    /// Attachments in the response.
+    #[prost(message, repeated, tag = "1")]
+    pub items: ::prost::alloc::vec::Vec<VolumeAttachment>,
+    /// Pagination cursor for the next page.
+    #[prost(string, optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response payload for snapshot listings.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListSnapshotsResponse {
+    /// Snapshots in the response.
+    #[prost(message, repeated, tag = "1")]
+    pub items: ::prost::alloc::vec::Vec<Snapshot>,
+    /// Pagination cursor for the next page.
+    #[prost(string, optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Secret bundle resource for environment secrets.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SecretBundle {
+    /// Secret bundle identifier.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Organization identifier.
+    #[prost(string, tag = "2")]
+    pub org_id: ::prost::alloc::string::String,
+    /// Application identifier.
+    #[prost(string, tag = "3")]
+    pub app_id: ::prost::alloc::string::String,
+    /// Environment identifier.
+    #[prost(string, tag = "4")]
+    pub env_id: ::prost::alloc::string::String,
+    /// Secret format name.
+    #[prost(string, tag = "5")]
+    pub format: ::prost::alloc::string::String,
+    /// Current version identifier.
+    #[prost(string, optional, tag = "6")]
+    pub current_version_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Creation timestamp.
+    #[prost(message, optional, tag = "7")]
+    pub created_at: ::core::option::Option<::prost_types::Timestamp>,
+    /// Last update timestamp.
+    #[prost(message, optional, tag = "8")]
+    pub updated_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Secret version resource.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SecretVersion {
+    /// Secret version identifier.
+    #[prost(string, tag = "1")]
+    pub id: ::prost::alloc::string::String,
+    /// Secret bundle identifier.
+    #[prost(string, tag = "2")]
+    pub bundle_id: ::prost::alloc::string::String,
+    /// Organization identifier.
+    #[prost(string, tag = "3")]
+    pub org_id: ::prost::alloc::string::String,
+    /// Environment identifier.
+    #[prost(string, tag = "4")]
+    pub env_id: ::prost::alloc::string::String,
+    /// Secret format name.
+    #[prost(string, tag = "5")]
+    pub format: ::prost::alloc::string::String,
+    /// Hash of the secret data.
+    #[prost(string, tag = "6")]
+    pub data_hash: ::prost::alloc::string::String,
+    /// Creation timestamp.
+    #[prost(message, optional, tag = "7")]
+    pub created_at: ::core::option::Option<::prost_types::Timestamp>,
+}
+/// Response payload for secret bundle listings.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListSecretBundlesResponse {
+    /// Secret bundles in the response.
+    #[prost(message, repeated, tag = "1")]
+    pub items: ::prost::alloc::vec::Vec<SecretBundle>,
+    /// Pagination cursor for the next page.
+    #[prost(string, optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response payload for secret version listings.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct ListSecretVersionsResponse {
+    /// Secret versions in the response.
+    #[prost(message, repeated, tag = "1")]
+    pub items: ::prost::alloc::vec::Vec<SecretVersion>,
+    /// Pagination cursor for the next page.
+    #[prost(string, optional, tag = "2")]
+    pub next_cursor: ::core::option::Option<::prost::alloc::string::String>,
+}
+/// Response for streaming events.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StreamEventsResponse {
+    /// Event envelope.
+    #[prost(message, optional, tag = "1")]
+    pub event: ::core::option::Option<super::super::events::v1::EventEnvelope>,
+}
+/// Request for streaming events.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct StreamEventsRequest {
+    /// Organization identifier to scope events.
+    #[prost(string, tag = "1")]
+    pub org_id: ::prost::alloc::string::String,
+    /// Optional application identifier filter.
+    #[prost(string, optional, tag = "2")]
+    pub app_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Optional environment identifier filter.
+    #[prost(string, optional, tag = "3")]
+    pub env_id: ::core::option::Option<::prost::alloc::string::String>,
+    /// Cursor position to start streaming from.
+    #[prost(int64, optional, tag = "4")]
+    pub after_sequence: ::core::option::Option<i64>,
+    /// Optional event type filter.
+    #[prost(string, repeated, tag = "5")]
+    pub event_types: ::prost::alloc::vec::Vec<::prost::alloc::string::String>,
+}
+/// Request for getting a single event.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetEventRequest {
+    /// Event identifier.
+    #[prost(string, tag = "1")]
+    pub event_id: ::prost::alloc::string::String,
+}
+/// Response for getting a single event.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetEventResponse {
+    /// Event envelope.
+    #[prost(message, optional, tag = "1")]
+    pub event: ::core::option::Option<super::super::events::v1::EventEnvelope>,
+}
+/// Generated client implementations.
+pub mod events_api_client {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    use tonic::codegen::http::Uri;
+    /// Events API service for streaming platform events.
+    #[derive(Debug, Clone)]
+    pub struct EventsApiClient<T> {
+        inner: tonic::client::Grpc<T>,
+    }
+    impl EventsApiClient<tonic::transport::Channel> {
+        /// Attempt to create a new client by connecting to a given endpoint.
+        pub async fn connect<D>(dst: D) -> Result<Self, tonic::transport::Error>
+        where
+            D: TryInto<tonic::transport::Endpoint>,
+            D::Error: Into<StdError>,
+        {
+            let conn = tonic::transport::Endpoint::new(dst)?.connect().await?;
+            Ok(Self::new(conn))
+        }
+    }
+    impl<T> EventsApiClient<T>
+    where
+        T: tonic::client::GrpcService<tonic::body::BoxBody>,
+        T::Error: Into<StdError>,
+        T::ResponseBody: Body<Data = Bytes> + std::marker::Send + 'static,
+        <T::ResponseBody as Body>::Error: Into<StdError> + std::marker::Send,
+    {
+        pub fn new(inner: T) -> Self {
+            let inner = tonic::client::Grpc::new(inner);
+            Self { inner }
+        }
+        pub fn with_origin(inner: T, origin: Uri) -> Self {
+            let inner = tonic::client::Grpc::with_origin(inner, origin);
+            Self { inner }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> EventsApiClient<InterceptedService<T, F>>
+        where
+            F: tonic::service::Interceptor,
+            T::ResponseBody: Default,
+            T: tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+                Response = http::Response<
+                    <T as tonic::client::GrpcService<tonic::body::BoxBody>>::ResponseBody,
+                >,
+            >,
+            <T as tonic::codegen::Service<
+                http::Request<tonic::body::BoxBody>,
+            >>::Error: Into<StdError> + std::marker::Send + std::marker::Sync,
+        {
+            EventsApiClient::new(InterceptedService::new(inner, interceptor))
+        }
+        /// Compress requests with the given encoding.
+        ///
+        /// This requires the server to support it otherwise it might respond with an
+        /// error.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.send_compressed(encoding);
+            self
+        }
+        /// Enable decompressing responses.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.inner = self.inner.accept_compressed(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_decoding_message_size(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.inner = self.inner.max_encoding_message_size(limit);
+            self
+        }
+        /// Stream events starting from a cursor position.
+        pub async fn stream_events(
+            &mut self,
+            request: impl tonic::IntoRequest<super::StreamEventsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<tonic::codec::Streaming<super::StreamEventsResponse>>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.EventsApi/StreamEvents",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(
+                    GrpcMethod::new("plfm.controlplane.v1.EventsApi", "StreamEvents"),
+                );
+            self.inner.server_streaming(req, path, codec).await
+        }
+        /// Get a single event by identifier.
+        pub async fn get_event(
+            &mut self,
+            request: impl tonic::IntoRequest<super::GetEventRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetEventResponse>,
+            tonic::Status,
+        > {
+            self.inner
+                .ready()
+                .await
+                .map_err(|e| {
+                    tonic::Status::unknown(
+                        format!("Service was not ready: {}", e.into()),
+                    )
+                })?;
+            let codec = tonic::codec::ProstCodec::default();
+            let path = http::uri::PathAndQuery::from_static(
+                "/plfm.controlplane.v1.EventsApi/GetEvent",
+            );
+            let mut req = request.into_request();
+            req.extensions_mut()
+                .insert(GrpcMethod::new("plfm.controlplane.v1.EventsApi", "GetEvent"));
+            self.inner.unary(req, path, codec).await
+        }
+    }
+}
+/// Generated server implementations.
+pub mod events_api_server {
+    #![allow(
+        unused_variables,
+        dead_code,
+        missing_docs,
+        clippy::wildcard_imports,
+        clippy::let_unit_value,
+    )]
+    use tonic::codegen::*;
+    /// Generated trait containing gRPC methods that should be implemented for use with EventsApiServer.
+    #[async_trait]
+    pub trait EventsApi: std::marker::Send + std::marker::Sync + 'static {
+        /// Server streaming response type for the StreamEvents method.
+        type StreamEventsStream: tonic::codegen::tokio_stream::Stream<
+                Item = std::result::Result<super::StreamEventsResponse, tonic::Status>,
+            >
+            + std::marker::Send
+            + 'static;
+        /// Stream events starting from a cursor position.
+        async fn stream_events(
+            &self,
+            request: tonic::Request<super::StreamEventsRequest>,
+        ) -> std::result::Result<
+            tonic::Response<Self::StreamEventsStream>,
+            tonic::Status,
+        >;
+        /// Get a single event by identifier.
+        async fn get_event(
+            &self,
+            request: tonic::Request<super::GetEventRequest>,
+        ) -> std::result::Result<
+            tonic::Response<super::GetEventResponse>,
+            tonic::Status,
+        >;
+    }
+    /// Events API service for streaming platform events.
+    #[derive(Debug)]
+    pub struct EventsApiServer<T> {
+        inner: Arc<T>,
+        accept_compression_encodings: EnabledCompressionEncodings,
+        send_compression_encodings: EnabledCompressionEncodings,
+        max_decoding_message_size: Option<usize>,
+        max_encoding_message_size: Option<usize>,
+    }
+    impl<T> EventsApiServer<T> {
+        pub fn new(inner: T) -> Self {
+            Self::from_arc(Arc::new(inner))
+        }
+        pub fn from_arc(inner: Arc<T>) -> Self {
+            Self {
+                inner,
+                accept_compression_encodings: Default::default(),
+                send_compression_encodings: Default::default(),
+                max_decoding_message_size: None,
+                max_encoding_message_size: None,
+            }
+        }
+        pub fn with_interceptor<F>(
+            inner: T,
+            interceptor: F,
+        ) -> InterceptedService<Self, F>
+        where
+            F: tonic::service::Interceptor,
+        {
+            InterceptedService::new(Self::new(inner), interceptor)
+        }
+        /// Enable decompressing requests with the given encoding.
+        #[must_use]
+        pub fn accept_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.accept_compression_encodings.enable(encoding);
+            self
+        }
+        /// Compress responses with the given encoding, if the client supports it.
+        #[must_use]
+        pub fn send_compressed(mut self, encoding: CompressionEncoding) -> Self {
+            self.send_compression_encodings.enable(encoding);
+            self
+        }
+        /// Limits the maximum size of a decoded message.
+        ///
+        /// Default: `4MB`
+        #[must_use]
+        pub fn max_decoding_message_size(mut self, limit: usize) -> Self {
+            self.max_decoding_message_size = Some(limit);
+            self
+        }
+        /// Limits the maximum size of an encoded message.
+        ///
+        /// Default: `usize::MAX`
+        #[must_use]
+        pub fn max_encoding_message_size(mut self, limit: usize) -> Self {
+            self.max_encoding_message_size = Some(limit);
+            self
+        }
+    }
+    impl<T, B> tonic::codegen::Service<http::Request<B>> for EventsApiServer<T>
+    where
+        T: EventsApi,
+        B: Body + std::marker::Send + 'static,
+        B::Error: Into<StdError> + std::marker::Send + 'static,
+    {
+        type Response = http::Response<tonic::body::BoxBody>;
+        type Error = std::convert::Infallible;
+        type Future = BoxFuture<Self::Response, Self::Error>;
+        fn poll_ready(
+            &mut self,
+            _cx: &mut Context<'_>,
+        ) -> Poll<std::result::Result<(), Self::Error>> {
+            Poll::Ready(Ok(()))
+        }
+        fn call(&mut self, req: http::Request<B>) -> Self::Future {
+            match req.uri().path() {
+                "/plfm.controlplane.v1.EventsApi/StreamEvents" => {
+                    #[allow(non_camel_case_types)]
+                    struct StreamEventsSvc<T: EventsApi>(pub Arc<T>);
+                    impl<
+                        T: EventsApi,
+                    > tonic::server::ServerStreamingService<super::StreamEventsRequest>
+                    for StreamEventsSvc<T> {
+                        type Response = super::StreamEventsResponse;
+                        type ResponseStream = T::StreamEventsStream;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::ResponseStream>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::StreamEventsRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as EventsApi>::stream_events(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = StreamEventsSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.server_streaming(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                "/plfm.controlplane.v1.EventsApi/GetEvent" => {
+                    #[allow(non_camel_case_types)]
+                    struct GetEventSvc<T: EventsApi>(pub Arc<T>);
+                    impl<
+                        T: EventsApi,
+                    > tonic::server::UnaryService<super::GetEventRequest>
+                    for GetEventSvc<T> {
+                        type Response = super::GetEventResponse;
+                        type Future = BoxFuture<
+                            tonic::Response<Self::Response>,
+                            tonic::Status,
+                        >;
+                        fn call(
+                            &mut self,
+                            request: tonic::Request<super::GetEventRequest>,
+                        ) -> Self::Future {
+                            let inner = Arc::clone(&self.0);
+                            let fut = async move {
+                                <T as EventsApi>::get_event(&inner, request).await
+                            };
+                            Box::pin(fut)
+                        }
+                    }
+                    let accept_compression_encodings = self.accept_compression_encodings;
+                    let send_compression_encodings = self.send_compression_encodings;
+                    let max_decoding_message_size = self.max_decoding_message_size;
+                    let max_encoding_message_size = self.max_encoding_message_size;
+                    let inner = self.inner.clone();
+                    let fut = async move {
+                        let method = GetEventSvc(inner);
+                        let codec = tonic::codec::ProstCodec::default();
+                        let mut grpc = tonic::server::Grpc::new(codec)
+                            .apply_compression_config(
+                                accept_compression_encodings,
+                                send_compression_encodings,
+                            )
+                            .apply_max_message_size_config(
+                                max_decoding_message_size,
+                                max_encoding_message_size,
+                            );
+                        let res = grpc.unary(method, req).await;
+                        Ok(res)
+                    };
+                    Box::pin(fut)
+                }
+                _ => {
+                    Box::pin(async move {
+                        let mut response = http::Response::new(empty_body());
+                        let headers = response.headers_mut();
+                        headers
+                            .insert(
+                                tonic::Status::GRPC_STATUS,
+                                (tonic::Code::Unimplemented as i32).into(),
+                            );
+                        headers
+                            .insert(
+                                http::header::CONTENT_TYPE,
+                                tonic::metadata::GRPC_CONTENT_TYPE,
+                            );
+                        Ok(response)
+                    })
+                }
+            }
+        }
+    }
+    impl<T> Clone for EventsApiServer<T> {
+        fn clone(&self) -> Self {
+            let inner = self.inner.clone();
+            Self {
+                inner,
+                accept_compression_encodings: self.accept_compression_encodings,
+                send_compression_encodings: self.send_compression_encodings,
+                max_decoding_message_size: self.max_decoding_message_size,
+                max_encoding_message_size: self.max_encoding_message_size,
+            }
+        }
+    }
+    /// Generated gRPC service name
+    pub const SERVICE_NAME: &str = "plfm.controlplane.v1.EventsApi";
+    impl<T> tonic::server::NamedService for EventsApiServer<T> {
+        const NAME: &'static str = SERVICE_NAME;
+    }
+}

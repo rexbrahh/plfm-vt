@@ -166,6 +166,9 @@ impl NodeAgent for NodeAgentService {
             node_id: node_id.to_string(),
             overlay_ipv6,
             state: NodeState::Active.into(),
+            selected_api_version: "v1".to_string(),
+            minimum_agent_version: Some("0.1.0".to_string()),
+            rejection_reason: None,
         }))
     }
 

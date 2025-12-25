@@ -1,0 +1,193 @@
+syntax = "proto3";
+
+package plfm.agent.v1;
+
+// Storage gRPC service for volume lifecycle operations.
+service Storage {
+  // Attach a volume to the node.
+  rpc AttachVolume(AttachVolumeRequest) returns (AttachVolumeResponse);
+  // Detach a volume from the node.
+  rpc DetachVolume(DetachVolumeRequest) returns (DetachVolumeResponse);
+  // Create a snapshot of a volume.
+  rpc CreateSnapshot(CreateSnapshotRequest) returns (CreateSnapshotResponse);
+  // Restore a volume from a snapshot.
+  rpc RestoreSnapshot(RestoreSnapshotRequest) returns (RestoreSnapshotResponse);
+  // Report storage status for the node.
+  rpc ReportStorageStatus(ReportStorageStatusRequest) returns (ReportStorageStatusResponse);
+}
+
+// Volume type enumeration.
+enum VolumeType {
+  // Unspecified volume type.
+  VOLUME_TYPE_UNSPECIFIED = 0;
+  // Ephemeral volume backed by local disk.
+  VOLUME_TYPE_EPHEMERAL = 1;
+  // Persistent volume backed by network storage.
+  VOLUME_TYPE_PERSISTENT = 2;
+  // Shared volume accessible by multiple instances.
+  VOLUME_TYPE_SHARED = 3;
+}
+
+// Volume attachment state.
+enum VolumeState {
+  // Unspecified volume state.
+  VOLUME_STATE_UNSPECIFIED = 0;
+  // Volume is pending attachment.
+  VOLUME_STATE_PENDING = 1;
+  // Volume is attached and ready.
+  VOLUME_STATE_ATTACHED = 2;
+  // Volume is being detached.
+  VOLUME_STATE_DETACHING = 3;
+  // Volume is detached.
+  VOLUME_STATE_DETACHED = 4;
+  // Volume is in error state.
+  VOLUME_STATE_ERROR = 5;
+}
+
+// Request to attach a volume.
+message AttachVolumeRequest {
+  // Node identifier.
+  string node_id = 1;
+  // Volume identifier.
+  string volume_id = 2;
+  // Instance identifier for attachment.
+  string instance_id = 3;
+  // Volume type.
+  VolumeType volume_type = 4;
+  // Size in bytes.
+  int64 size_bytes = 5;
+  // Filesystem type to format.
+  string filesystem = 6;
+  // Mount path inside the instance.
+  string mount_path = 7;
+  // Whether to mount read-only.
+  bool read_only = 8;
+  // Optional source snapshot identifier.
+  optional string source_snapshot_id = 9;
+  // Optional device path hint.
+  optional string device_hint = 10;
+}
+
+// Response for volume attachment.
+message AttachVolumeResponse {
+  // Whether attachment succeeded.
+  bool attached = 1;
+  // Device path where volume is attached.
+  optional string device_path = 2;
+  // Error message if attachment failed.
+  optional string error = 3;
+}
+
+// Request to detach a volume.
+message DetachVolumeRequest {
+  // Node identifier.
+  string node_id = 1;
+  // Volume identifier.
+  string volume_id = 2;
+  // Instance identifier.
+  string instance_id = 3;
+  // Whether to force detach.
+  bool force = 4;
+}
+
+// Response for volume detachment.
+message DetachVolumeResponse {
+  // Whether detachment succeeded.
+  bool detached = 1;
+  // Error message if detachment failed.
+  optional string error = 2;
+}
+
+// Request to create a snapshot.
+message CreateSnapshotRequest {
+  // Node identifier.
+  string node_id = 1;
+  // Volume identifier to snapshot.
+  string volume_id = 2;
+  // Snapshot identifier to create.
+  string snapshot_id = 3;
+  // Optional snapshot description.
+  optional string description = 4;
+}
+
+// Response for snapshot creation.
+message CreateSnapshotResponse {
+  // Whether snapshot creation started.
+  bool started = 1;
+  // Size of snapshot in bytes.
+  optional int64 size_bytes = 2;
+  // Error message if creation failed.
+  optional string error = 3;
+}
+
+// Request to restore from a snapshot.
+message RestoreSnapshotRequest {
+  // Node identifier.
+  string node_id = 1;
+  // Snapshot identifier to restore from.
+  string snapshot_id = 2;
+  // Target volume identifier.
+  string target_volume_id = 3;
+  // Target instance identifier.
+  string instance_id = 4;
+}
+
+// Response for snapshot restoration.
+message RestoreSnapshotResponse {
+  // Whether restoration started.
+  bool started = 1;
+  // Error message if restoration failed.
+  optional string error = 2;
+}
+
+// Volume status report.
+message VolumeStatus {
+  // Volume identifier.
+  string volume_id = 1;
+  // Volume type.
+  VolumeType volume_type = 2;
+  // Current state.
+  VolumeState state = 3;
+  // Attached instance identifier.
+  optional string instance_id = 4;
+  // Device path.
+  optional string device_path = 5;
+  // Mount path.
+  optional string mount_path = 6;
+  // Total size in bytes.
+  int64 size_bytes = 7;
+  // Used bytes.
+  int64 used_bytes = 8;
+  // Available bytes.
+  int64 available_bytes = 9;
+  // Read IOPS.
+  int64 read_iops = 10;
+  // Write IOPS.
+  int64 write_iops = 11;
+  // Read throughput in bytes per second.
+  int64 read_throughput = 12;
+  // Write throughput in bytes per second.
+  int64 write_throughput = 13;
+  // Error message if in error state.
+  optional string error = 14;
+}
+
+// Request to report storage status.
+message ReportStorageStatusRequest {
+  // Node identifier.
+  string node_id = 1;
+  // Volume statuses.
+  repeated VolumeStatus volumes = 2;
+  // Total disk capacity in bytes.
+  int64 total_disk_bytes = 3;
+  // Available disk capacity in bytes.
+  int64 available_disk_bytes = 4;
+  // Timestamp of status report in seconds since epoch.
+  int64 timestamp_secs = 5;
+}
+
+// Response for storage status report.
+message ReportStorageStatusResponse {
+  // Whether report was accepted.
+  bool accepted = 1;
+}

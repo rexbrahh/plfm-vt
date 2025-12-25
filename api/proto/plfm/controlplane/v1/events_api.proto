@@ -1,0 +1,46 @@
+syntax = "proto3";
+
+package plfm.controlplane.v1;
+
+import "plfm/events/v1/envelope.proto";
+
+// Events API service for streaming platform events.
+service EventsApi {
+  // Stream events starting from a cursor position.
+  rpc StreamEvents(StreamEventsRequest) returns (stream StreamEventsResponse);
+
+  // Get a single event by identifier.
+  rpc GetEvent(GetEventRequest) returns (GetEventResponse);
+}
+
+// Response for streaming events.
+message StreamEventsResponse {
+  // Event envelope.
+  plfm.events.v1.EventEnvelope event = 1;
+}
+
+// Request for streaming events.
+message StreamEventsRequest {
+  // Organization identifier to scope events.
+  string org_id = 1;
+  // Optional application identifier filter.
+  optional string app_id = 2;
+  // Optional environment identifier filter.
+  optional string env_id = 3;
+  // Cursor position to start streaming from.
+  optional int64 after_sequence = 4;
+  // Optional event type filter.
+  repeated string event_types = 5;
+}
+
+// Request for getting a single event.
+message GetEventRequest {
+  // Event identifier.
+  string event_id = 1;
+}
+
+// Response for getting a single event.
+message GetEventResponse {
+  // Event envelope.
+  plfm.events.v1.EventEnvelope event = 1;
+}

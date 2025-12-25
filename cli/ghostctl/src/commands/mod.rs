@@ -4,6 +4,7 @@ mod apply;
 mod apps;
 mod auth;
 mod context;
+mod debug;
 mod deploys;
 mod envs;
 mod events;
@@ -125,6 +126,9 @@ enum Commands {
     /// Manage volumes, attachments, and snapshots.
     Volumes(volumes::VolumesCommand),
 
+    /// Debug commands for operators (admin only).
+    Debug(debug::DebugCommand),
+
     /// Show CLI version.
     Version,
 }
@@ -176,6 +180,7 @@ impl Cli {
             Commands::Routes(cmd) => cmd.run(ctx).await,
             Commands::Secrets(cmd) => cmd.run(ctx).await,
             Commands::Volumes(cmd) => cmd.run(ctx).await,
+            Commands::Debug(cmd) => cmd.run(ctx).await,
             Commands::Version => {
                 println!("vt {}", env!("CARGO_PKG_VERSION"));
                 Ok(())

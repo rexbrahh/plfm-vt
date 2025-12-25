@@ -8,7 +8,7 @@ modules:
 
 lint:
   use:
-    - DEFAULT
+    - STANDARD
     - COMMENTS
   except:
     # We use SCREAMING_SNAKE_CASE for enum values which is idiomatic

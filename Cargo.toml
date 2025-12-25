@@ -108,6 +108,7 @@ prost = "0.13"
 prost-types = "0.13"
 prost-reflect = { version = "0.13", features = ["serde"] }
 tonic = { version = "0.12", features = ["tls", "gzip"] }
+tokio-stream = "0.1"
 
 # Internal crates
 plfm-id = { path = "libs/id" }

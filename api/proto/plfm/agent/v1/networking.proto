@@ -1,0 +1,133 @@
+syntax = "proto3";
+
+package plfm.agent.v1;
+
+// Networking gRPC service for overlay and endpoint management.
+service Networking {
+  // Configure overlay network membership for the node.
+  rpc ConfigureOverlay(ConfigureOverlayRequest) returns (ConfigureOverlayResponse);
+  // Update peer list for WireGuard mesh.
+  rpc UpdatePeers(UpdatePeersRequest) returns (UpdatePeersResponse);
+  // Report networking status for the node.
+  rpc ReportNetworkStatus(ReportNetworkStatusRequest) returns (ReportNetworkStatusResponse);
+}
+
+// Request to configure overlay network.
+message ConfigureOverlayRequest {
+  // Node identifier.
+  string node_id = 1;
+  // Overlay IPv6 address assigned to the node.
+  string overlay_ipv6 = 2;
+  // Overlay IPv6 prefix length.
+  int32 prefix_length = 3;
+  // MTU for overlay interface.
+  int32 mtu = 4;
+  // WireGuard private key encrypted for node.
+  bytes wireguard_private_key_encrypted = 5;
+}
+
+// Response for overlay configuration.
+message ConfigureOverlayResponse {
+  // Whether configuration was applied.
+  bool applied = 1;
+  // Error message if configuration failed.
+  optional string error = 2;
+}
+
+// WireGuard peer entry for mesh.
+message WireGuardPeer {
+  // Peer node identifier.
+  string node_id = 1;
+  // Peer WireGuard public key.
+  string public_key = 2;
+  // Peer overlay IPv6 address.
+  string overlay_ipv6 = 3;
+  // Peer endpoint address for direct connection.
+  string endpoint = 4;
+  // Allowed IP ranges for this peer.
+  repeated string allowed_ips = 5;
+  // Persistent keepalive interval in seconds.
+  optional int32 keepalive_secs = 6;
+}
+
+// Request to update WireGuard peer list.
+message UpdatePeersRequest {
+  // Node identifier.
+  string node_id = 1;
+  // Full peer list for the mesh.
+  repeated WireGuardPeer peers = 2;
+  // Generation number for peer list.
+  int64 generation = 3;
+}
+
+// Response for peer list update.
+message UpdatePeersResponse {
+  // Whether update was applied.
+  bool applied = 1;
+  // Number of peers configured.
+  int32 peer_count = 2;
+  // Error message if update failed.
+  optional string error = 3;
+}
+
+// Network interface status.
+message InterfaceStatus {
+  // Interface name.
+  string name = 1;
+  // Whether interface is up.
+  bool up = 2;
+  // Assigned IPv6 addresses.
+  repeated string ipv6_addresses = 3;
+  // Assigned IPv4 addresses.
+  repeated string ipv4_addresses = 4;
+  // Current MTU.
+  int32 mtu = 5;
+  // Bytes transmitted.
+  int64 tx_bytes = 6;
+  // Bytes received.
+  int64 rx_bytes = 7;
+  // Packets transmitted.
+  int64 tx_packets = 8;
+  // Packets received.
+  int64 rx_packets = 9;
+  // Transmit errors.
+  int64 tx_errors = 10;
+  // Receive errors.
+  int64 rx_errors = 11;
+}
+
+// WireGuard peer status.
+message PeerStatus {
+  // Peer node identifier.
+  string node_id = 1;
+  // Peer public key.
+  string public_key = 2;
+  // Current endpoint address.
+  optional string endpoint = 3;
+  // Last handshake timestamp in seconds since epoch.
+  optional int64 last_handshake_secs = 4;
+  // Bytes transmitted to peer.
+  int64 tx_bytes = 5;
+  // Bytes received from peer.
+  int64 rx_bytes = 6;
+  // Whether peer is reachable.
+  bool reachable = 7;
+}
+
+// Request to report network status.
+message ReportNetworkStatusRequest {
+  // Node identifier.
+  string node_id = 1;
+  // Overlay interface status.
+  InterfaceStatus overlay_interface = 2;
+  // WireGuard peer statuses.
+  repeated PeerStatus peers = 3;
+  // Timestamp of status report in seconds since epoch.
+  int64 timestamp_secs = 4;
+}
+
+// Response for network status report.
+message ReportNetworkStatusResponse {
+  // Whether report was accepted.
+  bool accepted = 1;
+}
