@@ -23,6 +23,10 @@ use tracing::{debug, warn};
 /// Default connect timeout for backend connections.
 pub const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 
+const BASE_RETRY_COOLDOWN: Duration = Duration::from_secs(1);
+const MAX_RETRY_COOLDOWN: Duration = Duration::from_secs(300);
+const BACKOFF_MULTIPLIER: u32 = 2;
+
 /// A backend endpoint representing a workload instance.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Backend {
@@ -67,6 +71,32 @@ struct BackendState {
     health: HealthStatus,
     last_failure: Option<Instant>,
     consecutive_failures: u32,
+}
+
+impl BackendState {
+    fn should_retry(&self) -> bool {
+        if self.health != HealthStatus::Unhealthy {
+            return false;
+        }
+
+        let Some(last_failure) = self.last_failure else {
+            return true;
+        };
+
+        let backoff_factor = BACKOFF_MULTIPLIER.saturating_pow(self.consecutive_failures.min(10));
+        let cooldown = BASE_RETRY_COOLDOWN
+            .saturating_mul(backoff_factor)
+            .min(MAX_RETRY_COOLDOWN);
+
+        last_failure.elapsed() >= cooldown
+    }
+
+    fn is_eligible(&self) -> bool {
+        match self.health {
+            HealthStatus::Healthy | HealthStatus::Unknown => true,
+            HealthStatus::Unhealthy => self.should_retry(),
+        }
+    }
 }
 
 /// A pool of backends for a single route.
@@ -167,7 +197,7 @@ impl BackendPool {
             .read()
             .await
             .iter()
-            .filter(|s| s.health == HealthStatus::Healthy || s.health == HealthStatus::Unknown)
+            .filter(|s| s.is_eligible())
             .count()
     }
 
@@ -181,10 +211,7 @@ impl BackendPool {
         // Get eligible backends and their count
         let (eligible_count, start_idx) = {
             let backends = self.backends.read().await;
-            let count = backends
-                .iter()
-                .filter(|s| s.health == HealthStatus::Healthy || s.health == HealthStatus::Unknown)
-                .count();
+            let count = backends.iter().filter(|s| s.is_eligible()).count();
 
             if count == 0 {
                 warn!(route_id = %self.route_id, "No eligible backends");
@@ -200,23 +227,30 @@ impl BackendPool {
         for i in 0..eligible_count {
             let try_idx = (start_idx + i) % eligible_count;
 
-            let backend = {
+            let (backend, was_unhealthy) = {
                 let backends = self.backends.read().await;
-                let eligible: Vec<_> = backends
-                    .iter()
-                    .filter(|s| {
-                        s.health == HealthStatus::Healthy || s.health == HealthStatus::Unknown
-                    })
-                    .collect();
+                let eligible: Vec<_> = backends.iter().filter(|s| s.is_eligible()).collect();
 
                 if try_idx >= eligible.len() {
                     continue;
                 }
-                eligible[try_idx].backend.clone()
+                let state = eligible[try_idx];
+                (
+                    state.backend.clone(),
+                    state.health == HealthStatus::Unhealthy,
+                )
             };
 
             match self.try_connect(&backend).await {
                 Ok(stream) => {
+                    if was_unhealthy {
+                        tracing::info!(
+                            route_id = %self.route_id,
+                            backend_addr = %backend.socket_addr(),
+                            instance_id = %backend.instance_id,
+                            "Backend recovered from unhealthy state"
+                        );
+                    }
                     self.mark_healthy(&backend).await;
                     self.connections_succeeded.fetch_add(1, Ordering::Relaxed);
                     return Some((stream, backend));

@@ -227,33 +227,55 @@ impl ProxyV2Backend {
                                 conn_clone.fetch_add(1, Ordering::Relaxed);
                                 let header_store = Arc::clone(&header_clone);
                                 tokio::spawn(async move {
-                                    let mut buf = vec![0u8; 512];
-                                    let mut total_read = 0;
-
-                                    if let Ok(n) = stream.read(&mut buf).await {
-                                        total_read = n;
+                                    let mut header_base = [0u8; 16];
+                                    if tokio::time::timeout(
+                                        Duration::from_secs(1),
+                                        stream.read_exact(&mut header_base),
+                                    )
+                                    .await
+                                    .is_err()
+                                    {
+                                        return;
                                     }
 
-                                    if total_read >= 16 && buf[..12] == PROXY_V2_SIGNATURE {
-                                        let addr_len = u16::from_be_bytes([buf[14], buf[15]]) as usize;
-                                        let header_len = 16 + addr_len;
+                                    if header_base[..12] != PROXY_V2_SIGNATURE {
+                                        let _ = stream.write_all(b"ack").await;
+                                        return;
+                                    }
 
-                                        if total_read == header_len {
-                                            if let Ok(Ok(n)) = tokio::time::timeout(
-                                                Duration::from_millis(100),
-                                                stream.read(&mut buf[total_read..]),
-                                            )
-                                            .await
-                                            {
-                                                total_read += n;
-                                            }
+                                    let addr_len = u16::from_be_bytes([header_base[14], header_base[15]]) as usize;
+                                    let mut addr_data = vec![0u8; addr_len];
+
+                                    if addr_len > 0 {
+                                        if tokio::time::timeout(
+                                            Duration::from_secs(1),
+                                            stream.read_exact(&mut addr_data),
+                                        )
+                                        .await
+                                        .is_err()
+                                        {
+                                            return;
                                         }
                                     }
 
-                                    if total_read > 0 {
-                                        if let Some(parsed) = parse_proxy_v2_header(&buf[..total_read]) {
-                                            *header_store.write().await = Some(parsed);
-                                        }
+                                    let mut payload = vec![0u8; 256];
+                                    let payload_len = match tokio::time::timeout(
+                                        Duration::from_millis(100),
+                                        stream.read(&mut payload),
+                                    )
+                                    .await
+                                    {
+                                        Ok(Ok(n)) => n,
+                                        _ => 0,
+                                    };
+
+                                    let mut full_data = Vec::with_capacity(16 + addr_len + payload_len);
+                                    full_data.extend_from_slice(&header_base);
+                                    full_data.extend_from_slice(&addr_data);
+                                    full_data.extend_from_slice(&payload[..payload_len]);
+
+                                    if let Some(parsed) = parse_proxy_v2_header(&full_data) {
+                                        *header_store.write().await = Some(parsed);
                                     }
                                     let _ = stream.write_all(b"ack").await;
                                 });
