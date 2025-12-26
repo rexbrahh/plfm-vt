@@ -5,12 +5,14 @@
 
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::process::CommandExt;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 
 use anyhow::{Context, Result};
 use nix::pty::{openpty, OpenptyResult, Winsize};
+use nix::sys::signal::{self, Signal};
+use nix::unistd::Pid;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 use vsock::{VsockAddr, VsockListener, VsockStream};
@@ -211,38 +213,97 @@ fn execute_with_pty(stream: &mut VsockStream, request: &ExecRequest) -> Result<i
         }
     };
 
-    // Use blocking I/O for vsock stream
-    // Read/write loop - take ownership of master fd
     let mut master_file = unsafe { std::fs::File::from_raw_fd(master_fd) };
-    // Prevent master OwnedFd from closing the fd since we transferred it
     std::mem::forget(master);
 
-    // Simple polling loop (in production, use proper async or epoll)
-    let mut buf = [0u8; 4096];
+    set_nonblocking(master_fd)?;
+    set_nonblocking(stream.as_raw_fd())?;
+
+    let mut pty_buf = [0u8; 4096];
+    let mut stream_buf = [0u8; 4096];
+
     loop {
-        // Check if child exited
         if let Some(status) = child.try_wait()? {
-            // Drain any remaining output
-            while let Ok(n) = master_file.read(&mut buf) {
+            while let Ok(n) = master_file.read(&mut pty_buf) {
                 if n == 0 {
                     break;
                 }
-                send_frame(stream, frame_type::STDOUT, &buf[..n])?;
+                send_frame(stream, frame_type::STDOUT, &pty_buf[..n])?;
             }
             return Ok(status.code().unwrap_or(128));
         }
 
-        // Read from PTY master, write to stream
-        // Note: This is simplified; real implementation needs non-blocking I/O
-        if let Ok(n) = master_file.read(&mut buf) {
-            if n > 0 {
-                send_frame(stream, frame_type::STDOUT, &buf[..n])?;
+        match master_file.read(&mut pty_buf) {
+            Ok(0) => {}
+            Ok(n) => {
+                send_frame(stream, frame_type::STDOUT, &pty_buf[..n])?;
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(e) => {
+                warn!(error = %e, "PTY read error");
             }
         }
 
-        // Read from stream, write to PTY
-        // TODO: Handle control messages for resize
+        match stream.read(&mut stream_buf) {
+            Ok(0) => {
+                debug!("stream closed");
+                break;
+            }
+            Ok(n) => {
+                let frame_data = &stream_buf[..n];
+                if frame_data.is_empty() {
+                    continue;
+                }
+
+                let frame_type_byte = frame_data[0];
+                let payload = &frame_data[1..];
+
+                match frame_type_byte {
+                    frame_type::STDIN => {
+                        if let Err(e) = master_file.write_all(payload) {
+                            warn!(error = %e, "failed to write to PTY");
+                        }
+                    }
+                    frame_type::CONTROL => {
+                        if let Ok(ctrl) =
+                            serde_json::from_slice::<ControlMessage>(payload)
+                        {
+                            match ctrl.msg_type.as_str() {
+                                "resize" => {
+                                    if let (Some(cols), Some(rows)) = (ctrl.cols, ctrl.rows) {
+                                        if let Err(e) = resize_pty(master_fd, cols, rows) {
+                                            warn!(error = %e, "resize failed");
+                                        }
+                                    }
+                                }
+                                "signal" => {
+                                    if let Some(name) = &ctrl.name {
+                                        if let Err(e) = send_signal_to_child(&child, name) {
+                                            warn!(error = %e, signal = name, "signal failed");
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    debug!(msg_type = ctrl.msg_type, "unknown control message");
+                                }
+                            }
+                        }
+                    }
+                    _ => {
+                        debug!(frame_type = frame_type_byte, "unknown frame type");
+                    }
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(e) => {
+                warn!(error = %e, "stream read error");
+            }
+        }
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
+
+    Ok(child.wait()?.code().unwrap_or(128))
 }
 
 /// Execute command with separate stdin/stdout/stderr pipes.
@@ -332,6 +393,66 @@ fn send_exit(stream: &mut VsockStream, exit_code: i32, reason: &str) -> Result<(
     Ok(())
 }
 
+fn send_signal_to_child(child: &Child, signal_name: &str) -> Result<()> {
+    let pid = Pid::from_raw(child.id() as i32);
+    let sig = match signal_name.to_uppercase().as_str() {
+        "INT" | "SIGINT" => Signal::SIGINT,
+        "TERM" | "SIGTERM" => Signal::SIGTERM,
+        "KILL" | "SIGKILL" => Signal::SIGKILL,
+        "HUP" | "SIGHUP" => Signal::SIGHUP,
+        _ => {
+            warn!(signal = signal_name, "Unknown signal");
+            return Ok(());
+        }
+    };
+
+    debug!(pid = ?pid, signal = ?sig, "Sending signal to child");
+    signal::kill(pid, sig)?;
+    Ok(())
+}
+
+fn resize_pty(master_fd: RawFd, cols: u16, rows: u16) -> Result<()> {
+    let winsize = Winsize {
+        ws_row: rows,
+        ws_col: cols,
+        ws_xpixel: 0,
+        ws_ypixel: 0,
+    };
+
+    // SAFETY: TIOCSWINSZ is a valid ioctl for PTY window size
+    let ret = unsafe { libc::ioctl(master_fd, libc::TIOCSWINSZ, &winsize) };
+
+    if ret == -1 {
+        Err(anyhow::anyhow!(
+            "failed to resize PTY: {}",
+            std::io::Error::last_os_error()
+        ))
+    } else {
+        debug!(cols = cols, rows = rows, "PTY resized");
+        Ok(())
+    }
+}
+
+fn set_nonblocking(fd: RawFd) -> Result<()> {
+    // SAFETY: F_GETFL/F_SETFL are standard fcntl operations on valid fd
+    unsafe {
+        let flags = libc::fcntl(fd, libc::F_GETFL);
+        if flags == -1 {
+            return Err(anyhow::anyhow!(
+                "fcntl F_GETFL failed: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+        if libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) == -1 {
+            return Err(anyhow::anyhow!(
+                "fcntl F_SETFL failed: {}",
+                std::io::Error::last_os_error()
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -358,5 +479,22 @@ mod tests {
         let json = serde_json::to_string(&msg).unwrap();
         assert!(json.contains("\"exit_code\":0"));
         assert!(json.contains("\"reason\":\"exited\""));
+    }
+
+    #[test]
+    fn test_control_message_resize() {
+        let json = r#"{"type": "resize", "cols": 120, "rows": 40}"#;
+        let ctrl: ControlMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(ctrl.msg_type, "resize");
+        assert_eq!(ctrl.cols, Some(120));
+        assert_eq!(ctrl.rows, Some(40));
+    }
+
+    #[test]
+    fn test_control_message_signal() {
+        let json = r#"{"type": "signal", "name": "TERM"}"#;
+        let ctrl: ControlMessage = serde_json::from_str(json).unwrap();
+        assert_eq!(ctrl.msg_type, "signal");
+        assert_eq!(ctrl.name, Some("TERM".to_string()));
     }
 }
