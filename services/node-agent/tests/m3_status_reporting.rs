@@ -48,6 +48,7 @@ fn test_plan(instance_id: &str) -> InstancePlan {
         },
         mounts: None,
         secrets: None,
+        health: None,
         spec_hash: None,
     }
 }

@@ -18,6 +18,7 @@ use plfm_node_agent::client::{
 };
 use plfm_node_agent::config::Config;
 use plfm_node_agent::runtime::MockRuntime;
+use plfm_node_agent::state::StateStore;
 use tokio::sync::watch;
 
 fn test_config() -> Config {
@@ -34,6 +35,10 @@ fn test_config() -> Config {
 
 fn test_control_plane(config: &Config) -> Arc<ControlPlaneClient> {
     Arc::new(ControlPlaneClient::new(config))
+}
+
+fn test_state_store() -> Arc<std::sync::Mutex<StateStore>> {
+    Arc::new(std::sync::Mutex::new(StateStore::open_in_memory().unwrap()))
 }
 
 fn test_plan(id: &str, image: &str) -> InstancePlan {
@@ -74,6 +79,7 @@ fn test_plan(id: &str, image: &str) -> InstancePlan {
         },
         mounts: None,
         secrets: None,
+        health: None,
         spec_hash: None,
     }
 }
@@ -95,9 +101,10 @@ async fn test_supervisor_lifecycle() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
     let control_plane = test_control_plane(&config);
+    let state_store = test_state_store();
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     supervisor.start();
 
     // Verify static actors are running
@@ -114,9 +121,10 @@ async fn test_apply_single_instance() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
     let control_plane = test_control_plane(&config);
+    let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     supervisor.start();
 
     // Apply one instance
@@ -135,9 +143,10 @@ async fn test_apply_multiple_instances() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
     let control_plane = test_control_plane(&config);
+    let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     supervisor.start();
 
     // Apply multiple instances with same image (should deduplicate pulls)
@@ -157,10 +166,10 @@ async fn test_scale_up_and_down() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
     let control_plane = test_control_plane(&config);
+    let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    // Create supervisor without image actor (direct spawn)
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     // Don't call start() - this bypasses image pull
 
     // Scale up to 3 instances
@@ -191,9 +200,10 @@ async fn test_update_instance_spec() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
     let control_plane = test_control_plane(&config);
+    let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     // Don't call start() - direct spawn
 
     // Create instance
@@ -214,9 +224,10 @@ async fn test_instance_with_digest() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
     let control_plane = test_control_plane(&config);
+    let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     supervisor.start();
 
     // Apply instance with digest in image ref
@@ -234,9 +245,10 @@ async fn test_concurrent_apply() {
     let config = test_config();
     let runtime = Arc::new(MockRuntime::new());
     let control_plane = test_control_plane(&config);
+    let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     // Don't call start() - direct spawn
 
     // Rapidly apply different sets

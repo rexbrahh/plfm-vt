@@ -20,6 +20,7 @@ mod config;
 mod error;
 mod exec;
 mod handshake;
+mod health;
 mod logging;
 mod mount;
 mod network;
@@ -74,7 +75,76 @@ async fn main() -> ExitCode {
 }
 
 async fn run() -> Result<i32> {
-    // Step 1: Perform config handshake with host agent
+    let config = match perform_setup().await {
+        Ok(config) => config,
+        Err(e) => {
+            report_init_failure(&e).await;
+            return Err(e);
+        }
+    };
+
+    let exec_handle = if config.exec.enabled {
+        info!(port = config.exec.vsock_port, "starting exec service");
+        Some(tokio::spawn(exec::run_exec_service(config.exec.vsock_port)))
+    } else {
+        None
+    };
+
+    info!("launching workload");
+    let health_config = config.health;
+    let workload_handle = tokio::spawn(workload::run(config.workload));
+
+    let health_handle = if let Some(hc) = health_config {
+        info!("starting health check loop");
+        Some(tokio::spawn(health::run_health_checks(hc)))
+    } else {
+        info!("no health config, reporting ready immediately");
+        handshake::report_status("ready").await?;
+        None
+    };
+
+    let exit_code = tokio::select! {
+        result = workload_handle => {
+            match result {
+                Ok(Ok(code)) => code,
+                Ok(Err(e)) => {
+                    report_init_failure(&e).await;
+                    if let Some(handle) = exec_handle {
+                        handle.abort();
+                    }
+                    if let Some(handle) = health_handle {
+                        handle.abort();
+                    }
+                    return Err(e);
+                }
+                Err(e) => {
+                    let err = anyhow::anyhow!("workload task panicked: {}", e);
+                    report_init_failure(&err).await;
+                    if let Some(handle) = exec_handle {
+                        handle.abort();
+                    }
+                    if let Some(handle) = health_handle {
+                        handle.abort();
+                    }
+                    return Err(err);
+                }
+            }
+        }
+    };
+
+    if let Some(handle) = exec_handle {
+        handle.abort();
+    }
+    if let Some(handle) = health_handle {
+        handle.abort();
+    }
+
+    handshake::report_exit(exit_code).await?;
+
+    Ok(exit_code)
+}
+
+async fn perform_setup() -> Result<config::GuestConfig> {
     info!("performing config handshake with host agent");
     let config = handshake::perform_handshake(CONFIG_VSOCK_PORT).await?;
     info!(
@@ -83,13 +153,10 @@ async fn run() -> Result<i32> {
         "config received"
     );
 
-    // Step 2: Configure networking
     info!("configuring network");
     network::configure(&config.network).await?;
-    handshake::report_status("config_applied").await?;
     info!("network configured");
 
-    // Step 3: Mount volumes
     if !config.mounts.is_empty() {
         info!(count = config.mounts.len(), "mounting volumes");
         for mount_config in &config.mounts {
@@ -98,32 +165,29 @@ async fn run() -> Result<i32> {
         info!("volumes mounted");
     }
 
-    // Step 4: Materialize secrets
     if let Some(secrets_config) = &config.secrets {
         info!("materializing secrets");
         secrets::materialize(secrets_config).await?;
         info!("secrets materialized");
     }
 
-    // Step 5: Start exec service (background)
-    let exec_handle = if config.exec.enabled {
-        info!(port = config.exec.vsock_port, "starting exec service");
-        Some(tokio::spawn(exec::run_exec_service(config.exec.vsock_port)))
-    } else {
-        None
-    };
+    handshake::report_status("config_applied").await?;
+    info!("config applied");
 
-    // Step 6: Launch workload
-    info!("launching workload");
-    let exit_code = workload::run(&config.workload).await?;
+    Ok(config)
+}
 
-    // Cleanup exec service
-    if let Some(handle) = exec_handle {
-        handle.abort();
+async fn report_init_failure(err: &anyhow::Error) {
+    let (reason, detail) = extract_failure_info(err);
+    if let Err(e) = handshake::report_failure(&reason, &detail).await {
+        error!(error = %e, "failed to report failure to host");
     }
+}
 
-    // Report exit to host agent
-    handshake::report_exit(exit_code).await?;
-
-    Ok(exit_code)
+fn extract_failure_info(err: &anyhow::Error) -> (String, String) {
+    if let Some(init_err) = err.downcast_ref::<error::InitError>() {
+        (init_err.reason_code().to_string(), init_err.to_string())
+    } else {
+        ("unknown".to_string(), err.to_string())
+    }
 }

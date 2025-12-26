@@ -17,10 +17,8 @@ use tracing::{debug, info, warn};
 
 use crate::config::WorkloadConfig;
 use crate::error::InitError;
-use crate::handshake;
 
-/// Run the workload process and wait for it to exit.
-pub async fn run(config: &WorkloadConfig) -> Result<i32> {
+pub async fn run(config: WorkloadConfig) -> Result<i32> {
     if config.argv.is_empty() {
         return Err(InitError::WorkloadStartFailed("argv is empty".to_string()).into());
     }
@@ -80,9 +78,6 @@ pub async fn run(config: &WorkloadConfig) -> Result<i32> {
 
     let child_pid = child.id().expect("child should have pid");
     info!(pid = child_pid, "workload started");
-
-    // Report ready status
-    handshake::report_status("ready").await?;
 
     // Wait for the child while handling signals
     let exit_status = wait_with_signals(&mut child).await?;
@@ -182,7 +177,7 @@ mod tests {
 
         // This will fail because we're not in a real guest environment
         // but the code structure is correct
-        let result = run(&config).await;
+        let result = run(config).await;
         // In a real guest this would succeed
         // For now just check it doesn't panic
         assert!(result.is_ok() || result.is_err());

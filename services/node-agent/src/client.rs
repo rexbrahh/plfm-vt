@@ -208,6 +208,8 @@ pub struct InstancePlan {
     #[serde(default)]
     pub secrets: Option<WorkloadSecrets>,
     #[serde(default)]
+    pub health: Option<WorkloadHealth>,
+    #[serde(default)]
     pub spec_hash: Option<String>,
 }
 
@@ -278,6 +280,45 @@ pub struct WorkloadSecrets {
     pub gid: Option<i32>,
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct WorkloadHealth {
+    #[serde(rename = "type")]
+    pub health_type: String,
+    pub port: i32,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default = "default_health_interval")]
+    pub interval_seconds: i32,
+    #[serde(default = "default_health_timeout")]
+    pub timeout_seconds: i32,
+    #[serde(default = "default_health_grace_period")]
+    pub grace_period_seconds: i32,
+    #[serde(default = "default_health_success_threshold")]
+    pub success_threshold: i32,
+    #[serde(default = "default_health_failure_threshold")]
+    pub failure_threshold: i32,
+}
+
+fn default_health_interval() -> i32 {
+    10
+}
+
+fn default_health_timeout() -> i32 {
+    2
+}
+
+fn default_health_grace_period() -> i32 {
+    10
+}
+
+fn default_health_success_threshold() -> i32 {
+    1
+}
+
+fn default_health_failure_threshold() -> i32 {
+    3
+}
+
 /// Secret material response from the control plane.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SecretMaterialResponse {
@@ -323,6 +364,7 @@ pub enum FailureReason {
     ImagePullFailed,
     RootfsBuildFailed,
     FirecrackerStartFailed,
+    GuestInitFailed,
     NetworkSetupFailed,
     VolumeAttachFailed,
     SecretsMissing,

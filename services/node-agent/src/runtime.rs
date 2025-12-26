@@ -189,6 +189,7 @@ mod tests {
             },
             mounts: None,
             secrets: None,
+            health: None,
             spec_hash: None,
         }
     }

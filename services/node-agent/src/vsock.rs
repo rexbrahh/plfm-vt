@@ -21,6 +21,7 @@ use tracing::{debug, error, info, warn};
 use vsock::{VsockAddr, VsockListener, VsockStream, VMADDR_CID_HOST};
 
 use crate::client::InstancePlan;
+use crate::state::{BootStatusRecord, StateStore};
 
 /// Vsock port for config handshake.
 pub const CONFIG_PORT: u32 = 5161;
@@ -60,6 +61,8 @@ pub struct ConfigMessage {
     mounts: Vec<MountConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     secrets: Option<SecretsConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    health: Option<HealthConfig>,
     exec: ExecConfig,
 }
 
@@ -119,6 +122,20 @@ pub struct SecretsConfig {
 pub struct ExecConfig {
     vsock_port: u32,
     enabled: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HealthConfig {
+    #[serde(rename = "type")]
+    health_type: String,
+    port: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
+    interval_seconds: i32,
+    timeout_seconds: i32,
+    grace_period_seconds: i32,
+    success_threshold: i32,
+    failure_threshold: i32,
 }
 
 /// Ack message from guest-init.
@@ -206,18 +223,16 @@ impl Default for ConfigStore {
 // Config Delivery Service
 // =============================================================================
 
-/// Config delivery service that handles vsock connections from guest-init.
 pub struct ConfigDeliveryService {
     config_store: Arc<ConfigStore>,
+    state_store: Arc<std::sync::Mutex<StateStore>>,
 }
 
 impl ConfigDeliveryService {
-    /// Create a new config delivery service.
-    pub fn new(config_store: Arc<ConfigStore>) -> Self {
-        Self { config_store }
+    pub fn new(config_store: Arc<ConfigStore>, state_store: Arc<std::sync::Mutex<StateStore>>) -> Self {
+        Self { config_store, state_store }
     }
 
-    /// Run the config delivery service, listening for guest-init connections.
     pub async fn run(&self) -> Result<()> {
         let addr = VsockAddr::new(VMADDR_CID_HOST, CONFIG_PORT);
 
@@ -238,8 +253,9 @@ impl ConfigDeliveryService {
                     info!(cid = cid, "Guest connection accepted");
 
                     let config_store = Arc::clone(&self.config_store);
+                    let state_store = Arc::clone(&self.state_store);
                     tokio::task::spawn_blocking(move || {
-                        if let Err(e) = handle_connection(stream, config_store) {
+                        if let Err(e) = handle_connection(stream, config_store, state_store) {
                             error!(cid = cid, error = %e, "Connection handler failed");
                         }
                     });
@@ -252,8 +268,11 @@ impl ConfigDeliveryService {
     }
 }
 
-/// Handle a single guest-init connection.
-fn handle_connection(mut stream: VsockStream, config_store: Arc<ConfigStore>) -> Result<()> {
+fn handle_connection(
+    mut stream: VsockStream,
+    config_store: Arc<ConfigStore>,
+    state_store: Arc<std::sync::Mutex<StateStore>>,
+) -> Result<()> {
     // Read hello message
     let hello =
         read_message::<HelloMessage>(&mut stream).context("Failed to read hello message")?;
@@ -322,7 +341,6 @@ fn handle_connection(mut stream: VsockStream, config_store: Arc<ConfigStore>) ->
         "Config ack received"
     );
 
-    // Continue reading status messages
     loop {
         match read_message::<StatusMessage>(&mut stream) {
             Ok(status) => {
@@ -337,13 +355,34 @@ fn handle_connection(mut stream: VsockStream, config_store: Arc<ConfigStore>) ->
 
                 info!(
                     instance_id = %hello.instance_id,
+                    boot_id = %hello.boot_id,
                     state = %status.state,
                     reason = ?status.reason,
                     exit_code = ?status.exit_code,
                     "Guest status update"
                 );
 
-                // Handle terminal states
+                let boot_record = BootStatusRecord {
+                    instance_id: hello.instance_id.clone(),
+                    boot_id: hello.boot_id.clone(),
+                    state: status.state.clone(),
+                    reason: status.reason.clone(),
+                    detail: status.detail.clone(),
+                    exit_code: status.exit_code,
+                    guest_timestamp: status.timestamp.clone(),
+                    recorded_at: chrono::Utc::now().timestamp(),
+                };
+
+                if let Ok(store) = state_store.lock() {
+                    if let Err(e) = store.upsert_boot_status(&boot_record) {
+                        warn!(
+                            instance_id = %hello.instance_id,
+                            error = %e,
+                            "Failed to persist boot status"
+                        );
+                    }
+                }
+
                 if status.state == "failed" || status.state == "exited" {
                     break;
                 }
@@ -436,11 +475,21 @@ fn build_config_message(instance_id: &str, pending: &PendingConfig) -> ConfigMes
         _ => None,
     };
 
-    // Exec config
     let exec = ExecConfig {
         vsock_port: 5162,
         enabled: true,
     };
+
+    let health = plan.health.as_ref().map(|h| HealthConfig {
+        health_type: h.health_type.clone(),
+        port: h.port,
+        path: h.path.clone(),
+        interval_seconds: h.interval_seconds,
+        timeout_seconds: h.timeout_seconds,
+        grace_period_seconds: h.grace_period_seconds,
+        success_threshold: h.success_threshold,
+        failure_threshold: h.failure_threshold,
+    });
 
     ConfigMessage {
         msg_type: "config".to_string(),
@@ -451,6 +500,7 @@ fn build_config_message(instance_id: &str, pending: &PendingConfig) -> ConfigMes
         network,
         mounts,
         secrets,
+        health,
         exec,
     }
 }
@@ -524,6 +574,7 @@ mod tests {
             },
             mounts: vec![],
             secrets: None,
+            health: None,
             exec: ExecConfig {
                 vsock_port: 5162,
                 enabled: true,
@@ -605,6 +656,7 @@ mod tests {
             },
             mounts: None,
             secrets: None,
+            health: None,
             spec_hash: None,
         };
 

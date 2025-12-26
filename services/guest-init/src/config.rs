@@ -32,6 +32,10 @@ pub struct GuestConfig {
     #[serde(default)]
     pub secrets: Option<SecretsConfig>,
 
+    /// Health check configuration.
+    #[serde(default)]
+    pub health: Option<HealthConfig>,
+
     /// Exec service configuration.
     #[serde(default)]
     pub exec: ExecConfig,
@@ -220,6 +224,45 @@ impl Default for ExecConfig {
             enabled: default_exec_enabled(),
         }
     }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct HealthConfig {
+    #[serde(rename = "type")]
+    pub health_type: String,
+    pub port: i32,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default = "default_health_interval")]
+    pub interval_seconds: i32,
+    #[serde(default = "default_health_timeout")]
+    pub timeout_seconds: i32,
+    #[serde(default = "default_health_grace_period")]
+    pub grace_period_seconds: i32,
+    #[serde(default = "default_health_success_threshold")]
+    pub success_threshold: i32,
+    #[serde(default = "default_health_failure_threshold")]
+    pub failure_threshold: i32,
+}
+
+fn default_health_interval() -> i32 {
+    10
+}
+
+fn default_health_timeout() -> i32 {
+    2
+}
+
+fn default_health_grace_period() -> i32 {
+    10
+}
+
+fn default_health_success_threshold() -> i32 {
+    1
+}
+
+fn default_health_failure_threshold() -> i32 {
+    3
 }
 
 // =============================================================================

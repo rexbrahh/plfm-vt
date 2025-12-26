@@ -17,6 +17,7 @@ use crate::client::{
     InstancePlan, InstanceStatus, InstanceStatusReport,
 };
 use crate::runtime::{Runtime, VmHandle};
+use crate::state::StateStore;
 use crate::vsock::{ConfigStore, PendingConfig};
 
 /// Tracks a single instance's state.
@@ -82,6 +83,9 @@ pub struct InstanceManager {
     /// Config store for guest-init handshake.
     config_store: Arc<ConfigStore>,
 
+    /// State store for boot status persistence.
+    state_store: Arc<std::sync::Mutex<StateStore>>,
+
     /// Control plane client (for secrets/logs).
     control_plane: Arc<ControlPlaneClient>,
 
@@ -90,10 +94,10 @@ pub struct InstanceManager {
 }
 
 impl InstanceManager {
-    /// Create a new instance manager.
     pub fn new(
         runtime: Arc<dyn Runtime>,
         config_store: Arc<ConfigStore>,
+        state_store: Arc<std::sync::Mutex<StateStore>>,
         control_plane: Arc<ControlPlaneClient>,
     ) -> Self {
         Self {
@@ -102,6 +106,7 @@ impl InstanceManager {
             last_cursor_event_id: RwLock::new(0),
             last_plan_id: RwLock::new(None),
             config_store,
+            state_store,
             control_plane,
             config_generation: AtomicU64::new(1),
         }
@@ -311,13 +316,11 @@ impl InstanceManager {
 
         self.config_store.add(&instance_id, pending).await;
 
-        // Try to start the VM
         match self.runtime.start_vm(&plan).await {
             Ok(handle) => {
-                state.status = InstanceStatus::Ready;
                 state.boot_id = Some(handle.boot_id.clone());
                 state.vm_handle = Some(handle);
-                info!(instance_id = %instance_id, "Instance started successfully");
+                info!(instance_id = %instance_id, "VM started, waiting for guest-init ready");
             }
             Err(e) => {
                 state.status = InstanceStatus::Failed;
@@ -401,7 +404,6 @@ impl InstanceManager {
         })
     }
 
-    /// Check and update instance health.
     pub async fn check_health(&self) {
         let instances: Vec<(String, InstanceState)> = {
             let instances = self.instances.read().await;
@@ -428,6 +430,67 @@ impl InstanceManager {
                     Err(e) => {
                         warn!(instance_id = %instance_id, error = %e, "Error checking instance health");
                     }
+                }
+            }
+        }
+    }
+
+    pub async fn update_from_boot_status(&self) {
+        let booting_instances: Vec<(String, Option<String>)> = {
+            let instances = self.instances.read().await;
+            instances
+                .iter()
+                .filter(|(_, state)| state.status == InstanceStatus::Booting)
+                .map(|(id, state)| (id.clone(), state.boot_id.clone()))
+                .collect()
+        };
+
+        if booting_instances.is_empty() {
+            return;
+        }
+
+        let boot_statuses: Vec<(String, String)> = {
+            let store = match self.state_store.lock() {
+                Ok(s) => s,
+                Err(e) => {
+                    warn!(error = %e, "Failed to acquire state store lock");
+                    return;
+                }
+            };
+
+            booting_instances
+                .iter()
+                .filter_map(|(instance_id, boot_id)| {
+                    boot_id.as_ref().and_then(|bid| {
+                        store
+                            .get_boot_status(instance_id, bid)
+                            .ok()
+                            .flatten()
+                            .map(|record| (instance_id.clone(), record.state))
+                    })
+                })
+                .collect()
+        };
+
+        let mut instances = self.instances.write().await;
+        for (instance_id, boot_state) in boot_statuses {
+            if let Some(instance) = instances.get_mut(&instance_id) {
+                match boot_state.as_str() {
+                    "ready" => {
+                        info!(instance_id = %instance_id, "Guest-init ready, marking instance Ready");
+                        instance.status = InstanceStatus::Ready;
+                    }
+                    "failed" => {
+                        warn!(instance_id = %instance_id, "Guest-init failed");
+                        instance.status = InstanceStatus::Failed;
+                        instance.reason_code = Some(FailureReason::GuestInitFailed);
+                    }
+                    "exited" => {
+                        warn!(instance_id = %instance_id, "Guest-init exited");
+                        instance.status = InstanceStatus::Failed;
+                        instance.reason_code = Some(FailureReason::GuestInitFailed);
+                    }
+                    _ => {}
                 }
             }
         }
@@ -476,6 +539,7 @@ mod tests {
             },
             mounts: None,
             secrets: None,
+            health: None,
             spec_hash: None,
         }
     }
