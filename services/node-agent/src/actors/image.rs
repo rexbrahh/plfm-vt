@@ -6,6 +6,7 @@
 //! - Handles disk pressure scenarios
 
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
@@ -369,22 +370,34 @@ impl ImagePullActor {
         // Sort by last used time (oldest first)
         candidates.sort_by_key(|(_, t, _)| *t);
 
-        // Evict until under limit
         for (digest, _, size_bytes) in candidates {
             if self.current_cache_bytes <= self.max_cache_bytes {
                 break;
             }
 
-            info!(
-                digest = %digest,
-                size_bytes,
-                "Evicting image from cache"
-            );
+            if let Some(entry) = self.cache.remove(&digest) {
+                info!(
+                    digest = %digest,
+                    size_bytes,
+                    path = %entry.root_disk_path,
+                    "Evicting image from cache"
+                );
 
-            self.cache.remove(&digest);
-            self.current_cache_bytes = self.current_cache_bytes.saturating_sub(size_bytes);
+                self.current_cache_bytes = self.current_cache_bytes.saturating_sub(size_bytes);
 
-            // TODO: Actually delete the files
+                let path = PathBuf::from(&entry.root_disk_path);
+                if path.exists() {
+                    if let Err(e) = fs::remove_file(&path) {
+                        warn!(
+                            path = %path.display(),
+                            error = %e,
+                            "Failed to delete root disk"
+                        );
+                    }
+                    let meta_path = path.with_extension("meta.json");
+                    let _ = fs::remove_file(&meta_path);
+                }
+            }
         }
     }
 }
