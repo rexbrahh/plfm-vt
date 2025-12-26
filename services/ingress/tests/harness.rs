@@ -246,16 +246,15 @@ impl ProxyV2Backend {
                                     let addr_len = u16::from_be_bytes([header_base[14], header_base[15]]) as usize;
                                     let mut addr_data = vec![0u8; addr_len];
 
-                                    if addr_len > 0 {
-                                        if tokio::time::timeout(
+                                    if addr_len > 0
+                                        && tokio::time::timeout(
                                             Duration::from_secs(1),
                                             stream.read_exact(&mut addr_data),
                                         )
                                         .await
                                         .is_err()
-                                        {
-                                            return;
-                                        }
+                                    {
+                                        return;
                                     }
 
                                     let mut payload = vec![0u8; 256];
