@@ -103,6 +103,7 @@ fn parse_meminfo(content: &str) -> (i64, i64) {
 }
 
 #[cfg(not(target_os = "linux"))]
+#[allow(dead_code)]
 fn parse_meminfo(_content: &str) -> (i64, i64) {
     (16 * 1024 * 1024 * 1024, 8 * 1024 * 1024 * 1024)
 }

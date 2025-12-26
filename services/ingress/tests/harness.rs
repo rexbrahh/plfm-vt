@@ -3,6 +3,8 @@
 //! Provides helpers to spawn TCP/TLS backends, ingress listeners, and verify
 //! PROXY protocol v2 headers in a test environment.
 
+#![allow(dead_code)]
+
 use std::io;
 use std::net::{SocketAddr, SocketAddrV6};
 use std::sync::atomic::{AtomicU64, Ordering};
