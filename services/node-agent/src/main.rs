@@ -21,6 +21,7 @@ use plfm_node_agent::image::{
     ImageCache, ImageCacheConfig, ImagePuller, ImagePullerConfig, OciConfig, RootDiskConfig,
 };
 use plfm_node_agent::reconciler::{Reconciler, ReconcilerConfig};
+use plfm_node_agent::state::StateStore;
 use plfm_node_agent::vsock::{ConfigDeliveryService, ConfigStore};
 use plfm_node_agent::{ControlPlaneClient, InstanceManager, MockRuntime};
 
@@ -126,19 +127,28 @@ async fn main() -> Result<()> {
         .or_else(|_| std::env::var("GHOST_RUNTIME"))
         .unwrap_or_else(|_| "mock".to_string());
 
+    // State store for persistence
+    let state_db_path = PathBuf::from(&config.data_dir).join("node-agent.db");
+    let state_store = Arc::new(std::sync::Mutex::new(
+        StateStore::open(&state_db_path).expect("Failed to open state store"),
+    ));
+
     // Config delivery service for guest-init
     let config_store = Arc::new(ConfigStore::new());
-    let config_delivery = ConfigDeliveryService::new(Arc::clone(&config_store));
+    let config_delivery = ConfigDeliveryService::new(Arc::clone(&config_store), Arc::clone(&state_store));
     let config_delivery_handle = tokio::spawn(async move {
         if let Err(e) = config_delivery.run().await {
             error!(error = %e, "Config delivery service failed");
         }
     });
 
-    // Determine whether to use actor-based supervision or legacy mode
-    let use_actors = std::env::var("VT_USE_ACTORS")
+    let use_legacy = std::env::var("VT_USE_LEGACY")
         .map(|v| v == "1" || v.to_lowercase() == "true")
         .unwrap_or(false);
+    let use_actors = !use_legacy
+        && std::env::var("VT_USE_ACTORS")
+            .map(|v| v != "0" && v.to_lowercase() != "false")
+            .unwrap_or(true);
 
     if use_actors {
         // === Actor-based supervision tree ===
@@ -151,6 +161,7 @@ async fn main() -> Result<()> {
                 config.clone(),
                 Arc::clone(&runtime),
                 Arc::clone(&control_plane_client),
+                Arc::clone(&state_store),
                 shutdown_rx.clone(),
             );
 
@@ -174,6 +185,7 @@ async fn main() -> Result<()> {
                 config.clone(),
                 Arc::clone(&runtime),
                 Arc::clone(&control_plane_client),
+                Arc::clone(&state_store),
                 shutdown_rx.clone(),
             );
 
@@ -205,10 +217,10 @@ async fn main() -> Result<()> {
             Arc::new(MockRuntime::new())
         };
 
-        // Create the instance manager
         let instance_manager = Arc::new(InstanceManager::new(
             runtime,
             Arc::clone(&config_store),
+            Arc::clone(&state_store),
             Arc::clone(&control_plane_client),
         ));
 

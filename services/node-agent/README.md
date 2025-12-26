@@ -87,6 +87,8 @@ Environment variables:
 - `GHOST_IMAGE_CACHE_DIR` - Image cache location
 - `GHOST_SECRETS_KEY` - Path to node-local secrets decryption key
 - `GHOST_WIREGUARD_PRIVATE_KEY` - WireGuard private key path
+- `VT_USE_LEGACY` - Set to `1` to use legacy reconciliation mode instead of actor-based supervision
+- `VT_USE_ACTORS` - Explicit control over actor mode (default: `true`)
 
 See `config/example.toml` for full configuration options.
 
