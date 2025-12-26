@@ -267,17 +267,23 @@ impl ControlPlaneStreamActor {
         Ok(())
     }
 
-    fn handle_stream_event(&mut self, event_type: String, _payload: String) {
+    fn handle_stream_event(&mut self, event_type: String, _payload: String) -> bool {
         debug!(
             event_type = %event_type,
             cursor = self.persisted.last_event_cursor,
             "Received stream event"
         );
 
-        // Update cursor
         self.persisted.last_event_cursor += 1;
 
-        // TODO: Dispatch event to appropriate handler
+        matches!(
+            event_type.as_str(),
+            "instance.allocated"
+                | "instance.desired_state_changed"
+                | "instance.status_changed"
+                | "node.state_changed"
+                | "exec_session.granted"
+        )
     }
 
     async fn handle_disconnected(&mut self, reason: String) -> Result<(), ActorError> {
@@ -329,7 +335,11 @@ impl Actor for ControlPlaneStreamActor {
                 event_type,
                 payload,
             } => {
-                self.handle_stream_event(event_type, payload);
+                if self.handle_stream_event(event_type, payload) {
+                    if let Err(e) = self.fetch_and_publish_plan().await {
+                        warn!(error = %e, "Failed to fetch plan after event");
+                    }
+                }
             }
 
             StreamMessage::Disconnected { reason } => {
