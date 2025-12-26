@@ -15,6 +15,7 @@ use tracing::{debug, error, info, warn};
 use crate::client::{ControlPlaneClient, HeartbeatRequest, NodeState};
 use crate::config::Config;
 use crate::instance::InstanceManager;
+use crate::resources::SystemResources;
 
 /// Run the heartbeat loop until shutdown.
 pub async fn run_heartbeat_loop(
@@ -38,12 +39,12 @@ pub async fn run_heartbeat_loop(
         tokio::select! {
             _ = interval_timer.tick() => {
                 let instance_count = instance_manager.instance_count().await;
+                let resources = SystemResources::measure();
 
                 let request = HeartbeatRequest {
                     state: NodeState::Active,
-                    // TODO: Actually measure available resources
-                    available_cpu_cores: 8,
-                    available_memory_bytes: 16 * 1024 * 1024 * 1024, // 16 GiB
+                    available_cpu_cores: resources.cpu_cores,
+                    available_memory_bytes: resources.available_memory_bytes,
                     instance_count,
                 };
 

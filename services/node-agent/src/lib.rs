@@ -6,6 +6,7 @@ pub mod firecracker;
 pub mod grpc_client;
 pub mod image;
 pub mod network;
+pub mod resources;
 pub mod state;
 pub mod vsock;
 
