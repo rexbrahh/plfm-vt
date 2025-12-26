@@ -13,6 +13,8 @@
 //!                  +------> failed <-----+
 //! ```
 
+use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
@@ -20,7 +22,9 @@ use tracing::{debug, error, info, warn};
 
 use super::framework::{Actor, ActorContext, ActorError};
 use crate::client::InstancePlan;
+use crate::exec::{EndReason, ExecRequest, ExecService, ExecSession, ExecSessionManager, ExecSessionState};
 use crate::runtime::{Runtime, VmHandle};
+use crate::state::StateStore;
 
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(30);
 const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(10);
@@ -153,42 +157,45 @@ impl InstanceActorState {
 
 /// Actor managing a single microVM instance.
 pub struct InstanceActor<R: Runtime + Send + Sync + 'static> {
-    /// Instance ID (actor key).
     instance_id: String,
-
-    /// Runtime for VM operations.
-    runtime: std::sync::Arc<R>,
-
-    /// Current actor state.
+    runtime: Arc<R>,
+    state_store: Arc<std::sync::Mutex<StateStore>>,
     state: InstanceActorState,
-
-    /// VM handle if running.
     vm_handle: Option<VmHandle>,
-
-    /// Current spec.
     current_spec: Option<InstancePlan>,
+    exec_session_manager: Arc<ExecSessionManager>,
 }
 
 impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
-    /// Create a new instance actor.
-    pub fn new(instance_id: String, runtime: std::sync::Arc<R>) -> Self {
+    pub fn new(
+        instance_id: String,
+        runtime: Arc<R>,
+        state_store: Arc<std::sync::Mutex<StateStore>>,
+    ) -> Self {
         Self {
             instance_id: instance_id.clone(),
             runtime,
+            state_store,
             state: InstanceActorState::new(instance_id),
             vm_handle: None,
             current_spec: None,
+            exec_session_manager: Arc::new(ExecSessionManager::new()),
         }
     }
 
-    /// Create from recovered state.
-    pub fn from_state(state: InstanceActorState, runtime: std::sync::Arc<R>) -> Self {
+    pub fn from_state(
+        state: InstanceActorState,
+        runtime: Arc<R>,
+        state_store: Arc<std::sync::Mutex<StateStore>>,
+    ) -> Self {
         Self {
             instance_id: state.instance_id.clone(),
             runtime,
+            state_store,
             state,
-            vm_handle: None, // Will be recovered in on_start
+            vm_handle: None,
             current_spec: None,
+            exec_session_manager: Arc::new(ExecSessionManager::new()),
         }
     }
 
@@ -335,11 +342,50 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
             }
 
             InstancePhase::Booting => {
-                // Check boot timeout
                 if let Some(started) = self.state.boot_started_at {
                     if started.elapsed() > std::time::Duration::from_secs(60) {
                         warn!(instance_id = %self.instance_id, "Boot timeout");
                         self.transition_to_failed("Boot timeout".to_string());
+                        return Ok(());
+                    }
+                }
+
+                let Some(handle) = &self.vm_handle else {
+                    return Ok(());
+                };
+
+                let boot_state = {
+                    let store = match self.state_store.lock() {
+                        Ok(s) => s,
+                        Err(e) => {
+                            warn!(error = %e, "Failed to acquire state store lock");
+                            return Ok(());
+                        }
+                    };
+                    store
+                        .get_boot_status(&self.instance_id, &handle.boot_id)
+                        .ok()
+                        .flatten()
+                        .map(|r| r.state)
+                };
+
+                if let Some(state) = boot_state {
+                    match state.as_str() {
+                        "ready" => {
+                            let boot_duration = self.state.boot_started_at.map(|t| t.elapsed());
+                            info!(
+                                instance_id = %self.instance_id,
+                                boot_duration_ms = ?boot_duration.map(|d| d.as_millis()),
+                                "Guest-init ready, marking instance Ready"
+                            );
+                            self.state.phase = InstancePhase::Ready;
+                            self.state.last_health_check_at = Some(Instant::now());
+                        }
+                        "failed" | "exited" => {
+                            warn!(instance_id = %self.instance_id, boot_state = %state, "Guest-init failed");
+                            self.transition_to_failed(format!("Guest-init {state}"));
+                        }
+                        _ => {}
                     }
                 }
             }
@@ -364,6 +410,28 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
     // Internal Operations
     // -------------------------------------------------------------------------
 
+    async fn prepare_resources(&mut self, spec: &InstancePlan) -> Result<(), String> {
+        debug!(
+            instance_id = %self.instance_id,
+            "Preparing instance resources"
+        );
+
+        self.state.overlay_ip = Some(spec.network.overlay_ipv6.clone());
+
+        let instance_dir = format!("/var/lib/vt/instances/{}", self.instance_id);
+        let socket_path = format!("{}/firecracker.sock", instance_dir);
+        self.state.firecracker_socket_path = Some(socket_path);
+
+        debug!(
+            instance_id = %self.instance_id,
+            overlay_ip = ?self.state.overlay_ip,
+            socket_path = ?self.state.firecracker_socket_path,
+            "Instance resources prepared"
+        );
+
+        Ok(())
+    }
+
     async fn start_instance(&mut self, spec: &InstancePlan) -> Result<(), ActorError> {
         let image_label = spec
             .image
@@ -376,27 +444,30 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
             "Starting instance"
         );
 
+        self.state.phase = InstancePhase::Preparing;
+
+        if let Err(e) = self.prepare_resources(spec).await {
+            error!(
+                instance_id = %self.instance_id,
+                error = %e,
+                "Failed to prepare resources"
+            );
+            self.transition_to_failed(format!("resource preparation failed: {}", e));
+            return Err(ActorError::Transient(e.to_string()));
+        }
+
         self.state.phase = InstancePhase::Booting;
         self.state.boot_started_at = Some(Instant::now());
         self.state.drain_started_at = None;
 
-        // TODO: Prepare resources (image, directories, networking)
-        // For now, go straight to starting the VM
-
         match self.runtime.start_vm(spec).await {
             Ok(handle) => {
-                let boot_duration = self.state.boot_started_at.map(|t| t.elapsed());
                 info!(
                     instance_id = %self.instance_id,
                     boot_id = %handle.boot_id,
-                    boot_duration_ms = ?boot_duration.map(|d| d.as_millis()),
-                    "Instance started successfully"
+                    "VM started, waiting for guest-init ready"
                 );
-
                 self.vm_handle = Some(handle);
-                self.state.phase = InstancePhase::Ready;
-                self.state.last_health_check_at = Some(Instant::now());
-
                 Ok(())
             }
             Err(e) => {
@@ -460,6 +531,112 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
         self.state.drain_started_at = None;
         self.vm_handle = None;
     }
+
+    async fn handle_exec_request(
+        &mut self,
+        session_id: String,
+        command: Vec<String>,
+    ) -> Result<(), ActorError> {
+        if self.state.phase != InstancePhase::Ready {
+            warn!(
+                instance_id = %self.instance_id,
+                session_id = %session_id,
+                phase = ?self.state.phase,
+                "Exec request rejected: instance not ready"
+            );
+            return Err(ActorError::Permanent(format!(
+                "instance {} is not ready (phase: {:?})",
+                self.instance_id, self.state.phase
+            )));
+        }
+
+        let vm_handle = match &self.vm_handle {
+            Some(h) => h.clone(),
+            None => {
+                warn!(
+                    instance_id = %self.instance_id,
+                    session_id = %session_id,
+                    "Exec request rejected: no VM handle"
+                );
+                return Err(ActorError::Permanent("no VM handle".to_string()));
+            }
+        };
+
+        let guest_cid = vm_handle.guest_cid;
+
+        let session = ExecSession {
+            session_id: session_id.clone(),
+            instance_id: self.instance_id.clone(),
+            guest_cid,
+            command: command.clone(),
+            env: HashMap::new(),
+            tty: true,
+            cols: 80,
+            rows: 24,
+            state: ExecSessionState::Granted,
+            exit_code: None,
+            end_reason: None,
+        };
+
+        if let Err(e) = self.exec_session_manager.register_session(session).await {
+            warn!(
+                instance_id = %self.instance_id,
+                session_id = %session_id,
+                error = %e,
+                "Failed to register exec session"
+            );
+            return Err(ActorError::Transient(e.to_string()));
+        }
+
+        info!(
+            instance_id = %self.instance_id,
+            session_id = %session_id,
+            guest_cid = guest_cid,
+            command = ?command,
+            "Exec session registered"
+        );
+
+        let session_manager = self.exec_session_manager.clone();
+        let exec_service = ExecService::new(session_manager.clone());
+        let sid = session_id.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let request = ExecRequest {
+                command,
+                env: HashMap::new(),
+                tty: true,
+                cols: 80,
+                rows: 24,
+                stdin: true,
+            };
+
+            match exec_service.execute(&sid, guest_cid, request) {
+                Ok((exit_code, reason)) => {
+                    info!(
+                        session_id = %sid,
+                        exit_code = exit_code,
+                        reason = ?reason,
+                        "Exec session completed"
+                    );
+                    let manager = session_manager.clone();
+                    let sid_clone = sid.clone();
+                    tokio::spawn(async move {
+                        manager.end_session(&sid_clone, Some(exit_code), reason).await;
+                    });
+                }
+                Err(e) => {
+                    error!(session_id = %sid, error = %e, "Exec session failed");
+                    let manager = session_manager.clone();
+                    let sid_clone = sid.clone();
+                    tokio::spawn(async move {
+                        manager.end_session(&sid_clone, None, EndReason::ClientDisconnect).await;
+                    });
+                }
+            }
+        });
+
+        Ok(())
+    }
 }
 
 #[async_trait]
@@ -494,13 +671,7 @@ impl<R: Runtime + Send + Sync + 'static> Actor for InstanceActor<R> {
                 command,
                 grant_token: _,
             } => {
-                // TODO: Forward to exec handler
-                info!(
-                    instance_id = %self.instance_id,
-                    session_id = %session_id,
-                    command = ?command,
-                    "Exec request received (not implemented)"
-                );
+                self.handle_exec_request(session_id, command).await?;
             }
 
             InstanceMessage::Stop { reason } => {
@@ -622,6 +793,7 @@ mod tests {
             },
             mounts: None,
             secrets: None,
+            health: None,
             spec_hash: None,
         }
     }
@@ -647,10 +819,15 @@ mod tests {
         }
     }
 
+    fn test_state_store() -> std::sync::Arc<std::sync::Mutex<StateStore>> {
+        std::sync::Arc::new(std::sync::Mutex::new(StateStore::open_in_memory().unwrap()))
+    }
+
     #[tokio::test]
     async fn test_drain_timeout_stops_instance() {
         let runtime = std::sync::Arc::new(crate::runtime::MockRuntime::new());
-        let mut actor = InstanceActor::new("inst_test".to_string(), runtime.clone());
+        let state_store = test_state_store();
+        let mut actor = InstanceActor::new("inst_test".to_string(), runtime.clone(), state_store);
         let plan = test_plan();
         let handle = runtime.start_vm(&plan).await.unwrap();
 
@@ -668,7 +845,8 @@ mod tests {
     #[tokio::test]
     async fn test_health_check_failure_marks_failed() {
         let runtime = std::sync::Arc::new(UnhealthyRuntime);
-        let mut actor = InstanceActor::new("inst_test".to_string(), runtime.clone());
+        let state_store = test_state_store();
+        let mut actor = InstanceActor::new("inst_test".to_string(), runtime.clone(), state_store);
         let plan = test_plan();
         let handle = runtime.start_vm(&plan).await.unwrap();
 

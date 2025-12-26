@@ -9,4 +9,6 @@
 
 mod store;
 
-pub use store::{InstancePhase, InstanceRecord, NodeState, StateStore, StateStoreError};
+pub use store::{
+    BootStatusRecord, InstancePhase, InstanceRecord, NodeState, StateStore, StateStoreError,
+};

@@ -96,6 +96,18 @@ pub struct InstanceRecord {
     pub updated_at: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct BootStatusRecord {
+    pub instance_id: String,
+    pub boot_id: String,
+    pub state: String,
+    pub reason: Option<String>,
+    pub detail: Option<String>,
+    pub exit_code: Option<i32>,
+    pub guest_timestamp: String,
+    pub recorded_at: i64,
+}
+
 /// SQLite state store.
 pub struct StateStore {
     conn: Connection,
@@ -149,6 +161,20 @@ impl StateStore {
             );
 
             CREATE INDEX IF NOT EXISTS idx_instances_phase ON instances(phase);
+
+            CREATE TABLE IF NOT EXISTS boot_status (
+                instance_id TEXT NOT NULL,
+                boot_id TEXT NOT NULL,
+                state TEXT NOT NULL,
+                reason TEXT,
+                detail TEXT,
+                exit_code INTEGER,
+                guest_timestamp TEXT NOT NULL,
+                recorded_at INTEGER NOT NULL,
+                PRIMARY KEY (instance_id, boot_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_boot_status_state ON boot_status(state);
             "#,
         )?;
 
@@ -351,7 +377,6 @@ impl StateStore {
         Ok(records)
     }
 
-    /// Count instances by phase.
     pub fn count_instances_by_phase(&self, phase: InstancePhase) -> Result<i64, StateStoreError> {
         let count: i64 = self.conn.query_row(
             "SELECT COUNT(*) FROM instances WHERE phase = ?1",
@@ -359,6 +384,92 @@ impl StateStore {
             |row| row.get(0),
         )?;
         Ok(count)
+    }
+
+    pub fn upsert_boot_status(&self, record: &BootStatusRecord) -> Result<(), StateStoreError> {
+        self.conn.execute(
+            r#"
+            INSERT INTO boot_status (instance_id, boot_id, state, reason, detail, exit_code, guest_timestamp, recorded_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            ON CONFLICT(instance_id, boot_id) DO UPDATE SET
+                state = excluded.state,
+                reason = excluded.reason,
+                detail = excluded.detail,
+                exit_code = excluded.exit_code,
+                guest_timestamp = excluded.guest_timestamp,
+                recorded_at = excluded.recorded_at
+            "#,
+            params![
+                record.instance_id,
+                record.boot_id,
+                record.state,
+                record.reason,
+                record.detail,
+                record.exit_code,
+                record.guest_timestamp,
+                record.recorded_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_boot_status(
+        &self,
+        instance_id: &str,
+        boot_id: &str,
+    ) -> Result<Option<BootStatusRecord>, StateStoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT instance_id, boot_id, state, reason, detail, exit_code, guest_timestamp, recorded_at
+             FROM boot_status WHERE instance_id = ?1 AND boot_id = ?2",
+        )?;
+
+        stmt.query_row(params![instance_id, boot_id], |row| {
+            Ok(BootStatusRecord {
+                instance_id: row.get(0)?,
+                boot_id: row.get(1)?,
+                state: row.get(2)?,
+                reason: row.get(3)?,
+                detail: row.get(4)?,
+                exit_code: row.get(5)?,
+                guest_timestamp: row.get(6)?,
+                recorded_at: row.get(7)?,
+            })
+        })
+        .optional()
+        .map_err(Into::into)
+    }
+
+    pub fn get_latest_boot_status(
+        &self,
+        instance_id: &str,
+    ) -> Result<Option<BootStatusRecord>, StateStoreError> {
+        let mut stmt = self.conn.prepare(
+            "SELECT instance_id, boot_id, state, reason, detail, exit_code, guest_timestamp, recorded_at
+             FROM boot_status WHERE instance_id = ?1 ORDER BY recorded_at DESC LIMIT 1",
+        )?;
+
+        stmt.query_row(params![instance_id], |row| {
+            Ok(BootStatusRecord {
+                instance_id: row.get(0)?,
+                boot_id: row.get(1)?,
+                state: row.get(2)?,
+                reason: row.get(3)?,
+                detail: row.get(4)?,
+                exit_code: row.get(5)?,
+                guest_timestamp: row.get(6)?,
+                recorded_at: row.get(7)?,
+            })
+        })
+        .optional()
+        .map_err(Into::into)
+    }
+
+    pub fn delete_boot_status(&self, instance_id: &str) -> Result<(), StateStoreError> {
+        self.conn.execute(
+            "DELETE FROM boot_status WHERE instance_id = ?1",
+            params![instance_id],
+        )?;
+        Ok(())
     }
 }
 
@@ -440,5 +551,64 @@ mod tests {
             let parsed = InstancePhase::from_str(s).unwrap();
             assert_eq!(parsed, phase);
         }
+    }
+
+    #[test]
+    fn test_boot_status_persistence() {
+        let store = StateStore::open_in_memory().unwrap();
+
+        let record = BootStatusRecord {
+            instance_id: "inst-123".to_string(),
+            boot_id: "boot-abc".to_string(),
+            state: "config_applied".to_string(),
+            reason: None,
+            detail: None,
+            exit_code: None,
+            guest_timestamp: "2025-12-25T12:00:00Z".to_string(),
+            recorded_at: 1000,
+        };
+
+        store.upsert_boot_status(&record).unwrap();
+
+        let fetched = store
+            .get_boot_status("inst-123", "boot-abc")
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.state, "config_applied");
+        assert!(fetched.reason.is_none());
+
+        let updated = BootStatusRecord {
+            state: "ready".to_string(),
+            recorded_at: 1001,
+            ..record.clone()
+        };
+        store.upsert_boot_status(&updated).unwrap();
+
+        let fetched = store
+            .get_boot_status("inst-123", "boot-abc")
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.state, "ready");
+
+        let failed = BootStatusRecord {
+            instance_id: "inst-123".to_string(),
+            boot_id: "boot-def".to_string(),
+            state: "failed".to_string(),
+            reason: Some("mount_failed".to_string()),
+            detail: Some("ext4 error".to_string()),
+            exit_code: None,
+            guest_timestamp: "2025-12-25T12:01:00Z".to_string(),
+            recorded_at: 2000,
+        };
+        store.upsert_boot_status(&failed).unwrap();
+
+        let latest = store.get_latest_boot_status("inst-123").unwrap().unwrap();
+        assert_eq!(latest.boot_id, "boot-def");
+        assert_eq!(latest.state, "failed");
+        assert_eq!(latest.reason, Some("mount_failed".to_string()));
+
+        store.delete_boot_status("inst-123").unwrap();
+        assert!(store.get_boot_status("inst-123", "boot-abc").unwrap().is_none());
+        assert!(store.get_boot_status("inst-123", "boot-def").unwrap().is_none());
     }
 }

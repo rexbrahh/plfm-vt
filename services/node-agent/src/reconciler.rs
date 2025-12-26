@@ -122,10 +122,11 @@ impl Reconciler {
         Ok(())
     }
 
-    /// Check health of all instances.
     async fn check_health(&self) {
         debug!("Checking instance health");
+        self.instance_manager.update_from_boot_status().await;
         self.instance_manager.check_health().await;
+        self.report_status_transitions().await;
     }
 
     /// Report status for instances with status transitions.

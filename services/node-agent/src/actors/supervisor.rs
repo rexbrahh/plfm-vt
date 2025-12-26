@@ -44,6 +44,7 @@ use crate::client::{
 };
 use crate::config::Config;
 use crate::runtime::Runtime;
+use crate::state::StateStore;
 
 // =============================================================================
 // Node Supervisor
@@ -61,51 +62,30 @@ struct PendingInstance {
 
 /// Root supervisor for the node agent.
 pub struct NodeSupervisor<R: Runtime + Send + Sync + 'static> {
-    /// Node configuration.
     config: Config,
-
-    /// Runtime for VM operations.
     runtime: Arc<R>,
-
     control_plane: Arc<ControlPlaneClient>,
-
+    state_store: Arc<std::sync::Mutex<StateStore>>,
     plan_rx: mpsc::Receiver<NodePlan>,
-
     plan_tx: mpsc::Sender<NodePlan>,
-
     instance_count: Arc<AtomicUsize>,
-
     last_cursor_event_id: i64,
     last_plan_id: Option<String>,
-
-    /// Core supervisor for static actors.
     supervisor: Supervisor,
-
-    /// Handle to the control plane stream actor.
     stream_handle: Option<ActorHandle<StreamMessage>>,
-
-    /// Handle to the image pull actor.
     image_handle: Option<ActorHandle<ImageMessage>>,
-
-    /// Instance actors by instance ID.
     instance_handles: HashMap<String, ActorHandle<InstanceMessage>>,
-
-    /// Instances pending image pull (instance_id -> pending state).
     pending_instances: HashMap<String, PendingInstance>,
-
-    /// Shutdown signal receiver.
     shutdown: watch::Receiver<bool>,
-
-    /// Spec revision counter for message coalescing.
     spec_revision: u64,
 }
 
 impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
-    /// Create a new node supervisor.
     pub fn new(
         config: Config,
         runtime: Arc<R>,
         control_plane: Arc<ControlPlaneClient>,
+        state_store: Arc<std::sync::Mutex<StateStore>>,
         shutdown: watch::Receiver<bool>,
     ) -> Self {
         let supervisor = Supervisor::new(RestartPolicy::default(), shutdown.clone());
@@ -116,6 +96,7 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
             config,
             runtime,
             control_plane,
+            state_store,
             plan_rx,
             plan_tx,
             instance_count,
@@ -434,13 +415,16 @@ impl<R: Runtime + Send + Sync + 'static> NodeSupervisor<R> {
         // helps track which instances are waiting for images.
     }
 
-    /// Spawn a new instance actor.
     fn spawn_instance(&mut self, plan: InstancePlan, revision: u64) {
         let instance_id = plan.instance_id.clone();
 
         info!(instance_id = %instance_id, "Spawning instance actor");
 
-        let actor = InstanceActor::new(instance_id.clone(), Arc::clone(&self.runtime));
+        let actor = InstanceActor::new(
+            instance_id.clone(),
+            Arc::clone(&self.runtime),
+            Arc::clone(&self.state_store),
+        );
         let handle = self.supervisor.spawn(actor, 16);
 
         // Send initial spec
@@ -684,6 +668,7 @@ mod tests {
             },
             mounts: None,
             secrets: None,
+            health: None,
             spec_hash: None,
         }
     }
@@ -700,14 +685,19 @@ mod tests {
         }
     }
 
+    fn test_state_store() -> Arc<std::sync::Mutex<StateStore>> {
+        Arc::new(std::sync::Mutex::new(StateStore::open_in_memory().unwrap()))
+    }
+
     #[tokio::test]
     async fn test_node_supervisor_new() {
         let config = test_config();
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
+        let state_store = test_state_store();
 
-        let supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+        let supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
         assert_eq!(supervisor.instance_count(), 0);
     }
 
@@ -717,8 +707,9 @@ mod tests {
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
+        let state_store = test_state_store();
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
         supervisor.start();
 
         assert!(supervisor.stream_handle().is_some());
@@ -731,8 +722,9 @@ mod tests {
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
+        let state_store = test_state_store();
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
         supervisor.start();
 
         let assignments = vec![test_assignment("inst_1"), test_assignment("inst_2")];
@@ -750,9 +742,10 @@ mod tests {
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
+        let state_store = test_state_store();
         let node_id = config.node_id.to_string();
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
 
         let plan = NodePlan {
             spec_version: "v1".to_string(),
@@ -785,8 +778,9 @@ mod tests {
         let runtime = Arc::new(MockRuntime::new());
         let (_, shutdown_rx) = watch::channel(false);
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
+        let state_store = test_state_store();
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, shutdown_rx);
+        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
 
         let assignments = vec![test_assignment("inst_1"), test_assignment("inst_2")];
         supervisor.apply_instances(assignments).await;
