@@ -229,8 +229,14 @@ pub struct ConfigDeliveryService {
 }
 
 impl ConfigDeliveryService {
-    pub fn new(config_store: Arc<ConfigStore>, state_store: Arc<std::sync::Mutex<StateStore>>) -> Self {
-        Self { config_store, state_store }
+    pub fn new(
+        config_store: Arc<ConfigStore>,
+        state_store: Arc<std::sync::Mutex<StateStore>>,
+    ) -> Self {
+        Self {
+            config_store,
+            state_store,
+        }
     }
 
     pub async fn run(&self) -> Result<()> {

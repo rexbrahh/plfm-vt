@@ -104,7 +104,8 @@ async fn test_supervisor_lifecycle() {
     let state_store = test_state_store();
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+    let mut supervisor =
+        NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     supervisor.start();
 
     // Verify static actors are running
@@ -124,7 +125,8 @@ async fn test_apply_single_instance() {
     let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+    let mut supervisor =
+        NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     supervisor.start();
 
     // Apply one instance
@@ -146,7 +148,8 @@ async fn test_apply_multiple_instances() {
     let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+    let mut supervisor =
+        NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     supervisor.start();
 
     // Apply multiple instances with same image (should deduplicate pulls)
@@ -169,7 +172,8 @@ async fn test_scale_up_and_down() {
     let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+    let mut supervisor =
+        NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     // Don't call start() - this bypasses image pull
 
     // Scale up to 3 instances
@@ -203,7 +207,8 @@ async fn test_update_instance_spec() {
     let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+    let mut supervisor =
+        NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     // Don't call start() - direct spawn
 
     // Create instance
@@ -227,7 +232,8 @@ async fn test_instance_with_digest() {
     let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+    let mut supervisor =
+        NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     supervisor.start();
 
     // Apply instance with digest in image ref
@@ -248,7 +254,8 @@ async fn test_concurrent_apply() {
     let state_store = test_state_store();
     let (_shutdown_tx, shutdown_rx) = watch::channel(false);
 
-    let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+    let mut supervisor =
+        NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
     // Don't call start() - direct spawn
 
     // Rapidly apply different sets

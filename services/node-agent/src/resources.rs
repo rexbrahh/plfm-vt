@@ -26,7 +26,7 @@ fn get_cpu_count() -> i32 {
             return count as i32;
         }
     }
-    
+
     std::thread::available_parallelism()
         .map(|p| p.get() as i32)
         .unwrap_or(1)

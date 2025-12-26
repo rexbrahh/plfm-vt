@@ -265,9 +265,7 @@ fn execute_with_pty(stream: &mut VsockStream, request: &ExecRequest) -> Result<i
                         }
                     }
                     frame_type::CONTROL => {
-                        if let Ok(ctrl) =
-                            serde_json::from_slice::<ControlMessage>(payload)
-                        {
+                        if let Ok(ctrl) = serde_json::from_slice::<ControlMessage>(payload) {
                             match ctrl.msg_type.as_str() {
                                 "resize" => {
                                     if let (Some(cols), Some(rows)) = (ctrl.cols, ctrl.rows) {

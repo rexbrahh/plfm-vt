@@ -697,7 +697,8 @@ mod tests {
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
         let state_store = test_state_store();
 
-        let supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+        let supervisor =
+            NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
         assert_eq!(supervisor.instance_count(), 0);
     }
 
@@ -709,7 +710,8 @@ mod tests {
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
         let state_store = test_state_store();
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+        let mut supervisor =
+            NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
         supervisor.start();
 
         assert!(supervisor.stream_handle().is_some());
@@ -724,7 +726,8 @@ mod tests {
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
         let state_store = test_state_store();
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+        let mut supervisor =
+            NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
         supervisor.start();
 
         let assignments = vec![test_assignment("inst_1"), test_assignment("inst_2")];
@@ -745,7 +748,8 @@ mod tests {
         let state_store = test_state_store();
         let node_id = config.node_id.to_string();
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+        let mut supervisor =
+            NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
 
         let plan = NodePlan {
             spec_version: "v1".to_string(),
@@ -780,7 +784,8 @@ mod tests {
         let control_plane = Arc::new(ControlPlaneClient::new(&config));
         let state_store = test_state_store();
 
-        let mut supervisor = NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
+        let mut supervisor =
+            NodeSupervisor::new(config, runtime, control_plane, state_store, shutdown_rx);
 
         let assignments = vec![test_assignment("inst_1"), test_assignment("inst_2")];
         supervisor.apply_instances(assignments).await;

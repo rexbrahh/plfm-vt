@@ -22,7 +22,9 @@ use tracing::{debug, error, info, warn};
 
 use super::framework::{Actor, ActorContext, ActorError};
 use crate::client::InstancePlan;
-use crate::exec::{EndReason, ExecRequest, ExecService, ExecSession, ExecSessionManager, ExecSessionState};
+use crate::exec::{
+    EndReason, ExecRequest, ExecService, ExecSession, ExecSessionManager, ExecSessionState,
+};
 use crate::runtime::{Runtime, VmHandle};
 use crate::state::StateStore;
 
@@ -621,7 +623,9 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
                     let manager = session_manager.clone();
                     let sid_clone = sid.clone();
                     tokio::spawn(async move {
-                        manager.end_session(&sid_clone, Some(exit_code), reason).await;
+                        manager
+                            .end_session(&sid_clone, Some(exit_code), reason)
+                            .await;
                     });
                 }
                 Err(e) => {
@@ -629,7 +633,9 @@ impl<R: Runtime + Send + Sync + 'static> InstanceActor<R> {
                     let manager = session_manager.clone();
                     let sid_clone = sid.clone();
                     tokio::spawn(async move {
-                        manager.end_session(&sid_clone, None, EndReason::ClientDisconnect).await;
+                        manager
+                            .end_session(&sid_clone, None, EndReason::ClientDisconnect)
+                            .await;
                     });
                 }
             }

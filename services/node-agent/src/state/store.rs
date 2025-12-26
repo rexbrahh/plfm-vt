@@ -608,7 +608,13 @@ mod tests {
         assert_eq!(latest.reason, Some("mount_failed".to_string()));
 
         store.delete_boot_status("inst-123").unwrap();
-        assert!(store.get_boot_status("inst-123", "boot-abc").unwrap().is_none());
-        assert!(store.get_boot_status("inst-123", "boot-def").unwrap().is_none());
+        assert!(store
+            .get_boot_status("inst-123", "boot-abc")
+            .unwrap()
+            .is_none());
+        assert!(store
+            .get_boot_status("inst-123", "boot-def")
+            .unwrap()
+            .is_none());
     }
 }

@@ -125,7 +125,12 @@ async fn check_http(port: i32, path: Option<&str>, check_timeout: Duration) -> H
     }
 
     let mut response = vec![0u8; 1024];
-    match timeout(check_timeout, tokio::io::AsyncReadExt::read(&mut stream, &mut response)).await {
+    match timeout(
+        check_timeout,
+        tokio::io::AsyncReadExt::read(&mut stream, &mut response),
+    )
+    .await
+    {
         Ok(Ok(n)) if n > 0 => {
             let response_str = String::from_utf8_lossy(&response[..n]);
             if let Some(status_line) = response_str.lines().next() {

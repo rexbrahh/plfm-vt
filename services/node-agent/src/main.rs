@@ -135,7 +135,8 @@ async fn main() -> Result<()> {
 
     // Config delivery service for guest-init
     let config_store = Arc::new(ConfigStore::new());
-    let config_delivery = ConfigDeliveryService::new(Arc::clone(&config_store), Arc::clone(&state_store));
+    let config_delivery =
+        ConfigDeliveryService::new(Arc::clone(&config_store), Arc::clone(&state_store));
     let config_delivery_handle = tokio::spawn(async move {
         if let Err(e) = config_delivery.run().await {
             error!(error = %e, "Config delivery service failed");
